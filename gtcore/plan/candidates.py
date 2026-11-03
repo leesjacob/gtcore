@@ -12,9 +12,17 @@ Implements, with the signatures frozen in ``gtcore.plan.__init__``:
 - :func:`visible_faces`: first-hit faces from an interior point (the inner
   wall of a closed shell mesh).
 - :func:`recommend_tile_count`: the section 10 manufacturer rule.
+- :func:`packing_capacity` (Paper 2 Phase 4): how many non-conflicting tiles
+  the candidate set holds at a stated grid -- a greedy maximal independent
+  set on the conflict graph (lower bound on the exact packing number at that
+  grid) next to the eligible-area / tile-area quotient (upper bound).  The
+  Table 3 row "manufacturer rule vs capacity at grid vs implanted" reads it;
+  it is labelled "capacity at grid, not exact".  (``gtcore.plan.api``'s
+  ``packing_capacity`` is the planner's greedy-solver variant with a target
+  and fixed tiles; this one needs no dose and is grid-explicit.)
 
 Read-only use of ``gtcore.interact``; never edit it.  Tests in
-``tests/test_plan_candidates.py``.
+``tests/test_plan_candidates.py`` and ``tests/test_packing_capacity.py``.
 
 Detecting the conformer's fallback
 ----------------------------------
@@ -789,11 +797,147 @@ def recommend_tile_count(mesh, contraction_pct: float = 0.0, untreated_pct: floa
     )
 
 
+# ------------------------------------------------------- packing capacity
+CAPACITY_MIS_RANDOM_ORDERS = 8
+# Random candidate orderings tried by ``packing_capacity`` after the
+# min-degree ordering; the largest independent set found is reported.  The
+# greedy set is a LOWER bound on the exact packing number at the grid (the
+# exact maximum independent set is NP-hard; C ~ 1000 here), the area quotient
+# an UPPER bound -- hence the label "capacity at grid, not exact".
+
+
+def greedy_independent_set(pairs, eligible=None, rng_seed: int = 0,
+                           n_random_orders: int = CAPACITY_MIS_RANDOM_ORDERS) -> np.ndarray:
+    """Greedy maximal independent set of a symmetric boolean ``(C, C)``
+    conflict matrix (scipy sparse or dense): the min-static-degree-first
+    ordering (the rule of ``solvers._packing_bound``) plus ``n_random_orders``
+    random orderings (``np.random.default_rng(rng_seed)``); the largest set
+    is returned as sorted candidate ids.  ``eligible`` (``(C,)`` bool)
+    restricts the vertices.  Deterministic for identical inputs."""
+    import scipy.sparse as sp
+    P = sp.csr_matrix(pairs, dtype=bool)
+    c = int(P.shape[0])
+    if P.shape != (c, c):
+        raise ValueError("pairs must be square, got %r" % (P.shape,))
+    if c == 0:
+        return np.zeros(0, dtype=int)
+    elig = np.ones(c, dtype=bool) if eligible is None else np.asarray(eligible, dtype=bool).reshape(c)
+    nbr = [P.indices[P.indptr[i]:P.indptr[i + 1]] for i in range(c)]
+    deg = np.asarray(P.sum(axis=1)).reshape(-1)
+
+    def run(order: np.ndarray) -> np.ndarray:
+        avail = elig.copy()
+        chosen: List[int] = []
+        for i in order:
+            i = int(i)
+            if not avail[i]:
+                continue
+            chosen.append(i)
+            avail[nbr[i]] = False
+            avail[i] = False
+        return np.asarray(sorted(chosen), dtype=int)
+
+    best = run(np.argsort(deg, kind="stable"))
+    rng = np.random.default_rng(int(rng_seed))
+    for _ in range(int(max(n_random_orders, 0))):
+        cand = run(rng.permutation(c))
+        if cand.size > best.size:
+            best = cand
+    return best
+
+
+def packing_capacity(mesh, h_mm: float, n_spins: Optional[int], eligible=None,
+                     kind: str = "full", rng_seed: int = 0, candidates=None,
+                     conflicts=None, n_random_orders: int = CAPACITY_MIS_RANDOM_ORDERS
+                     ) -> Dict[str, object]:
+    """Maximum number of non-conflicting ``kind`` tiles the candidate set
+    holds at the stated grid (``h_mm`` anchor spacing, ``n_spins`` spins),
+    with the grid parameters, so a table row can read "manufacturer rule N
+    vs capacity at grid N vs implanted N".
+
+    Two numbers: ``capacity`` = size of a greedy maximal independent set on
+    the conflict graph (:func:`greedy_independent_set`; planner overlap rule
+    UNION geometric proxy, ``build_conflicts(robust=True)``) -- a LOWER bound
+    on the exact packing number of this candidate set -- and
+    ``upper_bound_area`` = floor(eligible wall area / tile footprint area)
+    (4 cm^2 full, 2 cm^2 half; no packing loss, so an UPPER bound).  The
+    truth lies in ``[capacity, upper_bound_area]``; ``label`` says "capacity
+    at grid (h = .. mm, .. spins), not exact" and ``exact`` is False.
+
+    ``eligible``: face mask or face indices (``build_candidates`` semantics);
+    None = the whole mesh.  ``candidates`` / ``conflicts`` may be passed to
+    reuse a built instance (then ``h_mm`` / ``n_spins`` are taken from the
+    candidate set).  A wall too small for a single tile (``build_candidates``
+    rejects every candidate) gives ``capacity`` 0 with the reason in
+    ``note``; a degenerate / empty mesh or empty eligible region raises
+    ``ValueError`` as ``build_candidates`` does.
+    """
+    import time as _time
+    t0 = _time.perf_counter()
+    kind = str(kind)
+    if kind not in ("full", "half"):
+        raise ValueError("kind must be 'full' or 'half', got %r" % (kind,))
+    area_faces = _check_mesh(mesh, "packing_capacity")
+    elig_faces = _eligible_mask(mesh, eligible)
+    area = float(area_faces[elig_faces].sum())
+    if not elig_faces.any() or area <= 0.0:
+        raise ValueError("packing_capacity: eligible region is empty")
+    tile_area = TILE_AREA_CM2 * 100.0 * (1.0 if kind == "full" else 0.5)
+    ub_area = int(math.floor(area / tile_area + 1e-9))
+
+    note = ""
+    if candidates is None:
+        try:
+            candidates = build_candidates(mesh, h_mm=float(h_mm), n_spins=n_spins,
+                                          kinds=(kind,), eligible_faces=eligible,
+                                          rng_seed=int(rng_seed))
+        except ValueError as exc:
+            msg = str(exc)
+            if "rejected" in msg or "ineligible face" in msg:
+                note = "no candidate survives at this grid: " + msg
+                candidates = None
+            else:
+                raise
+    if candidates is None or len(candidates) == 0:
+        return {"capacity": 0, "upper_bound_area": ub_area, "eligible_area_mm2": area,
+                "tile_area_mm2": tile_area, "n_candidates": 0, "n_anchors": 0, "n_pairs": 0,
+                "h_mm": float(h_mm), "n_spins": None if n_spins is None else int(n_spins),
+                "kind": kind, "selection": [], "exact": False,
+                "method": "greedy maximal independent set on the conflict graph "
+                          "(planner rule U geometric proxy); area quotient as upper bound",
+                "label": "capacity at grid (h = %g mm, %s spins), not exact"
+                         % (float(h_mm), "?" if n_spins is None else int(n_spins)),
+                "note": note or "no candidates", "seconds": _time.perf_counter() - t0}
+    if conflicts is None:
+        from .conflicts import build_conflicts
+        conflicts = build_conflicts(candidates)
+    kinds = np.asarray(candidates.kinds, dtype=object)
+    elig_c = np.asarray(candidates.eligible, dtype=bool) & (kinds == kind)
+    sel = greedy_independent_set(conflicts.pairs, eligible=elig_c, rng_seed=int(rng_seed),
+                                 n_random_orders=int(n_random_orders))
+    if not conflicts.is_feasible(sel):                      # pragma: no cover - guard
+        raise RuntimeError("packing_capacity: greedy independent set is not conflict-free")
+    h_used = float(candidates.h_mm)
+    spins_used = int(candidates.n_spins)
+    return {"capacity": int(sel.size), "upper_bound_area": ub_area,
+            "eligible_area_mm2": area, "tile_area_mm2": tile_area,
+            "n_candidates": int(len(candidates)),
+            "n_anchors": int(np.unique(np.asarray(candidates.anchor_ids)[elig_c]).size),
+            "n_pairs": int(conflicts.count_pairs()), "h_mm": h_used, "n_spins": spins_used,
+            "kind": kind, "selection": [int(i) for i in sel], "exact": False,
+            "method": "greedy maximal independent set (min static degree first + %d random "
+                      "orders) on the conflict graph (planner rule U geometric proxy); "
+                      "area quotient as upper bound" % int(n_random_orders),
+            "label": "capacity at grid (h = %g mm, %d spins), not exact" % (h_used, spins_used),
+            "note": note, "seconds": _time.perf_counter() - t0}
+
+
 __all__ = [
     "FALLBACK_LATERAL_TOL_MM", "RAY_CHUNK", "VISIBLE_TOL_MM", "VISIBLE_RAY_CHUNK",
-    "ELLIPSOID_P",
+    "ELLIPSOID_P", "CAPACITY_MIS_RANDOM_ORDERS",
     "tile_diagonal_mm", "sample_anchors", "spin_set", "count_ray_fallbacks",
     "count_ray_fallbacks_trimesh",
     "grid_fallback_flags", "build_candidates", "visible_faces", "visible_faces_trimesh",
     "ellipsoid_area_mm2", "recommend_tile_count",
+    "greedy_independent_set", "packing_capacity",
 ]

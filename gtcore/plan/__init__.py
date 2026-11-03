@@ -117,14 +117,31 @@ V200_TOL = 0.10
 # P1 tolerated V200 fraction before the hot-spot penalty applies (section 2).
 
 LAMBDA_OAR = 1e3
-LAMBDA_TAIL = 1.0
-# Weight of the lower-tail coverage term (objective.tail_mean: weighted mean
-# of min(D, rx) / rx over the coldest TAIL_Q of the target).  It pulls the
-# optimizer towards the clinical endpoint D90 when N is too small for full
-# coverage (V100 alone clusters tiles and leaves one cold patch; see
-# docs/optimize-notes.md "Objective: lower-tail term").  0 restores pure V100.
-TAIL_Q = 0.10
 # P1 OAR penalty per cGy over the limit: any violation dominates coverage.
+
+LAMBDA_TAIL = 1.0
+# FROZEN (Paper 2, Phase 4, 2026-11-03; requirements rev 3 section 3 F8 "DECIDE").
+# Weight of the lower-tail coverage term (objective.tail_mean: weighted mean
+# of min(D, rx) / rx over the coldest TAIL_Q of the target), so P1 reads
+# V100 + LAMBDA_TAIL * T10 - hot - OAR.  Evidence = the lambda sweep in
+# docs/optimize-notes.md "Objective: lower-tail term" (2026-10-08; six
+# synthetic cavities, N = 5..8, lambda in {0, 0.5, 1, 2}): lambda = 1 leaves
+# the minimum N and the above-N* result unchanged, costs ~1.5 pp V100 one
+# tile short of N* and lifts the coldest tenth of the target by 1.1-1.6 Gy
+# two tiles short; lambda = 2 loses a tile on one cavity.  The minimum-N
+# criterion cannot discriminate between objectives: D90 is the weighted
+# 10th percentile, so D90 >= rx <=> V100 >= 0.90 exactly, and the two held
+# on every row checked (327 V2 rows + 196 sweep rows, 0 disagreements); only
+# the behaviour below N* differs, and Jacob's decision (2026-10-08) is to
+# prioritise D90 there (cold spot vs uniform under-dose is a planning choice,
+# not a solver defect).  Do not re-tune on the clinical case.  0 restores
+# pure V100 (``Objective(lambda_tail=0)``, ``gt optimize --lambda-tail 0``);
+# ``solve_milp`` drops the term for its call (``extra["lambda_tail_dropped"]``)
+# so the exact arm stays a V100 bound.
+TAIL_Q = 0.10
+# FROZEN with LAMBDA_TAIL: the tail is the coldest 10 % of the target weight,
+# i.e. the same mass D90 is the quantile of (T10 <= min(D90, rx) / rx and
+# T10 = 1 iff V100 = 1).
 
 LOCAL_RADIUS_MM = 10.0
 # Local-search re-siting radius: half a tile side, so moves stay "local".
@@ -135,11 +152,20 @@ SA_ALPHA = 0.95
 SA_MOVES_PER_TILE_PER_SWEEP = 50
 # One sweep = 50 * N proposed moves, so each tile is visited ~50 times/sweep.
 
-SA_N_SWEEPS = 40
-# 40 sweeps at alpha = 0.95 cools T to ~13 % of T0, past the freeze point.
+SA_N_SWEEPS = 60
+# Paper 2 Phase 4 (2026-11-03): 40 -> 60.  60 sweeps at alpha = 0.95 cool T
+# to ~4.6 % of T0 (40 sweeps: ~13 %).  Raised with SA_N_RESTARTS because the
+# rev-1 campaign found SA 18.7 % below the exact optimum on one instance
+# (cavity s4, N = 4, same influence matrix as the enumeration; requirements
+# rev 3 section 3 F8 "FIX SA convergence").  The campaign (V2-V8) additionally
+# runs several SA seeds per (cavity, N) (``validation_optimize.py --sa-seeds``).
 
-SA_N_RESTARTS = 3
-# One greedy start plus two random feasible starts (section 3 E3).
+SA_N_RESTARTS = 8
+# Paper 2 Phase 4 (2026-11-03): 3 -> 8.  One greedy start plus seven random
+# feasible starts (section 3 E3); the best HARD objective over all restarts
+# is returned.  Rationale as for SA_N_SWEEPS (SA 18.7 % below the exact
+# optimum on s4, N = 4 with 3 x 40).  Cost: ~4x the rev-1 wall time per run
+# (rev-1: 5-8 s per (cavity, N) at C ~ 900, M = 1000).
 
 MILP_TIME_LIMIT_S = 60.0
 # HiGHS time limit per reduced instance; the bound, not the incumbent, is the

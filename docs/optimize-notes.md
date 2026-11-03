@@ -25,11 +25,13 @@ default must update both.
 | `LAMBDA_HOT` | 0.5 | P1 penalty per unit V200 above tolerance (plan §2 default). |
 | `V200_TOL` | 0.10 | Tolerated V200 before the hot-spot penalty applies (plan §2). |
 | `LAMBDA_OAR` | 1e3 | P1 penalty per cGy over an OAR limit: any violation dominates coverage. |
+| `LAMBDA_TAIL` | 1.0 (**frozen**, Paper 2 Phase 4, 2026-11-03) | Weight of the lower-tail term T10 (P1 = V100 + λ·T10 − hot − OAR). Evidence: the λ sweep ("Objective: lower-tail term" below): λ = 1 leaves N* and the above-N* result unchanged, costs ≈ 1.5 pp V100 one tile short of N*, lifts the coldest tenth by 1.1–1.6 Gy two tiles short; λ = 2 loses a tile. The min-N criterion cannot discriminate (D90 ≥ rx ⟺ V100 ≥ 0.90, 0 disagreements on every row checked); Jacob prioritises D90 below N*. `solve_milp` drops the term (`extra["lambda_tail_dropped"]`) → the exact arm is a V100 bound. |
+| `TAIL_Q` | 0.10 (**frozen**) | The tail is the coldest 10 % of the target weight — the mass D90 is the quantile of. |
 | `LOCAL_RADIUS_MM` | 10.0 | Local-search re-siting radius = half a tile side. |
 | `SA_ALPHA` | 0.95 | Geometric cooling per sweep (plan §3 E3). |
 | `SA_MOVES_PER_TILE_PER_SWEEP` | 50 | One sweep = 50·N proposed moves. |
-| `SA_N_SWEEPS` | 40 | 40 sweeps at α = 0.95 cool T to ≈ 13 % of T0, past the freeze point. |
-| `SA_N_RESTARTS` | 3 | One greedy start + two random feasible starts. |
+| `SA_N_SWEEPS` | 60 (40 before Paper 2 Phase 4, 2026-11-03) | 60 sweeps at α = 0.95 cool T to ≈ 4.6 % of T0 (40: ≈ 13 %). Raised with `SA_N_RESTARTS` because rev-1 SA sat 18.7 % below the exact optimum on s4, N = 4 (same influence matrix). |
+| `SA_N_RESTARTS` | 8 (3 before Paper 2 Phase 4) | One greedy start + seven random feasible starts; best hard objective returned. ≈ 4× the rev-1 wall time per run; the campaign adds several SA seeds per (cavity, N) (`--sa-seeds`). |
 | `MILP_TIME_LIMIT_S` | 60 | HiGHS limit per reduced instance; the bound is the reference when hit. |
 | `TILE_AREA_CM2` | 4.0 | Manufacturer: a GammaTile is 2 × 2 cm (tile-count rule, plan §10). |
 | `CONFLICT_GAP_MM` | 0.0 | Minimum edge gap beyond the planner's overlap rule (`find_overlapping_tiles`, threshold 1 mm). |
@@ -636,7 +638,19 @@ _v5: 179 s wall._
 
 ## V6 Physical phantom and clinical case
 
-Script: `python scripts/validation_optimize.py --section v6 [--clinical <dir>]`.
+**Arm names (Paper 2 Phase 4, 2026-11-03, task `opt-constants-bound`).** The phantom
+arms are `as_placed` (the pipeline's recovered tiles on their localized seeds; the PH8
+tiles were placed by hand in arbitrary positions, never "as implanted") and
+`as_placed_conformed` (the same tiles through `conform_tile`); the exact arm is
+`v100_bound` ("V100 bound": `solve_milp`, coverage only, tail term dropped). Aliases
+in the tables below and in older CSVs: `as_implanted` = `as_placed`,
+`as_implanted_conformed` = `as_placed_conformed`, `milp` = `v100_bound`
+(`--arms milp` still works). Campaign columns are now `RIND5_*` (full-grid HR-CTV),
+`S5_*` (+5 mm shell surrogate), `TGT_*` (weighted target surrogate), `INFL_*`
+(influence subsample); see `docs/paper2-phase-notes.md` "Phase 4 — optimizer constants
+frozen ...". The tables below keep the rev-1 names and numbers (historical).
+
+Script: `python scripts/validation_optimize.py --section v6 --phantom "$GT_DATA_ROOT/<PH8>" [--ph0 "$GT_DATA_ROOT/<PH0>"]`.
 Pipeline result cached under `output/validation_optimize/cache/` (reconstruct
 ≈ 30 s).
 
