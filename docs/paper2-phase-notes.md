@@ -1480,3 +1480,250 @@ are the Phase 1 set (13 interface placeholders + the `GT_E2E`-gated run);
 66dc856 (targets + rt-io) during this run; not merged here by the
 coordinator's instruction (conflicts in `metrics.py` / `hrctv.py` resolved
 at merge).
+
+## 2026-11-03 — Phase 3 — gamma (pymedphys) (task `gamma`, branch `p2/gamma`)
+
+Owner: agent `gamma`. Branched from `paper2/integration` at `e13a4af`. Commits:
+`8495464` (`gtcore/dose/gamma.py`, export in `gtcore/dose/__init__.py`,
+`tests/test_gamma.py`), `ab85b1c` (`scripts/validation_gamma.py`), `90b7f47`
+(`docs/figures/data/gamma_*.csv` + slice NPZs, `git add -f`), then this notes
+section. Every real-data number below is **calibration-set** (one clinical
+case, PT-CT1mm + PT-RT; a reference, not a validation cohort). The real run
+was made at `ab85b1c` (clean tree); the CSV headers carry that hash.
+
+### Method (Methods-quotable)
+
+Dose agreement with the treatment-planning system was quantified with the
+three-dimensional gamma index (Low et al., Med Phys 1998;25:656) as
+implemented in PyMedPhys 0.41.0 (`pymedphys.gamma`; Biggs et al., J Open
+Source Softw 2022;7:4555; shell-search algorithm of Wendling et al., Med Phys
+2007;34:1647). The TPS dose grid (RTDOSE, 1 × 1 × 1.667 mm, read in cGy) was
+the *reference*, restricted to the bounding box of its voxels ≥ 30 Gy plus a
+5 mm margin (47 × 78 × 77 voxels); the *evaluation* distribution was gtcore's
+TG-43U1S2 two-dimensional line-source dose from the 32 recovered seeds at the
+nominal 3.5 U per seed, computed analytically on a regular 0.5 mm lattice
+covering the same box plus the search margin (172 × 173 × 171 = 5.09 × 10⁶
+points), which PyMedPhys interpolates trilinearly along search shells spaced
+at one tenth of the distance criterion (`interp_fraction = 10`). Criteria were
+3 %/2 mm (primary) and 2 %/1 mm, each with global-to-prescription
+normalisation (dose difference in percent of 60 Gy) and with local
+normalisation (percent of the reference voxel's own dose); the search was
+bounded at γ = 2 (`max_gamma`; reported γ values are capped there, pass rates
+are unaffected). The 30 Gy lower cutoff was passed as 50 % of the 60 Gy
+normalisation dose and verified to select exactly the 89 639 reference voxels
+≥ 30 Gy. Pass rates (γ ≤ 1) are reported over the 30–200 Gy window
+(81 527 voxels, primary) and over all voxels ≥ 30 Gy; because the gamma of a
+reference voxel depends only on the evaluation distribution, the 200 Gy upper
+cutoff is an exact post-hoc selection of reference voxels (checked against a
+pre-filtered run in `tests/test_gamma.py`). Exact call, as recorded in
+`GammaResult.settings["pymedphys_call"]` (reference axes `(z, y, x)` of the
+RTDOSE box, evaluation axes of the 0.5 mm lattice, both in mm, doses in cGy):
+
+```
+pymedphys.gamma(axes_reference, dose_reference_cgy, axes_evaluation, dose_evaluation_cgy,
+                dose_percent_threshold=3, distance_mm_threshold=2,      # or 2, 1
+                lower_percent_dose_cutoff=50, interp_fraction=10, max_gamma=2,
+                local_gamma=False,                                        # True for local gamma
+                global_normalisation=6000, skip_once_passed=False, random_subset=None,
+                interp_algo='pymedphys')                                  # numba backend; 'scipy' fallback
+```
+
+Source positions for the evaluation were (i) the 32 seeds gtcore recovers
+from the thin-cut CT (`gtcore.pipeline.reconstruct`; engine equivalence plus
+localisation error), (ii) the TPS's own seed positions — the 30 `Seeds`
+contour centroids of the RTSTRUCT plus the two uncontoured sources taken from
+the RTDOSE maxima (`tps_contours`; engine equivalence with the TPS's
+positions), and (iii) the 32 local maxima of the RTDOSE (> 200 Gy, merged
+within 3 mm, at the centres of the 1 × 1 × 1.667 mm dose voxels;
+`tps_maxima`, the requirements' "TPS sources"). Seed axes for (ii) and (iii)
+are those of the one-to-one matched gtcore seed (Hungarian assignment, gate
+3 mm; all 32 matched).
+
+### What was added
+
+| File | Content |
+|---|---|
+| `gtcore/dose/gamma.py` | `gamma_analysis(reference, seed_centers, seed_axes, sk_u=3.5, dose_pct=3, dist_mm=2, lower_cutoff_cgy=3000, upper_cutoff_cgy=20000, local=False, global_norm_cgy=6000, eval_spacing_mm=0.5, interp_algo="auto", *, evaluation=None, max_gamma=2.0, box_margin_mm=5.0, interp_fraction=10, engine=None, exact=True, elapsed_hours=None, ram_available=None) -> GammaResult`; `GammaResult` carries `gamma` (box, NaN below the cutoff), `box_affine`, `box_slices`, `reference_box`, `evaluation` (the lattice dose), `mask_computed` (≥ lower), `mask_used` (lower..upper), `pass_rate`, `pass_rate_ge30`, `n_points`, `n_points_ge30`, `histogram` (edges 0–2 in 0.1 steps + a `>= 2` bin, counts for both windows), `difference_volume` (gtcore − RTDOSE at the reference voxel centres, cGy), `runtime_s`, `settings` (every parameter, the pymedphys version and call, the backend used, git commit), plus `pass_rate_in(lower, upper)` and `gamma_stats(mask)`. Helpers: `prepare_evaluation` (reference box + lattice dose, reusable across criteria), `reference_box`, `evaluation_lattice`, `grid_axes`, `run_pymedphys_gamma` (the one place pymedphys is called; asserts the percent cutoff reproduces `reference >= lower_cutoff_cgy`), `resolve_interp_algo` (`"auto"` → `"pymedphys"` when `numba` imports, else `"scipy"`; an `ImportError` from the numba path also falls back), `pass_rate`, `gamma_histogram`. pymedphys is imported lazily, so `import gtcore.dose` does not need it. |
+| `gtcore/dose/__init__.py` | exports `gamma_analysis`, `GammaResult`, `prepare_evaluation`, `Evaluation` (one import line + `__all__`; shared file, minimal edit). |
+| `tests/test_gamma.py` | 12 tests, 5 s: synthetic 3-seed cloud, reference computed with gtcore on a 1 × 1 × 1.667 mm grid with a *descending* x axis (RTDOSE-like). Identical dose → 100 % over 30–200 Gy (0.9986 over ≥ 30 Gy: the capsule voxels fail even for identical seeds); 1.5 mm shift of one seed → < 100 % with every failing 3 %/2 mm voxel nearest the shifted seed (2 %/1 mm: < 97 %, > 50 % nearest it); window excludes exactly the > 200 Gy voxels (count equality, mask identities, `pass_rate_in` identities); local vs global ordering voxel-by-voxel (see below); `interp_algo="scipy"` same pass rate within 0.5 pp (same γ to 1e-6); post-hoc upper cutoff equals a run with the > 200 Gy voxels NaN'd out of the reference (`np.array_equal`); prepared-evaluation reuse and margin check; lattice contains the reference voxel centres in x/y; box margin arithmetic; non-axis-aligned grid raises; `"auto"` → `"scipy"` when `numba` is absent (monkeypatched); histogram / pass-rate helpers. |
+| `scripts/validation_gamma.py` | the real run (below); writes `docs/figures/data/gamma_pass_rates.csv` (24 rows: 3 seed sets × 2 criteria × 2 normalisations × 2 windows), `gamma_pass_by_band.csv` (pass rate per reference dose band), `gamma_histogram_<set>_<pct>pct_<mm>mm_<norm>.csv` (12 files), `gamma_map_slice_<set>_3pct_2mm_<norm>.npz` (6 files, one axial slice — the k with most 30–200 Gy voxels, k = 23 of the box — with γ, RTDOSE, gtcore dose, masks, mm axes, settings; the optional Supplement panel), `gamma_capsule_diagnostics.csv`, `gamma_seed_sets.csv`; full 3-D boxes to `output/gamma/` (git-ignored). Header comments: script, placeholder command, commit, dataset ids, flag, date. |
+
+### Real run — PT-CT1mm + PT-RT, commit `ab85b1c`
+
+```
+export GT_DATA_ROOT=...; export PYTHONPATH=<worktree>
+python scripts/validation_gamma.py "$GT_DATA_ROOT/<PT-CT1mm>" "$GT_DATA_ROOT/<PT-RT RTSTRUCT dir>" "$GT_DATA_ROOT/<PT-RT RTDOSE dir>"
+#   prints gtcore.__file__ = <worktree>\gtcore\__init__.py, commit ab85b1c (clean), pymedphys 0.41.0, interp_algo pymedphys
+```
+
+Inputs: CT 204 × 512 × 512 at 0.52 × 0.52 × 1.0 mm; RTDOSE 250 × 266 × 266
+at 1 × 1 × 1.667 mm, `PLAN`, max 813 Gy; `check_references` clean.
+`reconstruct` → 32 seeds; 32 RTDOSE maxima > 200 Gy; 30 `Seeds` contours.
+Reference box 47 × 78 × 77 voxels (89 639 ≥ 30 Gy, 81 527 in 30–200 Gy,
+8112 > 200 Gy); lattice 172 × 173 × 171 (5 088 276 points, 0.5 mm).
+
+**Pass rates (γ ≤ 1, %), S_K nominal 3.5 U, 32 sources**
+
+| seed set | criteria | normalisation | 30–200 Gy (primary) | ≥ 30 Gy | γ mean (30–200) | γ p95 |
+|---|---|---|---|---|---|---|
+| gtcore seeds | 3 %/2 mm | global-to-rx | **99.33** | 98.71 | 0.249 | 0.50 |
+| gtcore seeds | 3 %/2 mm | local | **99.37** | 98.92 | 0.250 | 0.50 |
+| gtcore seeds | 2 %/1 mm | global-to-rx | **96.96** | 95.21 | 0.429 | 0.86 |
+| gtcore seeds | 2 %/1 mm | local | **96.23** | 94.78 | 0.437 | 0.88 |
+| TPS contours (+2 maxima) | 3 %/2 mm | global-to-rx | 99.33 | 98.71 | 0.248 | 0.50 |
+| TPS contours (+2 maxima) | 3 %/2 mm | local | 99.37 | 98.90 | 0.249 | 0.50 |
+| TPS contours (+2 maxima) | 2 %/1 mm | global-to-rx | 97.20 | 95.52 | 0.426 | 0.85 |
+| TPS contours (+2 maxima) | 2 %/1 mm | local | 96.57 | 95.16 | 0.433 | 0.87 |
+| RTDOSE maxima | 3 %/2 mm | global-to-rx | 99.31 | 98.65 | 0.223 | 0.47 |
+| RTDOSE maxima | 3 %/2 mm | local | 99.35 | 98.85 | 0.224 | 0.47 |
+| RTDOSE maxima | 2 %/1 mm | global-to-rx | 98.13 | 96.21 | 0.375 | 0.78 |
+| RTDOSE maxima | 2 %/1 mm | local | 97.69 | 96.02 | 0.382 | 0.80 |
+
+(n = 81 527 / 89 639 in every row; `n_unresolved` = 0 everywhere; γ p95 from
+`gamma_pass_rates.csv`.) Reading: at 3 %/2 mm the three source sets are
+indistinguishable (99.31–99.37 %); at 2 %/1 mm the gtcore seeds cost
+0.2–0.3 pp against the TPS's own contour positions (96.96 vs 97.20 % global,
+96.23 vs 96.57 % local) — the localisation error (median 0.15 mm vs the
+contours) is a minor term; the remaining ~3 % of failing voxels at 2 %/1 mm
+are engine/grid differences present with the TPS's own positions too
+(anisotropy dataset, TPS grid sampling — the formalism task's ±6 % angular
+trend). The RTDOSE-maxima set scores highest at 2 %/1 mm although its
+positions are 0.92 mm (median) from both the gtcore seeds and the contours:
+it places gtcore's sources where the TPS dose actually peaks on its grid, so
+it reproduces the TPS near-seed field rather than the seeds' physical
+positions (see the seed-set table). **Recommendation for Table 3 / the F5
+caption:** quote the gtcore-seed rows as the pipeline result and the
+TPS-contour rows as the engine-equivalence reference; keep the maxima rows in
+the CSV only.
+
+**Pass rate by reference dose band** (gtcore seeds; post-hoc windows,
+`gamma_pass_by_band.csv`):
+
+| band (Gy) | n | 3 %/2 mm global | 3 %/2 mm local | 2 %/1 mm global | 2 %/1 mm local |
+|---|---|---|---|---|---|
+| 30–60 | 48 201 | 100.0 | 100.0 | 97.40 | 95.98 |
+| 60–100 | 18 401 | 100.0 | 100.0 | 99.46 | 99.54 |
+| 100–200 | 14 925 | 96.31 | 96.56 | 92.44 | 92.96 |
+| 200–400 | 7 247 | 91.68 | 93.74 | 76.21 | 78.79 |
+| > 400 | 865 | 99.65 | 100.0 | 89.94 | 91.45 |
+
+The failures concentrate in the 100–400 Gy zone between the seeds of a tile
+(where superposition of a tile's four seeds and the neighbouring tiles gives a
+flat high dose the TPS grid renders differently), not only above 200 Gy;
+voxels > 400 Gy pass by distance-to-agreement (the gradient is steep). Below
+60 Gy nothing fails at 3 %/2 mm; at 2 %/1 mm 2.6 % (global) / 4.0 % (local)
+of the 30–60 Gy voxels fail — the periphery, where the local criterion is the
+stricter one (2 % of 30–60 Gy < 2 % of 60 Gy).
+
+**The > 200 Gy voxels and the upper cutoff** (`gamma_capsule_diagnostics.csv`):
+8112 of 89 639 reference voxels ≥ 30 Gy (**9.05 %**) exceed 200 Gy. Their
+distance to the nearest gtcore seed: **median 3.82 mm, p95 6.05 mm, max
+7.81 mm; 26 % within 3 mm, 55 % within 4 mm, 95 % within 6 mm** (the same
+within 0.1 mm against the TPS contour positions). The rev-3 wording "within
+~3 mm of a seed" is therefore **not confirmed**: the > 200 Gy region is the
+whole seed plane of each tile (seeds 10 mm apart, tiles adjacent), and it
+reaches 6 mm from the nearest seed. What *is* confirmed is the grid effect it
+was meant to express: at the hottest RTDOSE voxel the TPS reports 813 Gy
+where gtcore's point dose at that voxel centre is 2191 Gy (gtcore's maximum
+over the box's voxel centres 2406 Gy; rev 3 quoted 2399 Gy) — the TPS value
+is far below the point dose, consistent with volume-averaged or otherwise
+regularised near-seed dose on the 1 × 1 × 1.667 mm grid. Suggested wording:
+"voxels above 200 Gy (9 % of the voxels ≥ 30 Gy; the tiles' seed planes,
+median 3.8 mm and 95 % within 6 mm of the nearest seed), where the TPS grid
+value is far below the point dose, are excluded from the primary window and
+reported alongside".
+
+**Seed sets** (`gamma_seed_sets.csv`; Hungarian one-to-one, gate 3 mm):
+
+| set vs set | matched | median | p95 | max | per-axis RMS x/y/z (mm) |
+|---|---|---|---|---|---|
+| gtcore seeds vs `Seeds` contours | 30/30 | 0.15 | 0.73 | 0.89 | 0.25 / 0.12 / 0.17 |
+| RTDOSE maxima vs gtcore seeds | 32/32 | 0.92 | 1.37 | 1.45 | 0.56 / 0.53 / 0.56 |
+| RTDOSE maxima vs `Seeds` contours | 30/30 | 0.85 | 1.39 | 1.51 | 0.60 / 0.50 / 0.54 |
+| maxima of *gtcore's own* dose on the RTDOSE grid vs gtcore seeds | 32/32 | 0.76 | 1.35 | 1.57 | 0.53 / 0.44 / 0.49 |
+
+The last row is the control: finding the maxima of a *known* dose on the
+1 × 1 × 1.667 mm grid already misplaces the sources by 0.76 mm (median) —
+a line-source maximum on a coarse grid lands in a transverse neighbour
+voxel — so RTDOSE maxima are grid-limited source estimates, not the plan's
+positions. A one-axis parabolic apex refinement of 1/D (tried in a scratch
+driver, not committed) only brought the median to 0.77 mm vs gtcore seeds,
+so it was dropped. The RTPLAN (absent on this machine) remains the only
+authoritative source of the TPS positions; when it arrives, add a
+`tps_rtplan` seed set to the script (`load_rtplan(...).sources`).
+
+**Comparison with the rev-3 mock numbers** ("own implementation,
+global-to-rx, 32 sources": 99.2 % at 3 %/2 mm and 88.1 % at 2 %/1 mm over
+30–200 Gy; 97.4 / 83.1 % over ≥ 30 Gy). pymedphys with gtcore seeds, global:
+**99.33 / 96.96 % and 98.71 / 95.21 %**. The 3 %/2 mm figure agrees to
+0.1 pp; the 2 %/1 mm figure is 9 pp higher and the ≥ 30 Gy figures 1.3 /
+12 pp higher. The mock code is not available, so the causes cannot be
+measured, but the pattern points at the distance-to-agreement search: a 1 mm
+DTA evaluated on (or near) the 1 × 1 × 1.667 mm grid cannot shift by less
+than a voxel, so almost no voxel gets DTA credit at 2 %/1 mm and the capsule
+voxels (which pass only by DTA) fail wholesale — exactly where the mock loses
+most (its ≥ 30 Gy − 30–200 Gy gap is 1.8 / 5.0 pp against 0.6 / 1.8 pp
+here). pymedphys interpolates the 0.5 mm lattice along shells at 0.1 mm
+steps for the 1 mm criterion (0.2 mm for 2 mm), the resolution Wendling et al.
+recommend. A different source set or S_K in the mock cannot be excluded. The
+pymedphys numbers supersede the mock.
+
+**Local vs global — direction.** The requirements/task text says
+"global-to-rx is lenient near seeds". Measured and provable, it is the
+reverse: the local criterion allows 3 % of the *voxel's own* dose, which
+above rx exceeds 3 % of 60 Gy, so voxel by voxel γ_local ≤ γ_global wherever
+the reference is ≥ 60 Gy and γ_global ≤ γ_local below it
+(`tests/test_gamma.py::test_local_and_global_differ_in_the_expected_direction`
+pins both inequalities). On the real case the aggregate therefore depends on
+where the failures sit: at 3 %/2 mm they are near the seeds and local is the
+more lenient (99.37 vs 99.33 %; 98.92 vs 98.71 % over ≥ 30 Gy), at 2 %/1 mm
+the periphery contributes and global is the more lenient (96.96 vs 96.23 %).
+Suggested §5 wording: "global-to-rx normalisation is the stricter criterion
+above the prescription dose and the more lenient one below it; both are
+reported".
+
+**Runtime** (AMD Ryzen 5 7600X, 6 cores / 12 threads, 31 GB RAM; other agents
+ran concurrently — upper bounds): `reconstruct` on the 204-slice CT 23.3 s;
+per seed set, evaluation (5 088 276 lattice points + 282 282 box centres,
+32 seeds, exact 2D rate, single-threaded numpy) 40–52 s; `pymedphys.gamma`
+on the 89 639 reference voxels with the numba backend 3.2–4.5 s at 3 %/2 mm
+and 7.8–10.5 s at 2 %/1 mm (per-row values in `gamma_pass_rates.csv`).
+Whole script (three seed sets, twelve gamma runs, all outputs) about 4 min 15 s wall (from the output-file timestamps; the first, dirty-tree run at `8495464` gave the same pass rates with evaluation 50–64 s and gamma 3.8–4.9 / 8.8–12.6 s).
+Numba vs scipy backend on the real case (scratch driver, gtcore seeds,
+global, run while the full suite was executing): identical pass rates
+(99.3254 / 98.7104 % and 96.9568 / 95.2119 %), max |γ_numba − γ_scipy| over
+the 89 639 computed voxels 7.9e-14 (3 %/2 mm) and 1.2e-13 (2 %/1 mm);
+`pymedphys.gamma` 3.7 s (numba) vs 13.8 s (scipy) at 3 %/2 mm and 10.0 vs
+37.6 s at 2 %/1 mm. The scipy fallback is therefore a complete substitute
+(≈ 3.7× slower, still well under a minute per criterion), which settles the
+Phase 1 packaging question: numba can stay optional — if its `numpy < 2.6`
+cap bites, drop it from the `clinical` extra and the wrapper's `"auto"`
+picks scipy with no change in results.
+
+### Tests
+
+```
+GTCORE_STRICT=1 python -m pytest -q tests/test_gamma.py     # 12 passed in 4.8 s
+GTCORE_STRICT=1 python -m pytest -q                          # 953 passed, 14 skipped, 15242 warnings in 639.48s (0:10:39) at 90b7f47 (+12 vs paper2/integration e13a4af; other agents and the scipy driver ran concurrently, wall time is an upper bound)
+```
+
+### Notes for the coordinator
+
+- Shared file touched: `gtcore/dose/__init__.py` (one import line, four
+  `__all__` entries, one docstring sentence). `pyproject.toml`, `conftest.py`,
+  `README.md` untouched (the `clinical` extra from Phase 1 already lists
+  `pymedphys>=0.41` and `numba>=0.60`).
+- `docs/figures/data/` is git-ignored by the `data/` pattern; the CSVs and
+  the six slice NPZs (≈ 90 kB each) were added with `git add -f`. The full
+  3-D boxes (`output/gamma/`) are regenerable and not committed.
+- Table 3 / F5 caption: recommend the gtcore-seed rows (99.3 % at 3 %/2 mm
+  and 97.0 % at 2 %/1 mm global over 30–200 Gy; 98.7 / 95.2 % over ≥ 30 Gy;
+  local 99.4 / 96.2 and 98.9 / 94.8 %) with the TPS-contour rows as the
+  engine-equivalence reference. The "within ~3 mm" clause and the
+  "global-to-rx is lenient near seeds" clause in rev 3 need the corrections
+  above.
+- `clinical-rebuild` may import `gtcore.dose.gamma.gamma_analysis` /
+  `prepare_evaluation` (reuse one `Evaluation` per seed set across criteria;
+  it is the 50–60 s step) or read `docs/figures/data/gamma_pass_rates.csv`.
+- Nothing installed; no parameter changed; no data missing for this task
+  (the RTPLAN would add the authoritative TPS source set).
