@@ -109,12 +109,14 @@ thin-cut calibration (axes fitted) applies.
 """
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from itertools import combinations
 from typing import List, Optional
 
 import numpy as np
 
+from .._strict import swallow_or_raise
 from .deform import DeformableFit, fit_deformable
 from .fit import (
     DIAG_MAX_MM,
@@ -131,6 +133,8 @@ from .fit import (
     _orient_normal,
     _project_in_plane,
 )
+
+_log = logging.getLogger(__name__)
 from .model import fit_rigid
 
 __all__ = ["LAMBDA_FULL", "LAMBDA_HALF", "LAMBDA_COVER", "AMBIGUOUS_MARGIN",
@@ -1021,8 +1025,13 @@ def _finish(result, centers, axes, dist, assigned, cavity_center, mesh,
                 c, a = pose.seed_points(centers, axes)
                 pose.surface = fit_on_surface(mesh, c, a, kind=pose.kind,
                                               init=pose.deform)
-            except Exception:
+            except Exception as exc:
+                # no surface verdict for this tile (the planner shows it
+                # unchecked); logged, re-raised under GTCORE_STRICT=1
                 pose.surface = None
+                swallow_or_raise(_log, "surface fit (fit_on_surface) failed "
+                                 "for tile %d, seeds %r"
+                                 % (pose.tile_id, tuple(pose.seed_indices)), exc)
     if result.n_requested is not None:
         result.all_assigned = (result.n_selected >= result.n_requested
                                and not near)
@@ -1089,8 +1098,13 @@ def fit_tiles_prior(centers_ras, axes_ras, prior: ImplantPrior,
                     c, a, kind=pose.kind, use_axes=_fit_axes(seed_cov, tol),
                     seed_cov=_group_cov(seed_cov, pose.seed_indices,
                                         len(c) - len(pose.seed_indices)))
-            except Exception:
+            except Exception as exc:
+                # the tile keeps its rigid pose (no bent-tile model, no pose
+                # uncertainty); logged, re-raised under GTCORE_STRICT=1
                 pose.deform = None
+                swallow_or_raise(_log, "bent-tile fit (fit_deformable) failed "
+                                 "for counted tile %d, seeds %r"
+                                 % (pose.tile_id, tuple(pose.seed_indices)), exc)
         if pose.deform is not None:
             # report the pose of the model that is drawn: to_placed_tiles
             # builds the board tile from the bent-tile fit, so the normal and
