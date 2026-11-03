@@ -111,7 +111,8 @@ def repo_state(repo: str) -> Dict[str, Any]:
     status = git(repo, "status", "--porcelain", "--untracked-files=no")
     tags = git(repo, "tag", "--points-at", "HEAD")
     # paper_figures.py (--render) rewrites the manifest: that change alone is not "dirty"
-    changed = [ln[3:] for ln in (status or "").splitlines() if ln[3:].strip() != "docs/figures/manifest.json"]
+    changed = [p for p in (ln.split(None, 1)[-1].strip() for ln in (status or "").splitlines() if ln.strip())
+               if p != "docs/figures/manifest.json"]
     return {"head": head or "unknown", "dirty": bool(changed) if status is not None else None,
             "changed": changed, "tags": tags.split() if tags else []}
 
@@ -682,7 +683,8 @@ def render(repo: str, figures_dir: str, manifest_path: str) -> int:
     cmd = [sys.executable, os.path.join(repo, "scripts", "paper_figures.py"), "--out", figures_dir,
            "--manifest", manifest_path]
     print("rendering: python scripts/paper_figures.py --out %s" % os.path.relpath(figures_dir, repo)
-          if figures_dir.startswith(repo) else "rendering: python scripts/paper_figures.py --out <figures dir>")
+          if figures_dir.startswith(repo) else "rendering: python scripts/paper_figures.py --out <figures dir>",
+          flush=True)
     return subprocess.call(cmd, cwd=repo, env=env)
 
 
