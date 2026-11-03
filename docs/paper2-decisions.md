@@ -283,3 +283,24 @@ all three targets. The caption states that the optimizer optimizes the target it
 is given and that the target choice (F6) is the clinical decision; the comparison
 is one case, an illustration. Jacob chooses which arms the main-text panel shows;
 all three are in Table 3 / S4.
+
+## 2026-11-03 — V2 result changes the F8(a) / Table 3 optimizer claim (campaign, d2d455e)
+
+Rev-1 headline (S5 shell, pure V100, 3 × 40 SA): SA − uniform +22.8 pp V100 [19.3,
+26.4]. Rev-2 campaign on the volumetric `RIND5` with full-grid metrics, λ_tail = 1,
+SA 8 × 60, 3 seeds, 18 cavities: pre-declared primary endpoint SA (seed mean) −
+uniform at N* = **+1.19 pp [−0.71, 3.09], n = 15, Wilcoxon p = 0.055 — not
+significant**; best-of-3 SA − uniform +2.14 pp [0.23, 4.05], p = 0.010. Secondary:
+SA − greedy at N = 8 +2.45 pp [0.67, 4.22] (p = 0.002, n = 12), at N = 10 +10.2 pp
+(n = 6). Smallest N with SA `RIND5` D90 ≥ rx: 8 on every 1.0-scale cavity, 10 on
+every 1.25-scale cavity (greedy needs 12 on 4/6); 5 of 6 small cavities never reach
+it (packing-limited). The rev-1 +22.8 pp was largely an artefact of the shell
+surrogate; on the volume the paper actually scores, the optimizer's advantage over
+a uniform heuristic is small and concentrated at higher N, and its clear advantage
+is over greedy and in reaching D90 ≥ rx with fewer tiles. **Packing failures are a
+result:** SA starts from the greedy packing, and fails to place N tiles in 15/54
+(N = 6), 18/54 (N = 8), 36/54 (N = 10), 39/54 (N = 12) runs although a truth
+configuration with 8 tiles exists on every cavity — reported in V8 as the
+optimizer's main failure mode (a feasibility-first start is the obvious fix and is
+future work, not done here). F8(a) moves to S4 (already decided in v7); Table 3
+carries the primary endpoint as measured, not the rev-1 number.
