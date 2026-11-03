@@ -1,0 +1,668 @@
+{
+ "script": "scripts/cavity_change.py",
+ "command": "python scripts/cavity_change.py --ct \"$GT_DATA_ROOT/<PT-CT1mm>\" --rtstruct \"$GT_DATA_ROOT/<PT-RT RTSTRUCT>\" --pre \"$GT_DATA_ROOT/<PT-preMRI>\" --intra \"$GT_DATA_ROOT/<PT-intraMRI>\" --post \"$GT_DATA_ROOT/<PT-postMRI>\" --ph8 \"$GT_DATA_ROOT/<PH8>\" --ph0 \"$GT_DATA_ROOT/<PH0>\" --out docs/figures/data",
+ "commit": "0f8e30d",
+ "generated": "2026-11-03 09:28",
+ "datasets": [
+  "PT-CT1mm",
+  "PT-RT",
+  "PT-preMRI",
+  "PT-intraMRI",
+  "PT-postMRI",
+  "PH8",
+  "PH0"
+ ],
+ "flag": "calibration-set",
+ "panel": "F3(a) four registered scans, one slice, one crop (+ the PH8 phantom slice, own frame)",
+ "conventions": {
+  "coordinates": "RAS mm; 2-D arrays are (nj, ni) = the CT slice's [j, i] (row = y, column = x); affine maps (i, j, k, 1) -> RAS",
+  "slice": "slice_k = the axial PT-CT1mm slice through the implant centroid (the clinical_slice.npz slice shared with F4a / F5a / F6)",
+  "mri_*": "the registered MRI sampled trilinearly at the CT voxel centres of that slice (native MR intensity units; 0 outside the MR); NOT segmented -- no outline on the MRI panels unless mask_contour_* exists (manual contours)",
+  "crop": "crop_ij = (i0, i1, j0, j1) half-open index bounds of the square crop (crop_mm, centred on the Cav_Post centroid of the slice); crop_extent_ras = (x_min, x_max, y_min, y_max) voxel-centre extent; identical for the four patient panels",
+  "windows": "wl_* = (window, level): CT fixed W 400 / L 40 HU, phantom W 1000 / L 0 HU, MRI = 1st-99th percentile inside the head on the slice",
+  "overlay_ct": "mask_cav_post (physician's post-operative cavity, RTSTRUCT) outlined on the CT panel; mask_gtcore_cavity provided, not drawn in F3",
+  "phantom": "ph8_* = the PH8 slice through the phantom's implant centroid in the phantom's own frame (same rule), own crop centred on the printed cavity (ph8_mask_printed_cavity = the registered-twin cavity on that slice); ph8_seeds_near_slice_ras = seed centres within 3 mm of the slice (circle them); ph8_slice_k_matched / ph8_hu_matched (only when the phantom-to-patient registration is credible) = the PH8 slice through the point where the patient slice's crop centre lands in the phantom"
+ },
+ "arrays": {
+  "slice_k": {
+   "shape": [],
+   "dtype": "int64"
+  },
+  "slice_z_ras": {
+   "shape": [],
+   "dtype": "float64"
+  },
+  "implant_centroid_ras": {
+   "shape": [
+    3
+   ],
+   "dtype": "float64"
+  },
+  "affine": {
+   "shape": [
+    4,
+    4
+   ],
+   "dtype": "float64"
+  },
+  "spacing_mm": {
+   "shape": [
+    3
+   ],
+   "dtype": "float64"
+  },
+  "x_ras": {
+   "shape": [
+    512,
+    512
+   ],
+   "dtype": "float32"
+  },
+  "y_ras": {
+   "shape": [
+    512,
+    512
+   ],
+   "dtype": "float32"
+  },
+  "ct_hu": {
+   "shape": [
+    512,
+    512
+   ],
+   "dtype": "float32"
+  },
+  "mask_cav_post": {
+   "shape": [
+    512,
+    512
+   ],
+   "dtype": "bool"
+  },
+  "mask_gtcore_cavity": {
+   "shape": [
+    512,
+    512
+   ],
+   "dtype": "bool"
+  },
+  "crop_ij": {
+   "shape": [
+    4
+   ],
+   "dtype": "int64"
+  },
+  "crop_extent_ras": {
+   "shape": [
+    4
+   ],
+   "dtype": "float64"
+  },
+  "crop_center_ras_xy": {
+   "shape": [
+    2
+   ],
+   "dtype": "float64"
+  },
+  "crop_mm": {
+   "shape": [],
+   "dtype": "float64"
+  },
+  "wl_ct": {
+   "shape": [
+    2
+   ],
+   "dtype": "float64"
+  },
+  "wl_phantom": {
+   "shape": [
+    2
+   ],
+   "dtype": "float64"
+  },
+  "mri_pre": {
+   "shape": [
+    512,
+    512
+   ],
+   "dtype": "float32"
+  },
+  "wl_mri_pre": {
+   "shape": [
+    2
+   ],
+   "dtype": "float64"
+  },
+  "mri_intra": {
+   "shape": [
+    512,
+    512
+   ],
+   "dtype": "float32"
+  },
+  "wl_mri_intra": {
+   "shape": [
+    2
+   ],
+   "dtype": "float64"
+  },
+  "mri_post": {
+   "shape": [
+    512,
+    512
+   ],
+   "dtype": "float32"
+  },
+  "wl_mri_post": {
+   "shape": [
+    2
+   ],
+   "dtype": "float64"
+  },
+  "ph8_hu": {
+   "shape": [
+    512,
+    512
+   ],
+   "dtype": "float32"
+  },
+  "ph8_x_ras": {
+   "shape": [
+    512,
+    512
+   ],
+   "dtype": "float32"
+  },
+  "ph8_y_ras": {
+   "shape": [
+    512,
+    512
+   ],
+   "dtype": "float32"
+  },
+  "ph8_slice_k": {
+   "shape": [],
+   "dtype": "int64"
+  },
+  "ph8_slice_z_ras": {
+   "shape": [],
+   "dtype": "float64"
+  },
+  "ph8_affine": {
+   "shape": [
+    4,
+    4
+   ],
+   "dtype": "float64"
+  },
+  "ph8_spacing_mm": {
+   "shape": [
+    3
+   ],
+   "dtype": "float64"
+  },
+  "ph8_crop_ij": {
+   "shape": [
+    4
+   ],
+   "dtype": "int64"
+  },
+  "ph8_crop_extent_ras": {
+   "shape": [
+    4
+   ],
+   "dtype": "float64"
+  },
+  "ph8_mask_printed_cavity": {
+   "shape": [
+    512,
+    512
+   ],
+   "dtype": "bool"
+  },
+  "ph8_seeds_near_slice_ras": {
+   "shape": [
+    6,
+    3
+   ],
+   "dtype": "float64"
+  },
+  "ph8_implant_centroid_ras": {
+   "shape": [
+    3
+   ],
+   "dtype": "float64"
+  },
+  "registration_table": {
+   "shape": [],
+   "dtype": "<U6271"
+  },
+  "header": {
+   "shape": [],
+   "dtype": "<U579"
+  }
+ },
+ "registrations": [
+  {
+   "scan": "PT-preMRI",
+   "fixed": "PT-CT1mm",
+   "stage1_metric_initial": -0.5106520890910449,
+   "stage1_metric_final": -0.655710951235204,
+   "stage1_iterations": 36,
+   "stage1_stop": "Gradient magnitude tolerance met after 35 iterations. Gradient magnitude (6.59851e-07) is ",
+   "stage1_euler_angles_deg": [
+    -5.297244455903918,
+    2.4762151330901743,
+    -1.3945616064139363
+   ],
+   "stage1_to_final_mm_deg": [
+    1.0029940680657985,
+    0.32884954741300076
+   ],
+   "metric_initial": -0.2797095967503741,
+   "metric_final": -0.31286815013381825,
+   "iterations": 33,
+   "starts": 1,
+   "stop": "Step too small after 32 iterations. Current step (6.10352e-05) is less than minimum step (",
+   "metric_region": "cranium + 5 mm",
+   "stability_seed_mm": 0.01564619674189415,
+   "stability_seed_deg": 0.01520948955433437,
+   "stability_max_cranium_mm": 0.03151934472802534,
+   "euler_angles_deg": [
+    -5.051964532859182,
+    2.271123263465075,
+    -1.333943103454013
+   ],
+   "translation_lps_mm": [
+    -0.14040190932886892,
+    180.03814450699784,
+    540.810018719996
+   ],
+   "dice_head_masks": 0.8206139551984694,
+   "dice_head_masks_common_fov": 0.8511617920341605,
+   "mr_median_in_ct_bone": 146.14996337890625,
+   "mr_median_in_ct_brain": 328.0515441894531,
+   "bone_over_brain": 0.44550914625325816,
+   "mr_shape_kji": [
+    192,
+    256,
+    256
+   ],
+   "mr_spacing_mm": [
+    1.0,
+    1.0,
+    0.9999999999999947
+   ],
+   "mr_otsu": 200.17015814781388,
+   "mr_p995": 758.0,
+   "seconds": 78.45965957641602,
+   "commit": "0f8e30d"
+  },
+  {
+   "scan": "PT-intraMRI",
+   "fixed": "PT-CT1mm",
+   "stage1_metric_initial": -0.2911893559034735,
+   "stage1_metric_final": -0.4790079578432046,
+   "stage1_iterations": 300,
+   "stage1_stop": "Maximum number of iterations (300) exceeded.",
+   "stage1_euler_angles_deg": [
+    -20.63393536408656,
+    -3.2505197415175586,
+    -26.375972901108376
+   ],
+   "stage1_to_final_mm_deg": [
+    3.189194932102917,
+    4.035616944304897
+   ],
+   "metric_initial": -0.11627965687303693,
+   "metric_final": -0.18778026700817688,
+   "iterations": 45,
+   "starts": 1,
+   "stop": "Gradient magnitude tolerance met after 44 iterations. Gradient magnitude (9.73592e-07) is ",
+   "metric_region": "cranium + 5 mm",
+   "stability_seed_mm": 0.007825545401402744,
+   "stability_seed_deg": 0.034432224495542015,
+   "stability_max_cranium_mm": 0.06924786849376512,
+   "euler_angles_deg": [
+    -16.694682616049526,
+    -3.3680267696622415,
+    -27.283314352652248
+   ],
+   "translation_lps_mm": [
+    -102.91224408368518,
+    149.70281159734012,
+    548.6562125155031
+   ],
+   "dice_head_masks": 0.6552154062345535,
+   "dice_head_masks_common_fov": 0.6879362900239042,
+   "mr_median_in_ct_bone": 23.968101501464844,
+   "mr_median_in_ct_brain": 41.400665283203125,
+   "bone_over_brain": 0.578930346590084,
+   "mr_shape_kji": [
+    192,
+    256,
+    256
+   ],
+   "mr_spacing_mm": [
+    0.9765625000000001,
+    0.9765625000000002,
+    1.000000000000006
+   ],
+   "mr_otsu": 37.026322782041646,
+   "mr_p995": 149.0,
+   "seconds": 307.917649269104,
+   "commit": "0f8e30d"
+  },
+  {
+   "scan": "PT-postMRI",
+   "fixed": "PT-CT1mm",
+   "stage1_metric_initial": -0.5719382285797763,
+   "stage1_metric_final": -0.6725144991354773,
+   "stage1_iterations": 22,
+   "stage1_stop": "Step too small after 21 iterations. Current step (6.10352e-05) is less than minimum step (",
+   "stage1_euler_angles_deg": [
+    1.8287867762035075,
+    4.454667281172786,
+    0.7874565050327452
+   ],
+   "stage1_to_final_mm_deg": [
+    0.5467811959134645,
+    0.4008556520426042
+   ],
+   "metric_initial": -0.3259670308388018,
+   "metric_final": -0.3450857114491395,
+   "iterations": 28,
+   "starts": 1,
+   "stop": "Gradient magnitude tolerance met after 27 iterations. Gradient magnitude (2.0851e-07) is l",
+   "metric_region": "cranium + 5 mm",
+   "stability_seed_mm": 0.012445008684928888,
+   "stability_seed_deg": 0.02398879611059712,
+   "stability_max_cranium_mm": 0.04823574028869623,
+   "euler_angles_deg": [
+    1.9452447908630814,
+    4.8171575098451775,
+    0.9014812327244618
+   ],
+   "translation_lps_mm": [
+    -9.731498933248433,
+    153.78022816004136,
+    534.024236426077
+   ],
+   "dice_head_masks": 0.8402672575406519,
+   "dice_head_masks_common_fov": 0.8419826295257502,
+   "mr_median_in_ct_bone": 220.02638244628906,
+   "mr_median_in_ct_brain": 377.0069885253906,
+   "bone_over_brain": 0.5836135380590451,
+   "mr_shape_kji": [
+    192,
+    512,
+    512
+   ],
+   "mr_spacing_mm": [
+    0.5000000000000001,
+    0.5000000000000001,
+    1.0
+   ],
+   "mr_otsu": 284.83630061149796,
+   "mr_p995": 1175.0,
+   "seconds": 71.64952158927917,
+   "commit": "0f8e30d"
+  },
+  {
+   "scan": "PH0",
+   "fixed": "PH8",
+   "metric_initial": -1.0617915466816152,
+   "metric_final": -1.4168215948025162,
+   "iterations": 23,
+   "starts": 1,
+   "stop": "Step too small after 22 iterations. Current step (6.10352e-05) is less than minimum step (",
+   "metric_region": "PH0 / PH8 body crops",
+   "euler_angles_deg": [
+    -0.012170941320393753,
+    -3.5418665431117247,
+    -0.05926439756575575
+   ],
+   "translation_lps_mm": [
+    -12.901727919750716,
+    -2.6721762240216362,
+    -141.99252153515062
+   ],
+   "dice_head_masks": 0.9787327029241744,
+   "mr_median_in_ct_bone": NaN,
+   "mr_median_in_ct_brain": NaN,
+   "bone_over_brain": NaN,
+   "mr_shape_kji": [
+    248,
+    512,
+    512
+   ],
+   "mr_spacing_mm": [
+    0.68359375,
+    0.68359375,
+    1.0
+   ],
+   "seconds": 3.4226715564727783,
+   "commit": "0f8e30d"
+  },
+  {
+   "scan": "PH0",
+   "fixed": "PT-intraMRI",
+   "metric_initial": NaN,
+   "metric_region": "print + 3 mm rim + lumen",
+   "metric_final": -0.23593749911254566,
+   "iterations": NaN,
+   "starts": 24,
+   "stop": "multi-start (24 cube orientations, 4 refined); second best -0.2191",
+   "euler_angles_deg": [
+    -19.423549637542486,
+    89.33106520759831,
+    -74.71485549135272
+   ],
+   "translation_lps_mm": [
+    -165.22390702564016,
+    -199.2834261460557,
+    829.5248998009906
+   ],
+   "dice_head_masks": 0.4647778129794805,
+   "mr_median_in_ct_bone": NaN,
+   "mr_median_in_ct_brain": NaN,
+   "bone_over_brain": NaN,
+   "mr_shape_kji": [
+    192,
+    256,
+    256
+   ],
+   "mr_spacing_mm": [
+    0.9765625000000001,
+    0.9765625000000002,
+    1.000000000000006
+   ],
+   "seconds": 83.48053336143494,
+   "commit": "0f8e30d"
+  },
+  {
+   "scan": "PH0",
+   "fixed": "PT-intraMRI",
+   "metric_initial": NaN,
+   "metric_region": "plastic and lumen within 10 mm of the lumen (wall region)",
+   "metric_final": -0.24125393828591185,
+   "iterations": NaN,
+   "starts": 24,
+   "stop": "multi-start (24 cube orientations, 4 refined); second best -0.1736",
+   "euler_angles_deg": [
+    -5.867261333844517,
+    163.9484405334626,
+    -94.86042372744376
+   ],
+   "translation_lps_mm": [
+    -147.57979575133058,
+    -210.02378275494178,
+    809.8614946636484
+   ],
+   "dice_head_masks": 0.533579061706308,
+   "mr_median_in_ct_bone": NaN,
+   "mr_median_in_ct_brain": NaN,
+   "bone_over_brain": NaN,
+   "mr_shape_kji": [
+    192,
+    256,
+    256
+   ],
+   "mr_spacing_mm": [
+    0.9765625000000001,
+    0.9765625000000002,
+    1.000000000000006
+   ],
+   "seconds": 63.69067311286926,
+   "commit": "0f8e30d"
+  }
+ ],
+ "volumes": [
+  {
+   "row": "printed_cavity",
+   "dataset": "PH0 (registered into PH8)",
+   "timepoint": "intra-op (print time)",
+   "structure": "printed cavity",
+   "rule": "gtcore segment_cavity seed-sheet rule on the tile-less twin (hull reach 14 mm, sheet tol 3 mm; implant-informed, Phase 4 decision)",
+   "volume_cc": 55.2769660949707,
+   "n_voxels": 118290,
+   "grid_mm": [
+    0.68359375,
+    0.68359375,
+    1.0
+   ],
+   "source": "gtcore.segment.cavity.phantom_wall_and_cavity",
+   "flag": "calibration-set",
+   "commit": "0f8e30d"
+  },
+  {
+   "row": "printed_cavity_ph8_grid",
+   "dataset": "PH8 grid",
+   "timepoint": "intra-op (print time)",
+   "structure": "printed cavity (carried)",
+   "rule": "same mask resampled (nearest) into the PH8 grid",
+   "volume_cc": 55.25476810455321,
+   "n_voxels": 157770,
+   "grid_mm": [
+    0.591796875,
+    0.591796875,
+    0.9999999999999997
+   ],
+   "source": "gtcore.segment.cavity.phantom_wall_and_cavity",
+   "flag": "calibration-set",
+   "commit": "0f8e30d"
+  },
+  {
+   "row": "cav_post",
+   "dataset": "PT-CT1mm+PT-RT",
+   "timepoint": "post-op (CT)",
+   "structure": "Cav_Post",
+   "rule": "RTSTRUCT ROI rasterised on the CT grid (gtcore.io.rt.rasterize_roi)",
+   "volume_cc": 35.100799636840826,
+   "n_voxels": 130045,
+   "grid_mm": [
+    0.51953125,
+    0.51953125,
+    1.0000000000000002
+   ],
+   "source": "PT-RT",
+   "flag": "calibration-set",
+   "commit": "0f8e30d"
+  },
+  {
+   "row": "gtcore_cavity_ct",
+   "dataset": "PT-CT1mm",
+   "timepoint": "post-op (CT)",
+   "structure": "gtcore cavity",
+   "rule": "gtcore segment_cavity seed-sheet rule (reconstruct)",
+   "volume_cc": 41.25453973388673,
+   "n_voxels": 152844,
+   "grid_mm": [
+    0.51953125,
+    0.51953125,
+    1.0000000000000002
+   ],
+   "source": "gtcore.pipeline.reconstruct",
+   "flag": "calibration-set",
+   "commit": "0f8e30d"
+  }
+ ],
+ "displacement": [
+  {
+   "row": "printed_wall_vs_cav_post",
+   "ph0_metric_region": "print + 3 mm rim + lumen",
+   "credible": "NO: no consensus between the best two starts (10.2 mm / 167.4 deg); carried wall median 13.4 mm from Cav_Post > 10 mm",
+   "reference": "Cav_Post",
+   "moving_surface": "PH0 printed wall (registered twin) carried PH0 -> PT-intraMRI -> PT-CT1mm",
+   "a_to_b_median_mm": 13.36405035757536,
+   "a_to_b_p95_mm": 28.36428568982668,
+   "a_to_b_max_mm": 35.47929159327655,
+   "b_to_a_median_mm": 10.625622786986607,
+   "b_to_a_p95_mm": 21.490714414688075,
+   "b_to_a_max_mm": 25.897635114518238,
+   "symmetric_median_mm": 11.810081726392925,
+   "symmetric_p95_mm": 26.26044810036172,
+   "n_a": 20000,
+   "n_b": 20000,
+   "signed_median_mm": 13.576641082763672,
+   "signed_p5_mm": -5.216198492050171,
+   "signed_p95_mm": 28.589109420776364,
+   "volume_moving_cc": 55.2769660949707,
+   "volume_cav_post_cc": 35.100799636840826,
+   "volume_ratio_post_over_moving": 0.6349986642996027,
+   "printed_cavity_in_ct_grid_cc": 55.277585174560556,
+   "dice_printed_vs_cav_post": 0.12601129484564408,
+   "ph0_to_intra_metric_final": -0.23593749911254566,
+   "ph0_to_intra_second_metric": -0.21906222450430363,
+   "ph0_to_intra_consensus_mm": 10.175642605261697,
+   "ph0_to_intra_consensus_deg": 167.44051975868712,
+   "ph0_to_intra_n_starts": 24,
+   "ph0_to_intra_best_start": 8,
+   "ph0_to_intra_dice_masks": 0.4647778129794805,
+   "mri_median_lumen": 8.491218566894531,
+   "mri_median_plastic": 31.216873168945312,
+   "mri_contrast": 0.7279926621433169,
+   "criteria": "consensus <= 3 mm / 5 deg; contrast >= 0.25; proximity median <= 10 mm",
+   "seconds": 114.54122757911682,
+   "commit": "0f8e30d"
+  },
+  {
+   "row": "printed_wall_vs_cav_post_focus10",
+   "ph0_metric_region": "plastic and lumen within 10 mm of the lumen (wall region)",
+   "credible": "NO: no consensus between the best two starts (3.2 mm / 68.6 deg)",
+   "reference": "Cav_Post",
+   "moving_surface": "PH0 printed wall (registered twin) carried PH0 -> PT-intraMRI -> PT-CT1mm",
+   "a_to_b_median_mm": 3.348802040815554,
+   "a_to_b_p95_mm": 11.207807389811354,
+   "a_to_b_max_mm": 14.816623780734913,
+   "b_to_a_median_mm": 3.08904128863393,
+   "b_to_a_p95_mm": 10.429463954405666,
+   "b_to_a_max_mm": 17.528895700864606,
+   "symmetric_median_mm": 3.206285658822699,
+   "symmetric_p95_mm": 10.910058517720183,
+   "n_a": 20000,
+   "n_b": 20000,
+   "signed_median_mm": 3.22576367855072,
+   "signed_p5_mm": -3.2387492656707764,
+   "signed_p95_mm": 11.391365146636959,
+   "volume_moving_cc": 55.2769660949707,
+   "volume_cav_post_cc": 35.100799636840826,
+   "volume_ratio_post_over_moving": 0.6349986642996027,
+   "printed_cavity_in_ct_grid_cc": 55.28892150878907,
+   "dice_printed_vs_cav_post": 0.6097854487361333,
+   "ph0_to_intra_metric_final": -0.24125393828591185,
+   "ph0_to_intra_second_metric": -0.17364793679274632,
+   "ph0_to_intra_consensus_mm": 3.2423841891579506,
+   "ph0_to_intra_consensus_deg": 68.64436354721305,
+   "ph0_to_intra_n_starts": 24,
+   "ph0_to_intra_best_start": 20,
+   "ph0_to_intra_dice_masks": 0.533579061706308,
+   "mri_median_lumen": 15.747150421142578,
+   "mri_median_plastic": 42.75733947753906,
+   "mri_contrast": 0.6317088337684167,
+   "criteria": "consensus <= 3 mm / 5 deg; contrast >= 0.25; proximity median <= 10 mm",
+   "seconds": 81.62143230438232,
+   "commit": "0f8e30d"
+  }
+ ]
+}

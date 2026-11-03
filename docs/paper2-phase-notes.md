@@ -4712,3 +4712,227 @@ python scripts/paper_figures.py                                                 
 GTCORE_STRICT=1 python -m pytest -q tests/test_paper_figures.py                                  # 4 passed
 # full suite at ab22718 (GTCORE_STRICT=1, concurrent load): 1139 passed, 15 skipped, 1 xfailed, 15532 warnings in 829.14s
 ```
+
+## 2026-11-03 — Phase 5 — cavity across the loop (one patient) (task `cavity-change`, branch `p2/cavity-change`)
+
+PHASE5_PLAN row `cavity-change`; `docs/paper2-decisions.md` entries "one
+patient" (S5 → F3), "figure plan v6 adopted" amendment 3 (no MRI
+segmentation; rigid MI registration and the surface distance are the only
+computation) and Phase 4 "phantom cavity". Branched from `paper2/integration`
+at `4748ccb`. Code commits **`ecef10c`** (script, register.py extension,
+tests) and **`0f8e30d`** (recorded-command separators, column docs); the panel
+data below were generated at **`0f8e30d`** (`gtcore.__file__` printed = this
+worktree). **Every number is calibration-set** (one clinical case; the printed
+cavity is the same patient's intra-operative cavity; no held-out scan).
+Hardware as in the Phase 1 sections; the optimizer campaign and other agents
+ran concurrently, so every wall time is an upper bound.
+
+### What was built
+
+| File | Change |
+|---|---|
+| `scripts/cavity_change.py` (new) | registrations, the F3(a) strip slice, the cavity-volume table, the wall-displacement attempt, optional manual MRI contours (`--contours`); writes `f3_registration.csv`, `f3_cavity_volumes.csv`, `f3_wall_displacement.csv`, `f3a_scans_slice.npz` + `.json` index (every array: shape, dtype, meaning) to `docs/figures/data/`, PNG previews to `output/figures/cavity_change/` (author's check, not paper panels). |
+| `gtcore/preprocess/register.py` | `register_rigid` gains keyword options, defaults unchanged (Phase 3/4 tests pass unmodified): `moving_range` (CT-MR: the MR clamped to its own range; MI needs no intensity correspondence), `fixed_metric_mask` (metric samples restricted), `initial_rotation` / `center_lps` / `initial_translation_lps` (multi-start and two-stage hooks), `shrink_factors` / `smoothing_sigmas_mm` / `iterations` / `learning_rate`; `info` adds `metric_initial`, `center_lps_mm`, the clamp ranges. New `compose_points_ras` (points through a chain of registrations). |
+| `tests/test_cavity_change.py` (new, 9 tests, 20 s) | below. |
+
+No MRI is segmented anywhere (stop list); the MRIs are resampled and shown.
+
+### 1. Registrations onto PT-CT1mm (Methods-quotable)
+
+Rigid Euler3D, Mattes MI (50 bins, 25 % random samples, seed 1234), three
+levels (shrink 4/2/1, smoothing 2/1/0 mm), regular-step gradient descent —
+the Phase 3 parameters, not tuned; fixed = PT-CT1mm (HU clamped to
+[−1000, 500]), moving = the MRI (clamped to [0, its 99.5th percentile]); MR
+head mask = Otsu threshold of the lightly smoothed image, largest component,
+holes filled (used for the crop, the centroid start and the Dice only).
+**Two stages**: (1) whole head (metric over the CT body crop, started on the
+mask centroids); (2) from that pose, the metric restricted to the cranium =
+gtcore's CT skull ∪ cranial interior (`segment_head`) grown 5 mm. Stage 2
+exists because of `PT-intraMRI`: the scalp is retracted at surgery and the
+neck/jaw do not move with the skull, and stage 1 alone stops on the iteration
+cap at poses that wander (two stage-1 runs ended 8° apart: (−23.5, −0.1,
+−23.6)° and (−19.5, −6.1, −29.2)°); stage 2 from either lands on the same
+pose (difference 0.00 mm / 0.00°, scratch check). Stage 2 is applied to all
+three MRIs for one method; stage 2 is repeated with a second sampling seed
+(99) as a stability check.
+
+| scan | stage 1 MI init → final (it, stop) | stage 2 (cranium + 5 mm) MI init → final (it) | stage 2 moved the pose | seed stability (max over cranium) | final Euler angles (°) | Dice head masks (common FOV) | MR median in CT bone / in CT brain | time |
+|---|---|---|---|---|---|---|---|---|
+| PT-preMRI (1 mm iso) | −0.511 → −0.656 (36, gradient tol.) | −0.280 → −0.313 (33) | 1.00 mm / 0.33° | 0.02 mm / 0.02° (0.03 mm) | (−5.05, 2.27, −1.33) | 0.821 (0.851) | 146 / 328 = **0.45** | 78 s |
+| PT-intraMRI (0.98 × 0.98 × 1 mm, oblique) | −0.291 → −0.479 (300, **iteration cap**) | −0.116 → −0.188 (45) | 3.19 mm / 4.04° | 0.01 mm / 0.03° (0.07 mm) | (−16.69, −3.37, −27.28) | 0.655 (0.688) | 24 / 41 = **0.58** | 308 s |
+| PT-postMRI (0.5 × 0.5 × 1 mm) | −0.572 → −0.673 (22, step) | −0.326 → −0.345 (28) | 0.55 mm / 0.40° | 0.01 mm / 0.02° (0.05 mm) | (1.95, 4.82, 0.90) | 0.840 (0.842) | 220 / 377 = **0.58** | 72 s |
+| PH0 → PH8 (CT-CT, Phase 3/4 call) | −1.062 → −1.417 (23) | — | — | — | (−0.01, −3.54, −0.06) | 0.979 | — | 4 s |
+
+Sanity. (i) **Reproduction of the coordinator's check** (PT-postMRI → PT-CT1mm,
+Euler3D/MI, scratchpad 2026-11-03 00:08): angles (1.95, 4.41, 0.74)°, MR
+bone/brain 0.58; here stage 1 (1.83, 4.45, 0.79)°, stage 2 (1.95, 4.82, 0.90)°,
+bone/brain 0.58-0.59 — reproduced (the metric values differ, −0.613 vs
+−0.673, because the crop, sampling and centre differ). (ii) Bone/brain ratio
+0.45-0.58 on all three (MR dark where the CT has bone: same patient,
+aligned). (iii) Visual: the CT bone contour (> 300 HU) lies on the MR's
+skull band on k = 87 / 117 / 147 for all three (previews; PT-intraMRI checked
+on all three levels). (iv) The head-mask Dice is a weak measure here: the
+scans cover different extents of head and neck and the intra-operative head
+mask (Otsu 37 on a low-SNR image, p99.5 = 149) excludes the retracted scalp
+and includes the head holder; the common-FOV Dice is reported, not used as a
+criterion. Mutual-information values are not comparable across scans or
+stages (different images / metric regions).
+
+### 2. F3(a) strip data (`f3a_scans_slice.npz` + `.json`)
+
+One axial PT-CT1mm slice, **k = 117** (z = −511.20 mm RAS; the slice of
+`clinical_slice.npz`, shared with F4(a) / F5(a) / F6; the implant-centroid
+rule gives the same k), sampled trilinearly from each registered MRI at the CT
+voxel centres of that slice (512 × 512, CT pixel 0.52 mm); one square crop for
+all four panels: **110 mm**, 212 × 212 px, `crop_ij` = (89, 301, 101, 313)
+(i0, i1, j0, j1 half-open), extent x −23.1…86.5, y 152.6…262.3 mm RAS
+(voxel centres), centred on the `Cav_Post` centroid of the slice (31.2, 207.1).
+Windows `(W, L)`: CT 400 / 40 HU (style bar), phantom 1000 / 0 HU, MRIs the
+1st-99th percentile inside the head on the slice: pre 784 / 434, intra 164 / 91,
+post 1277 / 683 (native MR units; suggestions). Overlay: `mask_cav_post` on
+the CT panel; the MRIs carry no outline (no `--contours` given).
+**Phantom (F3(c) data, own frame):** PH8 slice through the phantom's implant
+centroid, k = 77 (z = −622.79 mm), crop 110 mm (186 × 186 px at 0.59 mm,
+`ph8_crop_ij` (188, 374, 273, 459)) centred on the printed cavity on that
+slice; `ph8_mask_printed_cavity` (the registered-twin cavity) and the 6 seed
+centres within 3 mm of the slice (`ph8_seeds_near_slice_ras`). The "matching
+cavity level" through the phantom-to-patient registration
+(`ph8_slice_k_matched`) is **not exported** because that registration is not
+credible (section 4); the phantom slice is the implant-centroid slice in its
+own frame, as F3(c) already is.
+Previews read: the CT slice shows `Cav_Post` around the seeds and air; the
+pre-op MRI shows the enhancing tumour rim where the cavity will be, the
+intra-op MRI the open resection cavity under the craniotomy (dark fluid, much
+larger than post-op), the post-op MRI the collapsed cavity with the tiles'
+susceptibility dots; skull and midline coincide on all four.
+
+### 3. Cavity volumes (`f3_cavity_volumes.csv`; Table 1 / F3 caption)
+
+| row | volume | grid | rule |
+|---|---|---|---|
+| printed cavity = cavity at print time (PH0, registered into PH8) | **55.28 cc** (32/32 seeds inside) | PH0 0.68 × 0.68 × 1 mm | gtcore `segment_cavity` seed-sheet rule on the tile-less twin around the carried PH8 seeds (`phantom_wall_and_cavity`; reach 14 mm, sheet 3 mm; implant-informed, Phase 4 decision) |
+| the same carried into the PH8 grid | 55.25 cc | PH8 0.59 × 0.59 × 1 mm | nearest-neighbour resampling |
+| `Cav_Post` (physician, post-op CT) | **35.10 cc** | PT-CT1mm 0.52 × 0.52 × 1 mm | RTSTRUCT rasterised (`rasterize_roi`, Phase 2 rule) |
+| gtcore cavity on PT-CT1mm | **41.25 cc** | PT-CT1mm | gtcore `segment_cavity` (reconstruct) |
+
+The Phase 4 numbers are reproduced (55.3 / 35.1 / 41.3 cc; twin registration
+Dice 0.979). Ratios for the caption: `Cav_Post` / printed cavity = **0.635**;
+gtcore cavity / printed cavity = 0.746. The printed volume is the same rule as
+the gtcore patient cavity, so the like-for-like intra-op → post-op change under
+one rule is 55.3 → 41.3 cc (−25 %); against the physician's contour 55.3 →
+35.1 cc (−36.5 %). No MRI volume exists (no segmentation; Jacob's manual
+contours would add `manual_contour_*` rows).
+
+### 4. Wall displacement intra-op → post-op: attempted, **not credible, not quoted**
+
+Method. PH0 (the tile-less print = intra-operative cavity geometry) rigidly
+registered to PT-intraMRI (CT-MR MI; the print's frame is arbitrary, so the
+registration is multi-started over the 24 cube orientations about the printed
+cavity's centroid, each placed on the `Cav_Post` centroid carried into the
+MRI; coarse level only, the best 4 refined with the full schedule), then
+carried PT-intraMRI → PT-CT1mm with the section-1 transform. Displacement =
+two-way closest-point distance between the carried printed wall
+(`phantom_wall_and_cavity`'s wall, PH0 frame) and the `Cav_Post` surface,
+plus a signed distance (positive = printed wall outside the post-op cavity).
+**Credibility criteria, fixed before the first run:** (a) consensus — the best
+two refined starts agree within 3 mm / 5°; (b) contrast — carried lumen vs
+carried plastic differ by ≥ 25 % in the MRI; (c) proximity — median carried
+wall → `Cav_Post` ≤ 10 mm. Two metric regions: the whole print + 3 mm rim +
+lumen (the design), and only the plastic + lumen within 10 mm of the lumen
+(the wall region; added after the first failed, to give it the best chance).
+
+| metric region | best / second MI | consensus (best two) | contrast | wall → `Cav_Post` median / p95 | `Cav_Post` → wall | symmetric | signed median | Dice carried lumen vs `Cav_Post` | verdict |
+|---|---|---|---|---|---|---|---|---|---|
+| print + rim + lumen | −0.236 / −0.219 | 10.2 mm / 167° | 0.73 | 13.4 / 28.4 mm | 10.6 / 21.5 | 11.8 / 26.3 | +13.6 | 0.13 | **NO** (a), (c) |
+| wall region (10 mm) | −0.241 / −0.174 | 3.2 mm / 69° | 0.63 | 3.35 / 11.2 mm | 3.09 / 10.4 | 3.21 / 10.9 | +3.23 | 0.61 | **NO** (a) |
+
+Reading. The registration is not credible: the print is a partial head
+section whose only image features are the cavity, a patch of outer skull
+surface and flat cut planes that have no counterpart in the MRI, and the MI
+landscape has several near-equal optima 70-170° apart. The wall-region
+variant's best pose overlays the open intra-operative cavity on the MRI
+plausibly (preview `f3_phantom_in_patient_focus10.png`; carried lumen Dice
+0.61 with `Cav_Post`, wall 3.4 mm median from it, volume ratio 0.635), but a
+start 69° away scores within 0.07 in MI, and the result is not reproducible:
+the same command at `ecef10c` gave a second best 75° away and wall → `Cav_Post`
+3.88 mm, and a scratch run refining 6 starts instead of 4 picked a third pose
+(start 3; 5.4 mm). SimpleITK's multi-threaded metric is not bit-reproducible
+between runs; the MR → CT registrations reproduce to 0.01°, the PH0 → MRI
+ones do not. **No displacement number goes into the paper.** The caption /
+Table 1 carry the volumes (section 3) and, if wanted, the sentence "the
+printed phantom has too little anatomy for a credible rigid registration to
+the intra-operative MRI; the intra- to post-operative change is given as
+volumes". A credible displacement needs manual cavity contours on
+PT-intraMRI (and PT-postMRI), which the script accepts:
+
+`--contours intra=<file> [pre=<file>] [post=<file>]` with `<file>` either an
+RTSTRUCT (DICOM file or directory) drawn on that MRI series, ROI name
+`--contour-roi` (default `Cavity`), or a label image (NIfTI / NRRD / MHA,
+non-zero = cavity; another grid is resampled nearest-neighbour onto the MRI's).
+Each contour then gets a `manual_contour_<scan>` volume row (own grid), its
+outline in the strip (`mask_contour_<scan>`), and a
+`manual_contour_<scan>_vs_cav_post` displacement row (two-way and signed
+surface distance after carrying it through the section-1 registration, volume
+ratio) — those are credible by construction of the MR → CT registration.
+
+### Tests (`tests/test_cavity_change.py`, 9 passed in 20 s at `0f8e30d`)
+
+CT-MR round trip: a synthetic head CT (scalp, skull, brain, ventricle,
+off-centre cavity, nose) and an "MR" of it with inverted bone contrast on a
+different grid (1.75 × 1.75 × 2 mm) under a known 5°/−4°/7°, (4, −3, 5) mm
+transform → probes recovered < 0.5 mm, metric decreases, composition round
+trip exact, `register_mr_to_ct` record (bone/brain < 0.5, common-FOV Dice >
+0.9); `initial_rotation` validation; the 24 cube rotations; the multi-start on
+an asymmetric printed block turned 90° about z (+ 4° / −3° tilt) inside an
+MR-like scan → recovered < 1 mm, not from the identity start; slice
+resampling geometry (a linear field sampled through a known transform equals
+the field at the carried points to 2e-3; identity sampling = the slice;
+square-crop size, centre and extent; implant-slice rule); two-way surface
+distance (concentric spheres 10/13 mm → 3.0 mm) and the signed distance
+(±3 mm); Otsu, pose difference; the label-image contour loader and
+`--contours` parsing; `run()` end to end on the synthetic head with a manual
+contour on one "MRI" (all files and columns, two-stage records with stability
+< 1 voxel, volumes within 15 %, the carried contour lands on `Cav_Post` < 1 mm
+symmetric median, the phantom row says why it is absent, one crop for every
+panel, the MRIs carry no outline without a contour, no machine path in the
+headers).
+
+### Commands
+
+```
+# from the p2-cavity-change worktree root, GTCORE_STRICT=1, PYTHONPATH=<worktree>; gtcore.__file__ printed = <worktree>\gtcore\__init__.py
+python scripts/cavity_change.py --ct "$GT_DATA_ROOT/<PT-CT1mm>" --rtstruct "$GT_DATA_ROOT/<PT-RT RTSTRUCT>" \
+    --pre "$GT_DATA_ROOT/<PT-preMRI>" --intra "$GT_DATA_ROOT/<PT-intraMRI>" --post "$GT_DATA_ROOT/<PT-postMRI>" \
+    --ph8 "$GT_DATA_ROOT/<PH8>" --ph0 "$GT_DATA_ROOT/<PH0>" --out docs/figures/data      # 671 s at 0f8e30d (reconstruct x2, three MR registrations 458 s, phantom 2 x 24 starts 197 s)
+#   [--contours intra=<manual contour> post=<manual contour>] [--contour-roi Cavity] [--skip-phantom-to-patient] [--crop-mm 110]
+GTCORE_STRICT=1 python -m pytest -q tests/test_cavity_change.py              # 9 passed in 20 s
+GTCORE_STRICT=1 python -m pytest -q -p no:cacheprovider                      # full suite at ecef10c, below
+```
+
+Full suite at `ecef10c` (`GTCORE_STRICT=1 python -m pytest -q -p no:cacheprovider`,
+run concurrently with the real-data run and the optimizer campaign, wall time
+an upper bound): **1103 passed, 15 skipped**, 15266 warnings in 936.21 s
+(0:15:36). `0f8e30d` changes only the recorded-command string and CSV header
+text; `tests/test_cavity_change.py` 9 passed at it.
+
+### Notes for the coordinator / open points
+
+- **Wall displacement: not credible, not quoted** (both metric regions fail the
+  a-priori consensus criterion; results not reproducible run to run). Table 1 /
+  F3 caption use the volumes: printed cavity 55.3 cc (gtcore rule), `Cav_Post`
+  35.1 cc, gtcore cavity 41.3 cc. Manual contours on PT-intraMRI from Jacob
+  would give a credible displacement in one command (`--contours`).
+- **F3(a) is ready as data**: four registered images on one slice and crop
+  (`f3a_scans_slice.npz`); `paper_figures.py` renders it or Jacob crops it.
+  The data-designation table lists F3(a) as "needed (4 crops)", i.e. Jacob's;
+  the NPZ makes it renderable by code if wanted. No cavity outline on the MRIs
+  (only the CT carries `Cav_Post`), per the stop list.
+- `register_rigid` extended in `gtcore/preprocess/register.py` (keyword
+  options, defaults unchanged) — the Phase 4 owner's file per the Phase 5 plan
+  ("reuse"); `tests/test_phantom_cavity.py` and `tests/test_seed_wall_distance.py`
+  pass unchanged.
+- The two-stage MR → CT registration is a method choice made on PT-intraMRI
+  (stage 1 alone wanders there); it is a registration schedule, not a model
+  parameter, and it is applied identically to all three MRIs.
+- Nothing installed. Shared files untouched (`pyproject.toml`,
+  `tests/conftest.py`, `README.md`).
