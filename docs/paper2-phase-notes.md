@@ -5392,3 +5392,106 @@ The one failure, `tests/test_paper_tables.py::test_campaign_rows_are_pending_unt
 pre-existing on `paper2/integration` c06b533 (same failure there, 1 failed / 10 passed in that file): the test
 expects the word "three arms" in the patient Table 3 row, which `paper_tables.py` now words "as implanted /
 optimized for RIND5 / optimized for CTV_GT". Not a paper_figures file; left to the paper-tables owner.
+
+
+## 2026-11-03 — Phase 5 — finish: tables tidy and campaign scrub (task `finish-tables-scrub`, branch `p2/finish-tables-scrub`)
+
+Base `paper2/integration` `c06b533` (campaign merge `056334c` + the first regenerated tables). Commits:
+`72fb180` (scrub of the campaign-owned files, allowlist / xfail removed), `b1bbed9` (`paper_tables.py`
+optimizer rows + tests), `f0c4992` (tables and `docs/results-summary.md` regenerated at `b1bbed9`), and
+this notes commit. No computation on images and no campaign re-run: every number below is read from the
+committed campaign CSV / JSON files (`d2d455e` V2-V8, `085fe60` lambda_tail 0 V3 rows, packing table,
+patient run) by `scripts/paper_tables.py`.
+
+### Task A — `scripts/paper_tables.py` after the campaign
+
+Table 3, `placement optimisation` (all values traced by `--check`):
+
+| row | value as generated | source (commit) |
+|---|---|---|
+| F8(b) eligible wall | craniotomy wall (facing + line of sight, no implant term) **26.5 %** of the wall area, nearest face of **9 of 32** implanted seeds; UNION the 10 mm demonstrated reach = **67.3 %** (8919 of 13 261 mm²); **32/32** implanted seeds' nearest face eligible. Manufacturer rule (eligible area / 4 cm², rounded up) **23 tiles on the union eligible area (8919 mm²)**, 34 on the whole 13 261 mm² wall; packing capacity at grid 13 tiles (h 2.5 mm, 6 spins) on the craniotomy wall alone, not re-measured on the union (C = 852 candidates there). Not used: the CLI three-term wall (+ implant visibility) 11.8 %, rule 4, capacity 10 | `f8_patient_summary.csv`, `f8b_patient_optimized.json` (`manufacturer_rule_tiles_on_eligible_area` 23, `eligible_area_mm2` 8919.1), `f8_patient_arms.csv` header (085fe60); notes `4cd9891` |
+| capacity (by scale) | x0.80 rule 7-8 / capacity 4 / area bound 6-7 / placed 8; x1.00 11-12 / 7 (s4_x1.00: 9) / 10-11 / 8; x1.25 17-19 / 10 / 16-18 / 8; PH8 (registered PH0 wall, eligible 5473 mm²) 14 / 10 / 13 / 8 | `capacity.csv` (d2d455e) |
+| primary endpoint | SA (mean of 3 seeds) − uniform at N* **+1.19 pp [95 % CI −0.71, 3.09], n = 15, Wilcoxon p = 0.055 — NOT significant**; best of 3 seeds +2.14 pp [0.23, 4.05], p = 0.010 (secondary); 15 of 15 flagged | `v2_primary.csv` (d2d455e) |
+| SA − greedy | N = 8: +2.45 pp [0.67, 4.22], n 12, p 0.002; N = 10: +10.16 pp [3.42, 16.89], n 6, p 0.031 | `v2_paired.csv` (d2d455e) |
+| N* (RIND5 D90 ≥ rx) | x0.80: SA N 6 on 1 (s4), never on 5; greedy the same; x1.00: SA and greedy N 8 on 6/6; x1.25: SA N 10 on 6/6, greedy N 10 on 2, N 12 on 4; uniform never at any N where it packs | `v2_rows_collapsed.csv` (d2d455e) |
+| packing failures | per N (SA packed / failed although a grid packing is known / failed, no N-packing proved / failed, unknown; of 18): N 4 18/0/0/0, N 6 13/0/5/0, N 8 12/0/6/0, N 10 6/0/6/6, N 12 5/0/6/7 — SA never failed where a packing is known to exist; every failure at N ≤ 8 is a proved grid-capacity limit (x0.80 cavities) | `v8_packing_failures_summary.csv` (085fe60 on d2d455e inputs), `v8_packing_failures.csv` |
+| search quality (λ_tail 0) | reduced grid h 6 / 2 spins / M_opt 300, exact enumeration (all optimal): mean gap N 4 **−1.0 %** (17/18 rows at the optimum), N 6 **−0.5 %** (15/18), N 8 **−1.8 %** (6/9); best of 3 seeds at the optimum on **14/15** instances; worst row −18.7 %; 3 instances proved infeasible at N 8 | `v3_gap_per_instance_reduced_l0.csv`, `v3_gap_reduced_l0.csv` (085fe60) |
+| objective trade-off (λ_tail 1) | mean gap −52.7 / −18.6 / −3.1 % at N 4 / 6 / 8 while RIND5 D90 SA − bound +1122 / +1603 / −181 cGy, RIND5 V100 −5.7 / +6.3 / −1.1 pp | `v3_gap_per_instance_reduced.csv`, `v3_gap_reduced.csv` (d2d455e) |
+| phantom (registered PH0 wall) | as placed 44.3 % / 2187 cGy (3 overlaps), conformed 45.2 / 2161 (8), uniform 48.9 / 3408, greedy 48.3 / 3290, SA 54.6 / 3529 (0), V100 bound (time_limit) 59.2 / 1866, continuous 48.7 / 3135; greedy min-N sweep: D90 ≥ rx not reached for N ≤ 10; rule 14 vs capacity 10 (area bound 13) vs placed 8 | `v6_phantom_collapsed.csv`, `v6_sweep.csv`, `v6_info.json` (d2d455e) |
+| patient (one row, three arms) | as implanted RIND5(gtcore) 38.7 % / 2653 cGy, CTV_GT 91.7 % / 6167, IMPLANT_REACH(10) 96.0 % / 6700; N = 8 count fit (7 tiles, 1 degraded, 28 seeds scored, 2 overlaps) 33.6 / 2431, 83.0 / 5391, 88.5 / 5845; 6 full + 4 half fit (PENDING OPERATIVE RECORD; 32 seeds, 3 overlaps) = as implanted; optimized for RIND5 seed mean = best seed (seed 0) 50.3 / 3141, 85.5 / 5706, 88.5 / 5898, 0 overlaps, SA 58.3 s (best 58.8 s); optimized for CTV_GT seed mean 42.9 / 3159, 98.0 / 6769, 98.8 / 7004, SA 47.5 s; best seed (seed 1) 41.6 / 3165, 98.2 / 6783, 99.2 / 7073, SA 47.7 s | `f8_patient_summary.csv` (085fe60) |
+
+The campaign-grid V3 row (HiGHS time-limited on 15/18 instances, loose LP reference, mean gap −42.8 %) is
+no longer a Table 3 row; Table S4 carries it as one "not quoted" line. Per-seed patient rows (13) are in
+Table S4 only; the F8 caption numbers carry the same seven arm rows as Table 3 (F8(a): as implanted + the
+two fits; F8(b): seed mean and best seed per family) plus the measured eligibility row. Table S4 blocks:
+V2 coverage, V2 paired (two decimals, p to three), V2 primary (2 rows), V2 N* (18 rows), V3 λ_tail 0 and
+λ_tail 1 (per-N summary + 15 instances + 3 infeasible each), V3 campaign grid (1, not quoted), V4, V5 (Kendall
+τ + spread per arm: SA 0.09 ± 0.06 pp, greedy 3.41 ± 3.15, truth 4.63 ± 0.10, with the **ceiling caveat**:
+SA nominal 1.000 on 3/3 cavities), V6 (+ wall / rule / capacity line), V7, V8 failure modes, V8 packing (5),
+capacity (19), patient (13). `docs/results-summary.md` "changes versus rev-3" gains the optimizer lines
+(rev-1 +22.8 pp shell → +1.19 pp RIND5 n.s.; packing failures = grid capacity; λ_tail 0 search quality
+near-exact; three patient arms with numbers; eligibility 67.3 % and rule 23 on the union; phantom arms on
+the registered PH0 wall; capacity rows; V5 ceiling caveat); open item 5 is now the optimizer follow-ups
+(main-text arm pair is Jacob's choice; packing existence at N 10 / 12 unknown; capacity on the union not
+measured; feasibility-first start = future work); item 10 updated (cavity volumes done, wall displacement
+not quoted).
+
+Code: new formats `pp2` / `pp2s` (signed) / `p3`; `Repo.csv_commit` also reads "this table generated at
+<hash>" (post-processed tables) and `csv_input_commit` the "campaign commit (inputs)" line; `_mixed_row`
+(rows citing several CSV / JSON / notes sources); `_eligibility_parts` shared by the Table 3 row and the
+F8(b) caption; `F8_MAIN_ARMS` (arm → label; falls back to every arm when none of the names is present).
+Tests: `tests/test_paper_tables.py` 12 (new `test_table3_optimizer_rows_as_measured`; the landed fixture
+uses the campaign arm names `optimized_ctvgt_*` and the seed-mean rows; F8(b) caption count 4).
+
+**Manufacturer-rule source of each number** (task 2): "4 tiles on the eligible area" (4cd9891 notes) was
+the rule on the three-term CLI wall (11.8 %, 1566 mm², ⌈1566/400⌉ = 4); "34 on the whole wall" is the
+whole 13 261 mm² gtcore wall (⌈33.2⌉); the campaign's **23** is `plan.recommend_tile_count` on the union
+eligible area 8919 mm² (printed by `patient_optimize.py`, stored in `f8b_patient_optimized.json`).
+Capacity 13 / 10 are 4cd9891 measurements on the craniotomy wall without / with the implant term; the
+campaign did not measure capacity on the union.
+
+Discrepancies found (data wins, notes not edited): the campaign notes say SA N* = 8 on "s4_x0.80"; the CSV
+gives N* = 6 there (SA and greedy D90 7817 / 7776 cGy at N 6; N 8 does not pack). The campaign notes say
+the V6 greedy sweep went "to 12"; `v6_sweep.csv` stops at N 10.
+
+```
+# worktree root, PYTHONPATH=<worktree>, venv python
+python scripts/paper_tables.py            # build
+python scripts/paper_tables.py --check    # 390 rows, 1257 locator parts, 0 pending, 22 commits in git; "no problems"
+GTCORE_STRICT=1 python -m pytest -q -p no:cacheprovider tests/test_paper_tables.py   # 12 passed
+```
+
+### Task B — campaign-owned files scrubbed
+
+- `scripts/validation_optimize.py`: `V6_PHANTOM_DIR` (machine path + PH8 folder name) replaced by dataset
+  ids `V6_PHANTOM_ID = "PH8"`, `V6_PH0_ID = "PH0"`; `resolve_dataset(value, default_id)` resolves a
+  `--phantom` / `--ph0` value (an existing folder or a dataset id) or the default id through
+  `gtcore.io.datasets.dataset_path` at run time; an unresolvable default gives None (the phantom sections
+  report "Not run", `load_printed_phantom` raises `Skip` with the remedy). **Behaviour note:** `--ph0` now
+  defaults to `PH0` when it resolves, so a bare `--section v6` scores on the registered PH0 wall as the
+  campaign did (`--ph0` was always passed); before, the default was the PH8 body mesh. The cached
+  visibility-mask line writes `repo_rel(vis_cache)` (repo-relative, or `<cache>/<file>` outside the repo).
+- `docs/figures/optimize/data/v6_info.json`: already clean on this branch (the campaign re-ran V6 after the
+  scrub list was written: `visible_faces_source` is `plan.visible_faces`); not edited.
+- `docs/optimize-notes.md`: the PH8 folder name → dataset `PH8`; the two absolute cache paths →
+  `output/validation_optimize/cache/printed_visible_72396.npy`; the `gt optimize` command →
+  `"$GT_DATA_ROOT/<PH8>"`.
+- Campaign files grepped with `python scripts/check_no_identifiers.py --strict` (`scripts/table4_runtimes.py`,
+  `scripts/patient_optimize.py`, `scripts/packing_failures.py`, `docs/figures/optimize/data/*`,
+  `docs/figures/data/table4_runtimes.csv`, `f8b_patient_optimized.json`): clean.
+- `scripts/check_no_identifiers.py`: `ALLOWLIST` removed (`check(..., allowlist=())` keeps the mechanism
+  for tests; the CLI passes none; `--strict` kept for compatibility); `tests/test_no_identifiers.py`: the
+  xfail removed, the strict tree check is a normal test. `check_no_identifiers.py --strict`: **0 forbidden
+  hits, 0 allowlisted**.
+
+Open question for the coordinator: `docs/figures/tables/table2_parameters.csv` row "Capacity grid
+(packing_capacity) = h 2.5 mm, 6 spins" is the code default; the campaign's synthetic / PH8 capacity rows
+are at h 4 mm / 6 spins (the row label says so). Not changed here (hand-maintained Table 2 input).
+
+`tests/test_paper_tables.py::test_campaign_rows_are_pending_until_the_files_land` (failing on
+`paper2/integration` since the campaign merge: the patient row no longer said "three arms") passes again:
+the patient metric now reads "patient: three arms -- as implanted (with its two tile-fit readings) /
+optimized for RIND5 / optimized for CTV_GT (mean of the SA seeds and the best seed) -- ...". `paper2/integration`
+at `324e165` (paper-figures F8b / S4 merge) was merged into this branch (`98613c0`, no conflicts; it touches
+only `paper_figures.py`, `_figstyle.py`, `manifest.json` and these notes); `paper_tables.py --check` after the
+merge: no problems.
