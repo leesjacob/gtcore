@@ -140,6 +140,7 @@ import trimesh  # noqa: E402
 from scipy import stats as sstats  # noqa: E402
 
 import gtcore.plan as plan  # noqa: E402
+from gtcore.dose.engine import TG43Engine  # noqa: E402
 from gtcore.interact import (PlacedTile, conform_tile, find_overlapping_tiles,  # noqa: E402
                              snap_to_wall)
 from gtcore.plan import DEFAULT_RX_CGY, TargetSet, final_report  # noqa: E402
@@ -1106,7 +1107,11 @@ def csv_header(cfg, section: str, what: str, datasets: str = "synthetic cavities
             "v100_bound = solve_milp coverage-only (tail term dropped), same candidates as SA: %s"
             % (plan.LAMBDA_TAIL, plan.TAIL_Q, cfg.sa_kw.get("n_restarts", plan.SA_N_RESTARTS),
                cfg.sa_kw.get("n_sweeps", plan.SA_N_SWEEPS),
-               " (overridden on the command line)" if cfg.sa_kw else "", cfg.same_candidates)]
+               " (overridden on the command line)" if cfg.sa_kw else "", cfg.same_candidates),
+            "grid: candidate anchors h %g mm, %d spins, M_opt %d (V4 sweeps the grid; V7 uses M_opt %d); "
+            "rx %.0f cGy; S_K %.2f U nominal; report dose grid %g mm, margin %g mm"
+            % (cfg.h_mm, cfg.n_spins, cfg.m_opt, plan.M_OPT_MAX, RX_CGY, TG43Engine.DEFAULT_SK_U,
+               GRID_MM, REPORT_MARGIN_MM)]
 
 
 def _fmt(v):
@@ -1829,14 +1834,21 @@ def load_printed_phantom(cache_dir: str, use_cache: bool = True, path: str = V6_
                          ph0_path: Optional[str] = None) -> Dict[str, Any]:
     """Pipeline result on the printed phantom (PH8): wall mesh, localized
     seeds, fitted tiles.  ``ph0_path`` (the tile-less twin PH0) enables the
-    Phase 4 phantom cavity hook: when ``gtcore.segment.cavity`` provides
-    ``phantom_wall_and_cavity(vol_ph8, vol_ph0)`` (task
-    ``opt-eligibility-phantom``) its registered PH0 wall replaces the PH8
-    body mesh and its cavity mask (the PH0 lumen in the PH8 frame) is scored
-    as ``RIND5(phantom cavity)``; otherwise ``cavity_mask`` is None and the
-    reason is recorded (``phantom_cavity_note``)."""
+    Phase 4 phantom cavity hook (merged ``06d650e``, wired by the campaign):
+    ``gtcore.segment.cavity.phantom_wall_and_cavity(vol_ph8, vol_ph0,
+    masks_ph8, seed_centers_ras)`` returns ``(wall_mesh, cavity_mask,
+    cavity_affine, info)``; the registered PH0 wall (the tile-less twin's
+    plastic surface) replaces the PH8 body mesh (which includes the collagen
+    tiles), the PH0 lumen in the PH8 frame is the cavity and
+    ``info["shell_mask"]`` (PH0's plastic carried into PH8) is the rind clip,
+    so every phantom arm is scored on ``RIND5(phantom cavity, clip = PH0
+    shell)`` -- exactly what ``gt optimize --phantom-ref`` reports
+    (``cli._phantom_reference``).  With ``--ph0`` a hook failure raises (a
+    silent fall-back to the PH8 body mesh would score the wrong wall);
+    without ``--ph0`` ``cavity_mask`` is None and ``phantom_cavity_note``
+    says so."""
     os.makedirs(cache_dir, exist_ok=True)
-    tag = os.path.basename(path.rstrip("\\/"))[:24] + ("_ph0" if ph0_path else "")
+    tag = os.path.basename(path.rstrip("\\/"))[:24] + ("_ph0c" if ph0_path else "")
     cpath = os.path.join(cache_dir, "printed_phantom_v2_%s.pkl" % tag)
     if use_cache and os.path.exists(cpath):
         with open(cpath, "rb") as fh:
@@ -1867,6 +1879,7 @@ def load_printed_phantom(cache_dir: str, use_cache: bool = True, path: str = V6_
             "shape": tuple(int(s) for s in vol.array.shape), "path": path,
             "has_cavity_mask": bool(np.asarray(res.cavity_mask).any()),
             "cavity_mask": None, "cavity_affine": None, "cavity_source": None,
+            "clip_mask": None, "clip_affine": None, "clip_source": None, "phantom_info": None,
             "phantom_cavity_note": "no PH0 given: wall = PH8 %s mesh, no RIND5" % wall_name}
     if ph0_path:
         try:
@@ -1876,25 +1889,71 @@ def load_printed_phantom(cache_dir: str, use_cache: bool = True, path: str = V6_
                 raise NotImplementedError("segment.cavity.phantom_wall_and_cavity not in this tree "
                                           "(merge p2/opt-eligibility-phantom)")
             vol0 = load_volume(ph0_path)
-            out = fn(vol, vol0)
+            t1 = time.perf_counter()
+            # (wall_mesh, cavity_mask, cavity_affine, info): the seeds are required (the
+            # printed cavity is gtcore's cavity rule around the implant carried into PH0)
+            # and info["shell_mask"] is the rind clip -- the `gt optimize --phantom-ref` call
+            out = fn(vol, vol0, masks_ph8=res.masks,
+                     seed_centers_ras=np.asarray(res.seeds.centers_ras, dtype=float))
             if isinstance(out, dict):
-                wall0, mask0 = out.get("wall", out.get("mesh")), out.get("cavity_mask", out.get("cavity"))
+                wall0 = out.get("wall", out.get("mesh"))
+                mask0 = out.get("cavity_mask", out.get("cavity"))
+                aff0 = out.get("cavity_affine", vol.affine)
+                info0 = dict(out)
             else:
-                wall0, mask0 = out[0], out[1]
-            if wall0 is not None:
-                data["mesh"] = trimesh.Trimesh(vertices=np.asarray(wall0.vertices),
-                                               faces=np.asarray(wall0.faces), process=False)
-                data["wall_name"] = "PH0 wall registered into PH8"
-            if mask0 is not None and np.asarray(mask0).any():
-                data["cavity_mask"] = np.asarray(mask0, dtype=bool)
-                data["cavity_affine"] = vol.affine
-                data["cavity_source"] = "PH0:lumen (registered into PH8)"
-                data["phantom_cavity_note"] = "RIND5(phantom cavity) from the registered PH0 lumen"
-            else:
-                data["phantom_cavity_note"] = "phantom_wall_and_cavity returned no cavity mask"
+                if len(out) != 4:
+                    raise RuntimeError("phantom_wall_and_cavity returned %d values; expected "
+                                       "(wall_mesh, cavity_mask, cavity_affine, info)" % len(out))
+                wall0, mask0, aff0, info0 = out
+            data["phantom_wall_and_cavity_s"] = time.perf_counter() - t1
+            if wall0 is None or not len(getattr(wall0, "faces", ())):
+                raise RuntimeError("phantom_wall_and_cavity returned no wall mesh")
+            if mask0 is None or not np.asarray(mask0).any():
+                raise RuntimeError("phantom_wall_and_cavity returned no cavity mask")
+            shell = info0.get("shell_mask")
+            if shell is None or not np.asarray(shell).any():
+                raise RuntimeError("phantom_wall_and_cavity returned no shell_mask (the rind clip)")
+            data["mesh"] = trimesh.Trimesh(vertices=np.asarray(wall0.vertices),
+                                           faces=np.asarray(wall0.faces), process=False)
+            data["wall_name"] = "phantom wall (tile-less twin PH0, registered into PH8)"
+            data["cavity_mask"] = np.asarray(mask0, dtype=bool)
+            data["cavity_affine"] = np.asarray(aff0, dtype=float)
+            data["cavity_source"] = "PH0:lumen(registered)"
+            data["clip_mask"] = np.asarray(shell, dtype=bool)
+            data["clip_affine"] = np.asarray(aff0, dtype=float)
+            data["clip_source"] = "PH0:shell(registered)"
+            from gtcore.dose.targets import rind5
+            r5 = rind5(data["cavity_mask"], data["cavity_affine"], clip_mask=data["clip_mask"],
+                       clip_affine=data["clip_affine"], cavity_source=data["cavity_source"],
+                       clip_source=data["clip_source"])
+            reg = info0.get("registration") or {}
+            lum = info0.get("lumen") or {}
+            wl = info0.get("wall") or {}
+            resid = info0.get("residual_mm") or {}
+            data["phantom_info"] = {
+                "registration_dice": reg.get("dice_masks"), "registration_iterations": reg.get("iterations"),
+                "registration_s": reg.get("seconds"), "lumen_rule": lum.get("rule"),
+                "lumen_hull_reach_mm": lum.get("hull_reach_mm"),
+                "lumen_volume_ml_ph0": info0.get("lumen_volume_ml_ph0"),
+                "lumen_volume_ml_ph8_grid": info0.get("lumen_volume_ml_ph8_grid"),
+                "lumen_seeds_inside": lum.get("seeds_inside"), "lumen_n_seeds": lum.get("n_seeds"),
+                "shell_volume_ml_ph8_grid": info0.get("shell_volume_ml_ph8_grid"),
+                "wall_n_faces": wl.get("n_faces_wall"), "wall_area_mm2": wl.get("area_wall_mm2"),
+                "residual_all_median_mm": (resid.get("all") or {}).get("median"),
+                "residual_far_median_mm": (resid.get("far_from_seeds") or {}).get("median"),
+                "rind5_volume_cc_ph8_grid": float(r5.volume_cc), "rind5_n_ph8_grid": int(r5.n),
+                "seconds": info0.get("seconds")}
+            data["phantom_cavity_note"] = (
+                "RIND5(phantom cavity = PH0 lumen registered into PH8 [%.1f cc], clip = PH0 shell): "
+                "%.1f cc on the PH8 grid; wall = the registered twin's plastic surface (%s faces, %.0f mm2)"
+                % (info0.get("lumen_volume_ml_ph8_grid") or float("nan"), r5.volume_cc,
+                   wl.get("n_faces_wall"), wl.get("area_wall_mm2") or 0.0))
+            _log("phantom cavity hook: " + data["phantom_cavity_note"])
         except Exception as exc:                                      # noqa: BLE001
-            data["phantom_cavity_note"] = "phantom cavity hook not run: %s: %s" % (type(exc).__name__, exc)
-            _log(data["phantom_cavity_note"])
+            # --ph0 given: a silent fall-back to the PH8 body mesh (which includes the
+            # collagen tiles) would score the phantom arms on the wrong wall -- fail loudly
+            raise RuntimeError("phantom cavity hook failed with --ph0 given: %s: %s"
+                               % (type(exc).__name__, exc)) from exc
     with open(cpath, "wb") as fh:
         pickle.dump(data, fh)
     return data
@@ -1932,6 +1991,10 @@ def section_v6(cfg) -> Dict[str, Any]:
     area_f = np.asarray(mesh.area_faces, dtype=float)
     r5 = {"cavity_mask": ph.get("cavity_mask"), "cavity_affine": ph.get("cavity_affine"),
           "cavity_source": ph.get("cavity_source") or "none"}
+    if ph.get("clip_mask") is not None:
+        # the rind clip: PH0's plastic shell in the PH8 grid (as `gt optimize --phantom-ref`)
+        r5.update(clip_mask=ph["clip_mask"], clip_affine=ph.get("clip_affine"),
+                  clip_source=ph.get("clip_source"))
     info.update({"wall": ph["wall_name"], "mesh_area_mm2": float(mesh.area),
                  "mesh_volume_ml": float(mesh.volume) / 1000.0 if mesh.is_watertight else float("nan"),
                  "n_faces": int(len(mesh.faces)), "n_seeds": int(len(ph["seed_centers"])),
@@ -1941,7 +2004,10 @@ def section_v6(cfg) -> Dict[str, Any]:
                  "eligible_faces": int(eligible.sum()), "seed_radius_mm": V6_SEED_RADIUS_MM,
                  "reconstruct_s": ph["reconstruct_s"], "has_cavity_mask": ph["has_cavity_mask"],
                  "phantom_cavity_note": ph.get("phantom_cavity_note"),
-                 "rind5_scored": ph.get("cavity_mask") is not None})
+                 "rind5_scored": ph.get("cavity_mask") is not None,
+                 "cavity_source": ph.get("cavity_source"), "clip_source": ph.get("clip_source"),
+                 "phantom_info": ph.get("phantom_info"),
+                 "phantom_wall_and_cavity_s": ph.get("phantom_wall_and_cavity_s")})
     rec, reason = _try("recommend_tile_count", lambda: plan.recommend_tile_count(mesh, eligible_faces=eligible))
     if rec is not None:
         info["recommended_tiles"] = int(rec.n_tiles)
@@ -2061,7 +2127,11 @@ def section_v6(cfg) -> Dict[str, Any]:
         conflicts=None if inst is None else inst["conflicts"]))
     if sw is not None:
         info["min_n"] = {k: v for k, v in sw.min_n.items()}
-        write_csv(os.path.join(out, "v6_sweep.csv"), sw.rows)
+        write_csv(os.path.join(out, "v6_sweep.csv"), sw.rows,
+                  header=csv_header(cfg, "v6", "minimum-N sweep (P2, greedy) on the phantom's eligible wall; "
+                                    "V100 / D90 are the optimizer target's (S5 surrogate) values of sweep_n",
+                                    datasets="PH8 (printed phantom, 8 tiles / 32 seeds placed by hand)"
+                                    + ("; PH0 (tile-less twin, registered)" if cfg.ph0_dir else "")))
     else:
         info["min_n_reason"] = reason
     if cfg.clinical:
@@ -2076,7 +2146,9 @@ def section_v6(cfg) -> Dict[str, Any]:
                                 datasets="PH8 (printed phantom, 8 tiles / 32 seeds placed by hand)"
                                 + ("; PH0 (tile-less twin, registered)" if cfg.ph0_dir else "")))
     write_csv(os.path.join(out, "v6_phantom_collapsed.csv"), collapsed,
-              header=csv_header(cfg, "v6", "phantom arms, SA averaged over seeds (+ sa_best)"))
+              header=csv_header(cfg, "v6", "phantom arms, SA averaged over seeds (+ sa_best)",
+                                datasets="PH8 (printed phantom, 8 tiles / 32 seeds placed by hand)"
+                                + ("; PH0 (tile-less twin, registered)" if cfg.ph0_dir else "")))
     with open(os.path.join(out, "v6_info.json"), "w", encoding="utf-8") as fh:
         json.dump(info, fh, indent=2, default=str)
 
@@ -2097,8 +2169,8 @@ def section_v6(cfg) -> Dict[str, Any]:
 
     md.append("### V6 printed phantom (as placed vs optimized; plastic, not tissue; NOT optimizer-vs-surgeon) %s\n" % CAPTION)
     if info["rind5_scored"]:
-        md.append("Endpoints: `RIND5_*` = RIND5(phantom cavity) on the full grid (%s); `TGT_*` = the weighted "
-                  "eligible +5 mm target (surrogate).\n" % info["phantom_cavity_note"])
+        md.append("Endpoints: `RIND5_*` = RIND5(phantom cavity, clip = PH0 shell) on the full grid -- %s; "
+                  "`TGT_*` = the weighted eligible +5 mm target (surrogate).\n" % info["phantom_cavity_note"])
     else:
         md.append("Endpoints: `TGT_*` = the WEIGHTED stats of the eligible +5 mm target (the mesh's own shell "
                   "vertices include the outer surface of the printed shell, kept as `S5_*`); `RIND5_*` is NaN "
@@ -2252,7 +2324,8 @@ def section_capacity(cfg) -> Dict[str, Any]:
         rec, _r = _try("recommend_tile_count", lambda: plan.recommend_tile_count(mesh, eligible_faces=eligible))
         r, reason = _try("capacity PH8", lambda: _capacity(mesh, cfg, eligible))
         row = {"dataset": "PH8", "cavity": "PH8 (%s, eligible = visible & <= %g mm of a seed)"
-               % (ph["wall_name"], V6_SEED_RADIUS_MM), "volume_ml": float("nan"),
+               % (ph["wall_name"], V6_SEED_RADIUS_MM),
+               "volume_ml": (ph.get("phantom_info") or {}).get("lumen_volume_ml_ph8_grid", float("nan")),
                "eligible_area_mm2": area,
                "rule_tiles": int(rec.n_tiles) if rec is not None else tile_count_rule(area),
                "implanted": len(ph["tiles"]), "implanted_label": "tiles placed by hand (fitted by the pipeline)",
@@ -2360,7 +2433,10 @@ def section_v8(cfg) -> Dict[str, Any]:
                 verdict, outcome, msg = "PASS", "status=%s" % res.status, res.reason
         rows.append({"case": case, "function": fn_name, "outcome": outcome, "verdict": verdict,
                      "message": str(msg)[:160], "s": time.perf_counter() - t0})
-    write_csv(os.path.join(out, "v8_failure_modes.csv"), rows)
+    write_csv(os.path.join(out, "v8_failure_modes.csv"), rows,
+              header=csv_header(cfg, "v8", "failure modes: PASS = a loud exception / a non-ok status with a "
+                                "reason; FAIL = a silent plain return",
+                                datasets="synthetic meshes (icosphere, plate, degenerate, empty); no patient data"))
     md.append("### V8 failure modes %s\n" % CAPTION)
     md.append(md_table(rows, ["case", "function", "outcome", "verdict", "message"]))
     return {"rows": rows, "md": "\n".join(md)}
