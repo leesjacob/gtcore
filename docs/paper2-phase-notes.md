@@ -4676,3 +4676,39 @@ Full suite (`GTCORE_STRICT=1 python -m pytest -q -p no:cacheprovider` from the w
 upper bound): **`1098 passed, 15 skipped, 15532 warnings in 1028.09s (0:17:08)`**, exit 0. The final
 render (`docs/figures/manifest.json`, `script_commit` c61c05f): 11 panels ok, S2(b) pending, F8(b) / S4
 skipped until the campaign commits, optional S5 skipped.
+
+### Coordinator review fixes (2026-11-03, after the merge at e2493bc)
+
+`paper2/integration` (e2493bc) merged into `p2/paper-figures`; commits `102eb12`
+(`scripts/export_phantom_wall.py`), `c2ea58a` (renderer/style fixes), then the data/manifest/notes
+commit. Accepted unchanged: F2c, F4a content, F5b, S2a. Every PNG re-rendered and opened.
+
+| Panel | Before | After |
+|---|---|---|
+| F5a | legend box on the image covered the 30 Gy contours (top right) | legend in a band below the image, 2 per row; nothing overlays the image |
+| F4a, F6 | legend boxes on the image (lower left) | same below-image legend layout as F5a (one shared layout for the three slice panels) |
+| F6 | Cav_Post as a grey 60 % fill, almost invisible on the CT | Cav_Post as a 0.9 pt white outline with a dark halo; CTV_GT fill and dashed full-rind outline kept; outline islands < 4 mm (voxel specks at the Brain clip) not drawn |
+| F4b, F8a | marching-cubes staircase, hairline silhouettes on every crease, 45 % mesh; tiles 55 % with same-colour edges; grey 7th palette slot; camera framed on the whole mesh, tiles sticking out of the cavity | cavity mesh display-smoothed (Taubin, 40 iterations, pass band 0.05, volume-preserving; committed geometry unchanged), 30 % opacity, soft shading, true silhouette only, front faces culled; tiles 75 % opaque with a darker edge of the same hue, depth peeling (16 peels); camera looks into the cavity from the left at the implant wall, cropped to the implant (sheets + seeds bounding box x 1.12); no grey tile; leftovers vermilion |
+| F4c | no context surface; crumpled tile looked like a thin orange tube; grey tile | registered PH0 printed wall (`f4c_phantom_wall.npz`, from `phantom_wall_and_cavity`, 55.3 mL cavity, cropped to the seed box + 12 mm) as a 25 % grey surface; crumpled tile vermilion at 92 % with a black edge 1.8 x thicker; palette as F4b; camera posterior-superior onto the wall, cropped to the implant |
+
+Notes on what was not changed: the crumpled PH8 tile is drawn as its fitted bent sheet like the others;
+with kappa2 = 0.25 mm^-1 (fold 288 deg) the model sheet IS rolled into a curl, so it remains a curved
+band in any view (no refit, no reshaping). Sheets that leave the cavity in F4b/F8a are the free
+bent-tile fits (pre-existing "inconsistent" surface verdict); kept, the implant-cropped camera keeps
+them from dominating. SSAO (`enable_ssao`) was not used: it does not combine cleanly with the
+translucent depth-peeled sheets.
+
+New constants (`scripts/_figstyle.py`): `TILE_COLOURS` = orange, sky, green, yellow, blue, purple,
+#882255 (Tol wine), vermilion only for a degraded tile; `RENDER` tile opacity 0.75 (highlight 0.92),
+edge 3 px (highlight x 1.8), mesh 0.30 (phantom 0.25), smoothing 40 / 0.05, silhouette #7A7A7A 2 px.
+Cameras (parallel, view-up +z; derived once with `paper_figures.fit_camera`):
+patient focal (26.5, 210.7, -513.2), position (-122.8, 210.7, -498.3), scale 27.7 mm, front faces
+culled; phantom focal (-16.6, -193.3, -619.7), position (-46.8, -296.6, -515.8), scale 28.3 mm, no
+culling. Slice panels: legend band 0.165 in per row + 0.07 in below the 2.2 / 2.8 / 3.35 in image.
+
+```
+PYTHONPATH=. python scripts/export_phantom_wall.py "$GT_DATA_ROOT/<PH8>" "$GT_DATA_ROOT/<PH0>"   # once; -> docs/figures/data/f4c_phantom_wall.npz (header commit 102eb12)
+python scripts/paper_figures.py                                                                  # final render at c2ea58a
+GTCORE_STRICT=1 python -m pytest -q tests/test_paper_figures.py                                  # 4 passed
+# full suite at ab22718 (GTCORE_STRICT=1, concurrent load): 1139 passed, 15 skipped, 1 xfailed, 15532 warnings in 829.14s
+```
