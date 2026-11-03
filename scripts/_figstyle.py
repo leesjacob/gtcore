@@ -61,8 +61,13 @@ COL: Dict[str, str] = {
 # for the implanted and the optimized configuration.  Vermilion is the
 # attention colour (leftover seeds; the crumpled phantom tile): it is not in
 # the list and goes only to a degraded tile; grey is reserved for the cavity.
-TILE_COLOURS: List[str] = [OI["orange"], OI["sky"], OI["green"], OI["yellow"], OI["blue"],
-                           OI["purple"], "#882255"]   # 7th: Tol "wine"; no grey (grey is the cavity); vermilion = degraded tile
+TILE_COLOURS: List[str] = [OI["orange"], OI["blue"], OI["yellow"], OI["purple"], "#332288",
+                           OI["green"], "#661100", OI["sky"]]
+# Okabe-Ito's six usable hues + Tol indigo #332288 + Tol dark brown #661100.
+# Ordered so neighbouring slots differ strongly in hue or lightness.  Min pairwise OKLab dE
+# x100: normal 17.0, deutan 7.6 (purple / green), protan 9.6, tritan 8.5 --
+# the deutan pair is >= 6 and is never adjacent in the order (secondary cue:
+# position and the dark same-hue edge).
 ALPHA = {"cavity_fill": 0.60, "ctv_fill": 0.45, "band": 0.20, "tile": 0.75,
          "mesh": 0.30, "legend_box": 0.85}
 
