@@ -1,0 +1,312 @@
+{
+ "_provenance": {
+  "title": "TG-43U1S2 consensus dataset for the IsoRay Medical model CS-1 Rev2 (Proxcelan) 131Cs source, as embedded in Paper 1's dose engine",
+  "copied_from": "GammaTile.py (GammaView Dosimetry 3D Slicer module, github.com/Peelyboneheader/GammaTileDosimetry), class DoseInterpolator lines 26-264, dataset 'TG43U1S2'; clone commit ac47ad6beaace273b13dc911e592dec4f153bdc0 (2026-11-02)",
+  "extraction": "class block sliced with ast and executed with numpy only; values written verbatim as Python floats; untabulated entries (numpy NaN) written as null",
+  "paper": "Rivard MJ et al., Supplement 2 for the 2004 update of the AAPM Task Group No. 43 Report: Joint recommendations by the AAPM and GEC-ESTRO. Med Phys 44(9):e297-e338 (2017). doi:10.1002/mp.12430",
+  "tables_as_stated_in_source_comments": {
+   "dose_rate_constant": "Table AI (CON Lambda)",
+   "active_length": "Table AI (CON L)",
+   "g_L": "Table AII, line-source column 'IsoRay CS-1 Rev2'",
+   "F": "Table AXIII; the theta = 90 deg row (F = 1 by definition) is added by Paper 1 and is not printed in the report; r = 0.1 cm is not tabulated for theta <= 20 deg",
+   "half_life": "Table XXIV: T1/2 = 9.689 d; Paper 1 stores the mean life tau = 335.48 h"
+  },
+  "erratum_applied": "Not stated for the consensus tables in Paper 1's source; the 2018 erratum (Rivard MJ et al., Erratum: Supplement 2 for the 2004 update of the AAPM Task Group No. 43 Report. Med Phys 45(2):971-974 (2018). doi:10.1002/mp.12728) corrects the report's QA dose-rate tables, not Tables AI/AII/AXIII. Paper 1's QA script states that its Table XII values ARE the erratum-corrected ones (see tg43u1s2_table_xii_erratum.csv).",
+  "independent_verification": "The journal pages (Wiley) return HTTP 403. A free PDF of the 2017 report hosted by IROC Houston (irochouston.mdanderson.org/RPc/BrachySeeds/TG-43-Supplement-2.pdf) was text-extracted (pypdf) and Tables AI, AII and AXIII were compared entry by entry with this file and with gtcore's tables (docs/paper2-phase-notes.md, Phase 3 engine QA): gtcore matches the report everywhere; this file (Paper 1) differs from the report at ONE entry, F(r = 7 cm, theta = 80 deg) = 0.999 where the report prints 0.998. That entry is kept here as Paper 1 has it -- this file documents Paper 1's engine.",
+  "generated_by": "python scripts/engine_crosscheck.py --paper1 <GammaTileDosimetry clone> --write-fixtures --table-xxiii-text <pypdf text of the IROC-hosted report PDF>",
+  "generated_at_commit": "29295c502"
+ },
+ "source_model": "IsoRay Medical / GT Medical Technologies model CS-1 Rev2 (Proxcelan)",
+ "radionuclide": "131Cs",
+ "dose_rate_constant_cGy_per_h_per_U": 1.056,
+ "active_length_cm": 0.4,
+ "half_life_days": 9.689,
+ "paper1_mean_life_h": 335.48,
+ "paper1_seed_strength_U": 3.5,
+ "paper1_dose_conversion_factor_cGy_per_rate": 1174.18,
+ "g_L": {
+  "r_cm": [
+   0.1,
+   0.15,
+   0.25,
+   0.5,
+   0.75,
+   1.0,
+   1.5,
+   2.0,
+   3.0,
+   4.0,
+   5.0,
+   6.0,
+   7.0,
+   8.0,
+   9.0,
+   10.0
+  ],
+  "values": [
+   0.96,
+   0.971,
+   0.989,
+   1.006,
+   1.009,
+   1.0,
+   0.962,
+   0.908,
+   0.777,
+   0.642,
+   0.518,
+   0.411,
+   0.323,
+   0.251,
+   0.1931,
+   0.1481
+  ],
+  "paper1_interpolation": "linear in r (numpy.interp); held constant below 0.10 cm and above 10 cm"
+ },
+ "F": {
+  "theta_deg": [
+   0.0,
+   2.0,
+   5.0,
+   7.0,
+   10.0,
+   15.0,
+   20.0,
+   25.0,
+   30.0,
+   40.0,
+   50.0,
+   60.0,
+   70.0,
+   80.0,
+   90.0
+  ],
+  "r_cm": [
+   0.1,
+   0.25,
+   0.5,
+   0.7,
+   1.0,
+   2.0,
+   3.0,
+   5.0,
+   7.0,
+   10.0
+  ],
+  "values": [
+   [
+    null,
+    0.622,
+    0.829,
+    0.851,
+    0.845,
+    0.837,
+    0.838,
+    0.843,
+    0.853,
+    0.833
+   ],
+   [
+    null,
+    0.67,
+    0.796,
+    0.806,
+    0.818,
+    0.839,
+    0.842,
+    0.846,
+    0.845,
+    0.847
+   ],
+   [
+    null,
+    0.731,
+    0.781,
+    0.761,
+    0.75,
+    0.764,
+    0.78,
+    0.8,
+    0.81,
+    0.819
+   ],
+   [
+    null,
+    0.73,
+    0.718,
+    0.706,
+    0.713,
+    0.746,
+    0.769,
+    0.794,
+    0.808,
+    0.816
+   ],
+   [
+    null,
+    0.707,
+    0.678,
+    0.69,
+    0.709,
+    0.752,
+    0.776,
+    0.801,
+    0.815,
+    0.826
+   ],
+   [
+    null,
+    0.759,
+    0.72,
+    0.734,
+    0.753,
+    0.791,
+    0.811,
+    0.831,
+    0.84,
+    0.847
+   ],
+   [
+    null,
+    0.843,
+    0.778,
+    0.788,
+    0.803,
+    0.832,
+    0.847,
+    0.862,
+    0.868,
+    0.871
+   ],
+   [
+    1.161,
+    0.887,
+    0.828,
+    0.834,
+    0.845,
+    0.866,
+    0.876,
+    0.886,
+    0.891,
+    0.896
+   ],
+   [
+    1.113,
+    0.915,
+    0.868,
+    0.87,
+    0.878,
+    0.894,
+    0.902,
+    0.91,
+    0.912,
+    0.916
+   ],
+   [
+    1.031,
+    0.949,
+    0.923,
+    0.923,
+    0.926,
+    0.935,
+    0.939,
+    0.943,
+    0.944,
+    0.944
+   ],
+   [
+    1.009,
+    0.971,
+    0.958,
+    0.957,
+    0.959,
+    0.963,
+    0.964,
+    0.966,
+    0.967,
+    0.966
+   ],
+   [
+    1.002,
+    0.985,
+    0.978,
+    0.978,
+    0.98,
+    0.981,
+    0.982,
+    0.982,
+    0.982,
+    0.983
+   ],
+   [
+    1.0,
+    0.993,
+    0.99,
+    0.991,
+    0.992,
+    0.993,
+    0.993,
+    0.993,
+    0.993,
+    0.992
+   ],
+   [
+    1.0,
+    0.998,
+    0.998,
+    0.997,
+    0.998,
+    0.999,
+    0.999,
+    0.999,
+    0.999,
+    0.998
+   ],
+   [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ]
+  ],
+  "untabulated_entries_theta_r": [
+   [
+    0.0,
+    0.1
+   ],
+   [
+    2.0,
+    0.1
+   ],
+   [
+    5.0,
+    0.1
+   ],
+   [
+    7.0,
+    0.1
+   ],
+   [
+    10.0,
+    0.1
+   ],
+   [
+    15.0,
+    0.1
+   ],
+   [
+    20.0,
+    0.1
+   ]
+  ],
+  "paper1_interpolation": "bilinear in (r, theta) on the adjacent nodes, clamped to the table domain; untabulated entries filled from the nearest tabulated radius at the same theta, searching outward first"
+ },
+ "phi_an": null,
+ "phi_an_note": "The 1-D anisotropy factor phi_an(r) (TG-43U1S2 Table AXIV) is embedded in neither Paper 1's engine nor gtcore: both are 2-D line-source only (no 1-D mode by decision). Nothing to compare; not transcribed here to avoid an unverifiable hand copy."
+}

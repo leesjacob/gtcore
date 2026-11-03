@@ -222,3 +222,21 @@ density and, at the dry-sponge value, exceeds the interseed shadow and flips
 its sign. Scatter refilling the shadow is not modelled, so the correction
 overestimates shadow depth. Full derivation, coefficients and measurements:
 `docs/interference-notes.md`.
+
+## Addendum 2026-11-03 (Paper 2, Phase 3 `engine-qa`)
+
+The "Not verified" item above on the printed 2017 Table XII is resolved as a
+print defect, not a data problem: read from the free IROC-hosted PDF, the
+printed table's 13 angle rows are mislabelled (they hold the 0, 2, 5, 7, 10,
+15, 20, 25, 30, 40, 50, 60, 70 deg rows), the 80/90 deg rows and the 10 cm
+column are missing, and the column read here as "0.75 cm" is the 0.7 cm
+column (0.1-0.5 % high in 8 rows). The erratum-corrected table as transcribed
+in Paper 1's `tests/tg43_qa_check.py` has the full 15 x 10 layout and is
+reproduced by `TG43Engine("tg43u1s2")` to 0.286 % max / 0.054 % median
+(rounding of 3-4 significant figures); the printed along-away Table XXIII to
+0.244 % / 0.066 %. The consensus F(r, theta) table in `engine.py` matches the
+printed Table AXIII at every entry (Paper 1's copy has one slip, F(7 cm,
+80 deg) 0.999 vs 0.998). Fixtures, script and tests:
+`gtcore/dose/qa_data/`, `scripts/engine_crosscheck.py`,
+`tests/test_dose_engine_qa.py`; numbers in `docs/paper2-phase-notes.md`
+(Phase 3, engine QA).
