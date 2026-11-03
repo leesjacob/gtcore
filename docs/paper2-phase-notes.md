@@ -4364,3 +4364,68 @@ placeholders, the `GT_E2E`-gated run, and `tests/test_dose_engine_qa.py`'s
 - Runtime of the craniotomy rule on the clinical mesh (12 s) is dominated by
   the per-face visible test + hits_before on 24 736 faces; fine for one run,
   not for a sweep; the opening is 2-3 s.
+
+## 2026-11-03 — Phase 5 — paper_tables.py and results-summary (task `paper-tables`, branch `p2/paper-tables`)
+
+Base `paper2/integration` 4748ccb, then a445cf7 merged (decisions: three F8 patient arms,
+eligibility = craniotomy ∪ 10 mm demonstrated reach). Commits: `9b51c05` (WIP, coordinator),
+`0d58964` (script + tests + Table 2 input), `a409ba7` (generated tables and
+`docs/results-summary.md`, built at `0d58964`). No computation on images: every number is read
+from a committed CSV, a notes section (cited with its commit) or a gtcore constant.
+
+### What was built
+
+- `scripts/paper_tables.py` writes `docs/figures/tables/table{1,2,3,4}.{csv,md}`,
+  `tableS3_engine_qa`, `tableS4_optimizer`, `caption_numbers` (F4, F5, F6, F8) and
+  `docs/results-summary.md` (every number with source, command, commit and flag; "changes versus
+  the rev-3 mock numbers"; "open items"). Every CSV row carries a `locator`:
+  `csv:<file>?<where>#<column>@<fmt>` (one cell, formatted), `md:<file>#<tokens>` (notes / CSV
+  header text), `code:<file>#<tokens>` (gtcore constants, Table 2), `pending:<file>` (campaign
+  output not yet committed), `fixed:` / `agg:`. Formatting: cGy integers, Gy one decimal,
+  fractions as %, mm two decimals, Dice three decimals.
+- `--check` rebuilds every table in memory, compares the written data rows, re-evaluates every
+  locator (the formatted CSV value must appear in the row; the CSV header commit must appear in
+  the row's commit cell; notes / code tokens must exist; every cited commit must exist in git; a
+  `pending:` file must still be absent), and checks the Markdown column counts.
+- `docs/figures/tables/table2_parameters.csv` (hand-maintained, 23 rows): `HULL_REACH_MM` 14,
+  `SHEET_TOL_MM`, `VAULT_MARGIN_MM` 4, λ = 3.5, λ_tail = 1 / `TAIL_Q` 0.10, SA 8 × 60, candidate
+  grid, κ range (−0.08, 0.5) per mm, `DISAGREE_MM` 1.5 (rev-3 caveat: verdicts uncalibrated, kept
+  out of the paper), tile gates (standard / loose / cover), `IMPLANT_REACH` r = 10 mm (this case,
+  Dice), `SEED_PLANE_OFFSET_MM` 3.0 (not re-tuned; in vivo 3.65 mm), RIND depth, S_K / rx,
+  gamma settings, eligibility (craniotomy ∪ demonstrated reach), MC bands, rasteriser,
+  `_FOOTPRINT_RCOND` 1e-3, phantom cavity rule, capacity grid.
+- Campaign rows (Table 3 capacity / synthetic benchmark / phantom arms / three patient arms,
+  Table S4 V2–V8, F8(b) caption, Table 4 measurement) are `pending campaign`; they switch to
+  measured automatically when `docs/figures/optimize/data/{capacity,v2_*,v3_gap,…,f8_patient_summary}.csv`
+  and `docs/figures/data/table4_runtimes.csv` land with a `# commit:` header (the rev-1 files of
+  2026-10-07 have none and are treated as superseded). Table 4 meanwhile lists the Phase 1–3
+  timings from the notes, labelled interim (upper bounds under concurrent load).
+
+### Commands and result
+
+```
+python scripts/paper_tables.py --check          # worktree root; builds, then verifies
+#   table1 10 rows, table2 23, table3 45 (5 pending: capacity, synthetic benchmark, phantom arms,
+#   patient arms, MIM check), table4 12 (1 pending), tableS3 35, tableS4 10 (all pending),
+#   caption_numbers 19 (1 pending); 154 rows, 449 locator parts, 21 distinct commits, all in git;
+#   "no problems"
+GTCORE_STRICT=1 python -m pytest -q tests/test_paper_tables.py     # 11 passed
+```
+
+Key Table 3 values as generated (all calibration-set unless stated): 30/30 contoured seeds
+(median 0.15, p95 0.73, max 0.89 mm), 32/32 plan sources (median 0.92 mm); count-free 6/8
+tiles + 8 leftovers (four pairs 9.0–9.6 mm); N = 8 prior 7/8 (1 degraded); 6 full + 4 half
+32/32 (pending operative record); PH8 8/8, 32/32; PH0 0 candidates (n/a); cavity Dice 0.896
+(synthetic), 0.665 vs `Cav_Post` (0.663 at 0efe5eb); CTV_GT D90 RTDOSE 6365 / gtcore@32 TPS
+6224 (S–I 6323) / gtcore@32 seeds 6167 (S–I 6288) / @30 5790 cGy; gamma gtcore seeds 99.3 /
+97.0 % (S–I 99.5 / 98.8 %) global 30–200 Gy; > 200 Gy voxels 9.05 %, median 3.82 mm from a
+seed; MC D90 [6133, 6212] (primary), [6068, 6255] cGy (degraded export); seed-to-`Cav_Post`
++3.65 mm, phantom +3.05 mm; engine QA Table XII max 0.29 %, Table XXIII 0.24 % (n/a); cross-grid
+CTV_GT +2.0 %; MIM check pending.
+
+Notes for the coordinator: when the campaign lands, re-run `python scripts/paper_tables.py
+--check` from the merged tree and commit the regenerated tables; if the campaign's column names
+differ from `scripts/patient_optimize.py` / `validation_optimize.py` as of 4748ccb (e.g.
+`RIND5_gtcore_V100`, `CTV_GT_D90_cGy`, `RIND5_V100_mean`), `--check` or the builder says so. The
+F8 patient row lists every arm present in `f8_patient_summary.csv` (three expected). No shared
+file touched; nothing installed.
