@@ -4710,4 +4710,5 @@ culling. Slice panels: legend band 0.165 in per row + 0.07 in below the 2.2 / 2.
 PYTHONPATH=. python scripts/export_phantom_wall.py "$GT_DATA_ROOT/<PH8>" "$GT_DATA_ROOT/<PH0>"   # once; -> docs/figures/data/f4c_phantom_wall.npz (header commit 102eb12)
 python scripts/paper_figures.py                                                                  # final render at c2ea58a
 GTCORE_STRICT=1 python -m pytest -q tests/test_paper_figures.py                                  # 4 passed
+# full suite at ab22718 (GTCORE_STRICT=1, concurrent load): 1139 passed, 15 skipped, 1 xfailed, 15532 warnings in 829.14s
 ```
