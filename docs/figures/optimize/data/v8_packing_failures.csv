@@ -1,0 +1,98 @@
+# V8 packing failures -- scripts/packing_failures.py (post-processing of the campaign CSVs; no solver run)
+# command: python scripts/packing_failures.py --v2 <v2_rows.csv> --capacity <capacity.csv> --v3 <v3_gap.csv> --v3 <v3_gap.csv> --out <dir>
+# campaign commit (inputs): d2d455e; this table generated at 085fe60, 2026-11-03 11:42
+# datasets: synthetic cavities (make_head_phantom seeds 1-6 x scales 0.8/1.0/1.25); no patient data
+# packing_exists_on_grid: yes = some arm returned a conflict-free selection of >= N tiles at this cavity, or packing_capacity (greedy MIS) >= N; no (proved) = the V100 bound returned infeasible at some M <= N; unknown otherwise. Candidate grid h 4 mm / 6 spins / M_opt 1000 (V2).
+# truth never counts as evidence: the generator's 8 truth tiles overlap under the planner rule on every cavity and lie off the candidate grid
+# SA starts from greedy (frozen solver); a failed greedy start is a FAILED SA row, never a lower score
+cavity,N,truth,v100_bound,greedy,sa_seeds_packed,uniform,capacity_at_grid,max_conflict_free_packed,packing_exists_on_grid,evidence,n_sa_failed,sa_failure_class
+s1_x0.80,4,-,yes (enum_bb),yes,3/3,yes,4,4,yes,uniform packed 4; capacity 4,0,SA packed N
+s1_x0.80,6,-,infeasible (proved),no (2),0/3,no (0),4,4,no (proved),bound infeasible at N=6,3,no packing exists (proved)
+s1_x0.80,8,"8 tiles, 17 planner overlaps",infeasible (proved),no (2),0/3,no (0),4,4,no (proved),bound infeasible at N=6,3,no packing exists (proved)
+s1_x0.80,10,-,not run,no (2),0/3,no (0),4,4,no (proved),bound infeasible at N=6,3,no packing exists (proved)
+s1_x0.80,12,-,not run,no (2),0/3,no (0),4,4,no (proved),bound infeasible at N=6,3,no packing exists (proved)
+s2_x0.80,4,-,yes (enum_bb),yes,3/3,no (0),4,4,yes,greedy packed 4; capacity 4,0,SA packed N
+s2_x0.80,6,-,infeasible (proved),no (3),0/3,no (0),4,4,no (proved),bound infeasible at N=6,3,no packing exists (proved)
+s2_x0.80,8,"8 tiles, 18 planner overlaps",infeasible (proved),no (3),0/3,no (0),4,4,no (proved),bound infeasible at N=6,3,no packing exists (proved)
+s2_x0.80,10,-,not run,no (3),0/3,no (0),4,4,no (proved),bound infeasible at N=6,3,no packing exists (proved)
+s2_x0.80,12,-,not run,no (3),0/3,no (0),4,4,no (proved),bound infeasible at N=6,3,no packing exists (proved)
+s3_x0.80,4,-,yes (enum_bb),yes,3/3,yes,4,4,yes,uniform packed 4; capacity 4,0,SA packed N
+s3_x0.80,6,-,infeasible (proved),no (2),0/3,no (0),4,4,no (proved),bound infeasible at N=6,3,no packing exists (proved)
+s3_x0.80,8,"8 tiles, 16 planner overlaps",infeasible (proved),no (2),0/3,no (0),4,4,no (proved),bound infeasible at N=6,3,no packing exists (proved)
+s3_x0.80,10,-,not run,no (2),0/3,no (0),4,4,no (proved),bound infeasible at N=6,3,no packing exists (proved)
+s3_x0.80,12,-,not run,no (2),0/3,no (0),4,4,no (proved),bound infeasible at N=6,3,no packing exists (proved)
+s4_x0.80,4,-,yes (enum_bb),yes,3/3,no (0),4,6,yes,greedy packed 6; capacity 4,0,SA packed N
+s4_x0.80,6,-,yes (enum_bb),yes,3/3,no (0),4,6,yes,greedy packed 6,0,SA packed N
+s4_x0.80,8,"8 tiles, 17 planner overlaps",infeasible (proved),no (5),0/3,no (0),4,6,no (proved),bound infeasible at N=8,3,no packing exists (proved)
+s4_x0.80,10,-,not run,no (5),0/3,no (0),4,6,no (proved),bound infeasible at N=8,3,no packing exists (proved)
+s4_x0.80,12,-,not run,no (5),0/3,no (0),4,6,no (proved),bound infeasible at N=8,3,no packing exists (proved)
+s5_x0.80,4,-,yes (enum_bb),yes,3/3,no (0),4,4,yes,greedy packed 4; capacity 4,0,SA packed N
+s5_x0.80,6,-,infeasible (proved),no (3),0/3,no (0),4,4,no (proved),bound infeasible at N=6,3,no packing exists (proved)
+s5_x0.80,8,"8 tiles, 18 planner overlaps",infeasible (proved),no (3),0/3,no (0),4,4,no (proved),bound infeasible at N=6,3,no packing exists (proved)
+s5_x0.80,10,-,not run,no (3),0/3,no (0),4,4,no (proved),bound infeasible at N=6,3,no packing exists (proved)
+s5_x0.80,12,-,not run,no (3),0/3,no (0),4,4,no (proved),bound infeasible at N=6,3,no packing exists (proved)
+s6_x0.80,4,-,yes (enum_bb),yes,3/3,yes,4,4,yes,uniform packed 4; capacity 4,0,SA packed N
+s6_x0.80,6,-,infeasible (proved),no (3),0/3,no (0),4,4,no (proved),bound infeasible at N=6,3,no packing exists (proved)
+s6_x0.80,8,"8 tiles, 22 planner overlaps",infeasible (proved),no (3),0/3,no (0),4,4,no (proved),bound infeasible at N=6,3,no packing exists (proved)
+s6_x0.80,10,-,not run,no (3),0/3,no (0),4,4,no (proved),bound infeasible at N=6,3,no packing exists (proved)
+s6_x0.80,12,-,not run,no (3),0/3,no (0),4,4,no (proved),bound infeasible at N=6,3,no packing exists (proved)
+s1_x1.00,4,-,yes (highs),yes,3/3,yes,7,8,yes,greedy packed 8; capacity 7,0,SA packed N
+s1_x1.00,6,-,yes (highs),yes,3/3,yes,7,8,yes,greedy packed 8; capacity 7,0,SA packed N
+s1_x1.00,8,"8 tiles, 16 planner overlaps",yes (highs),yes,3/3,no (0),7,8,yes,greedy packed 8,0,SA packed N
+s1_x1.00,10,-,not run,no (6),0/3,no (0),7,8,unknown,,3,existence unknown
+s1_x1.00,12,-,not run,no (6),0/3,no (0),7,8,unknown,,3,existence unknown
+s2_x1.00,4,-,yes (highs),yes,3/3,yes,7,8,yes,greedy packed 8; capacity 7,0,SA packed N
+s2_x1.00,6,-,yes (highs),yes,3/3,yes,7,8,yes,greedy packed 8; capacity 7,0,SA packed N
+s2_x1.00,8,"8 tiles, 13 planner overlaps",yes (highs),yes,3/3,no (0),7,8,yes,greedy packed 8,0,SA packed N
+s2_x1.00,10,-,not run,no (7),0/3,no (0),7,8,unknown,,3,existence unknown
+s2_x1.00,12,-,not run,no (7),0/3,no (0),7,8,unknown,,3,existence unknown
+s3_x1.00,4,-,yes (highs),yes,3/3,yes,7,8,yes,greedy packed 8; capacity 7,0,SA packed N
+s3_x1.00,6,-,yes (highs),yes,3/3,yes,7,8,yes,greedy packed 8; capacity 7,0,SA packed N
+s3_x1.00,8,"8 tiles, 16 planner overlaps",no incumbent (time limit),yes,3/3,no (0),7,8,yes,greedy packed 8,0,SA packed N
+s3_x1.00,10,-,not run,no (7),0/3,no (0),7,8,unknown,,3,existence unknown
+s3_x1.00,12,-,not run,no (7),0/3,no (0),7,8,unknown,,3,existence unknown
+s4_x1.00,4,-,yes (highs),yes,3/3,yes,9,8,yes,greedy packed 8; capacity 9,0,SA packed N
+s4_x1.00,6,-,yes (highs),yes,3/3,no (0),9,8,yes,greedy packed 8; capacity 9,0,SA packed N
+s4_x1.00,8,"8 tiles, 11 planner overlaps",yes (highs),yes,3/3,no (0),9,8,yes,greedy packed 8; capacity 9,0,SA packed N
+s4_x1.00,10,-,not run,no (8),0/3,no (0),9,8,unknown,,3,existence unknown
+s4_x1.00,12,-,not run,no (8),0/3,no (0),9,8,unknown,,3,existence unknown
+s5_x1.00,4,-,yes (highs),yes,3/3,yes,7,8,yes,greedy packed 8; capacity 7,0,SA packed N
+s5_x1.00,6,-,yes (highs),yes,3/3,yes,7,8,yes,greedy packed 8; capacity 7,0,SA packed N
+s5_x1.00,8,"8 tiles, 15 planner overlaps",no incumbent (time limit),yes,3/3,no (0),7,8,yes,greedy packed 8,0,SA packed N
+s5_x1.00,10,-,not run,no (6),0/3,no (0),7,8,unknown,,3,existence unknown
+s5_x1.00,12,-,not run,no (6),0/3,no (0),7,8,unknown,,3,existence unknown
+s6_x1.00,4,-,yes (highs),yes,3/3,yes,7,8,yes,greedy packed 8; capacity 7,0,SA packed N
+s6_x1.00,6,-,yes (highs),yes,3/3,yes,7,8,yes,greedy packed 8; capacity 7,0,SA packed N
+s6_x1.00,8,"8 tiles, 17 planner overlaps",no incumbent (time limit),yes,3/3,no (0),7,8,yes,greedy packed 8,0,SA packed N
+s6_x1.00,10,-,not run,no (7),0/3,no (0),7,8,unknown,,3,existence unknown
+s6_x1.00,12,-,not run,no (7),0/3,no (0),7,8,unknown,,3,existence unknown
+s1_x1.25,4,-,yes (highs),yes,3/3,yes,10,10,yes,greedy packed 10; capacity 10,0,SA packed N
+s1_x1.25,6,-,yes (highs),yes,3/3,yes,10,10,yes,greedy packed 10; capacity 10,0,SA packed N
+s1_x1.25,8,"8 tiles, 8 planner overlaps",yes (highs),yes,3/3,no (0),10,10,yes,greedy packed 10; capacity 10,0,SA packed N
+s1_x1.25,10,-,not run,yes,3/3,no (0),10,10,yes,greedy packed 10; capacity 10,0,SA packed N
+s1_x1.25,12,-,not run,no (10),0/3,no (0),10,10,unknown,,3,existence unknown
+s2_x1.25,4,-,yes (highs),yes,3/3,yes,10,12,yes,greedy packed 12; capacity 10,0,SA packed N
+s2_x1.25,6,-,yes (highs),yes,3/3,yes,10,12,yes,greedy packed 12; capacity 10,0,SA packed N
+s2_x1.25,8,"8 tiles, 9 planner overlaps",yes (highs),yes,3/3,yes,10,12,yes,greedy packed 12; capacity 10,0,SA packed N
+s2_x1.25,10,-,not run,yes,3/3,no (0),10,12,yes,greedy packed 12; capacity 10,0,SA packed N
+s2_x1.25,12,-,not run,yes,3/3,no (0),10,12,yes,greedy packed 12,0,SA packed N
+s3_x1.25,4,-,yes (highs),yes,3/3,yes,10,12,yes,greedy packed 12; capacity 10,0,SA packed N
+s3_x1.25,6,-,yes (highs),yes,3/3,yes,10,12,yes,greedy packed 12; capacity 10,0,SA packed N
+s3_x1.25,8,"8 tiles, 6 planner overlaps",yes (highs),yes,3/3,yes,10,12,yes,greedy packed 12; capacity 10,0,SA packed N
+s3_x1.25,10,-,not run,yes,3/3,no (0),10,12,yes,greedy packed 12; capacity 10,0,SA packed N
+s3_x1.25,12,-,not run,yes,3/3,no (0),10,12,yes,greedy packed 12,0,SA packed N
+s4_x1.25,4,-,yes (highs),yes,3/3,yes,10,12,yes,greedy packed 12; capacity 10,0,SA packed N
+s4_x1.25,6,-,yes (highs),yes,3/3,yes,10,12,yes,greedy packed 12; capacity 10,0,SA packed N
+s4_x1.25,8,"8 tiles, 8 planner overlaps",yes (highs),yes,3/3,yes,10,12,yes,greedy packed 12; capacity 10,0,SA packed N
+s4_x1.25,10,-,not run,yes,3/3,no (0),10,12,yes,greedy packed 12; capacity 10,0,SA packed N
+s4_x1.25,12,-,not run,yes,3/3,no (0),10,12,yes,greedy packed 12,0,SA packed N
+s5_x1.25,4,-,yes (highs),yes,3/3,yes,10,12,yes,greedy packed 12; capacity 10,0,SA packed N
+s5_x1.25,6,-,yes (highs),yes,3/3,yes,10,12,yes,greedy packed 12; capacity 10,0,SA packed N
+s5_x1.25,8,"8 tiles, 7 planner overlaps",yes (highs),yes,3/3,yes,10,12,yes,greedy packed 12; capacity 10,0,SA packed N
+s5_x1.25,10,-,not run,yes,3/3,no (0),10,12,yes,greedy packed 12; capacity 10,0,SA packed N
+s5_x1.25,12,-,not run,yes,3/3,no (0),10,12,yes,greedy packed 12,0,SA packed N
+s6_x1.25,4,-,yes (highs),yes,3/3,yes,10,12,yes,greedy packed 12; capacity 10,0,SA packed N
+s6_x1.25,6,-,yes (highs),yes,3/3,yes,10,12,yes,greedy packed 12; capacity 10,0,SA packed N
+s6_x1.25,8,"8 tiles, 9 planner overlaps",yes (highs),yes,3/3,no (0),10,12,yes,greedy packed 12; capacity 10,0,SA packed N
+s6_x1.25,10,-,not run,yes,3/3,no (0),10,12,yes,greedy packed 12; capacity 10,0,SA packed N
+s6_x1.25,12,-,not run,yes,3/3,no (0),10,12,yes,greedy packed 12,0,SA packed N

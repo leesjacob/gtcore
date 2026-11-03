@@ -1,0 +1,41 @@
+# V8 packing failures -- scripts/packing_failures.py (post-processing of the campaign CSVs; no solver run)
+# command: python scripts/packing_failures.py --v2 <v2_rows.csv> --capacity <capacity.csv> --v3 <v3_gap.csv> --v3 <v3_gap.csv> --out <dir>
+# campaign commit (inputs): d2d455e; this table generated at 085fe60, 2026-11-03 11:42
+# sa_from_bound_greedy_failed = SA seeds restarted from the bound's selection because greedy could not pack N (rev-1 V3 rule) -- the bound packed N where greedy failed
+v3_file,candidate_grid,commit,cavity,N,n_seed_rows,n_ok,sa_from_greedy,sa_from_bound_greedy_failed,bound_packed_N,failed_reason
+validation_optimize_rev2,campaign,d2d455e,s1_x1.00,4,3,3,3,0,yes,
+validation_optimize_rev2,campaign,d2d455e,s1_x1.00,6,3,3,3,0,yes,
+validation_optimize_rev2,campaign,d2d455e,s1_x1.00,8,3,3,3,0,yes,
+validation_optimize_rev2,campaign,d2d455e,s2_x1.00,4,3,3,3,0,yes,
+validation_optimize_rev2,campaign,d2d455e,s2_x1.00,6,3,3,3,0,yes,
+validation_optimize_rev2,campaign,d2d455e,s2_x1.00,8,3,3,3,0,yes,
+validation_optimize_rev2,campaign,d2d455e,s3_x1.00,4,3,3,3,0,yes,
+validation_optimize_rev2,campaign,d2d455e,s3_x1.00,6,3,3,3,0,yes,
+validation_optimize_rev2,campaign,d2d455e,s3_x1.00,8,3,3,3,0,yes,
+validation_optimize_rev2,campaign,d2d455e,s4_x1.00,4,3,3,3,0,yes,
+validation_optimize_rev2,campaign,d2d455e,s4_x1.00,6,3,3,3,0,yes,
+validation_optimize_rev2,campaign,d2d455e,s4_x1.00,8,3,3,3,0,yes,
+validation_optimize_rev2,campaign,d2d455e,s5_x1.00,4,3,3,3,0,yes,
+validation_optimize_rev2,campaign,d2d455e,s5_x1.00,6,3,3,3,0,yes,
+validation_optimize_rev2,campaign,d2d455e,s5_x1.00,8,3,3,3,0,yes,
+validation_optimize_rev2,campaign,d2d455e,s6_x1.00,4,3,3,3,0,yes,
+validation_optimize_rev2,campaign,d2d455e,s6_x1.00,6,3,3,3,0,yes,
+validation_optimize_rev2,campaign,d2d455e,s6_x1.00,8,3,3,3,0,yes,
+validation_optimize_rev2_v3reduced,reduced,d2d455e,s1_x1.00,4,3,3,3,0,yes,
+validation_optimize_rev2_v3reduced,reduced,d2d455e,s1_x1.00,6,3,3,3,0,yes,
+validation_optimize_rev2_v3reduced,reduced,d2d455e,s1_x1.00,8,3,0,0,0,no,FAILED (n_placed=4): sa status infeasible: greedy start failed: no compatible candidate left after placing 4 of 8 tiles;
+validation_optimize_rev2_v3reduced,reduced,d2d455e,s2_x1.00,4,3,3,3,0,yes,
+validation_optimize_rev2_v3reduced,reduced,d2d455e,s2_x1.00,6,3,3,3,0,yes,
+validation_optimize_rev2_v3reduced,reduced,d2d455e,s2_x1.00,8,3,3,0,3,yes,
+validation_optimize_rev2_v3reduced,reduced,d2d455e,s3_x1.00,4,3,3,3,0,yes,
+validation_optimize_rev2_v3reduced,reduced,d2d455e,s3_x1.00,6,3,3,3,0,yes,
+validation_optimize_rev2_v3reduced,reduced,d2d455e,s3_x1.00,8,3,3,0,3,yes,
+validation_optimize_rev2_v3reduced,reduced,d2d455e,s4_x1.00,4,3,3,3,0,yes,
+validation_optimize_rev2_v3reduced,reduced,d2d455e,s4_x1.00,6,3,3,3,0,yes,
+validation_optimize_rev2_v3reduced,reduced,d2d455e,s4_x1.00,8,3,3,3,0,yes,
+validation_optimize_rev2_v3reduced,reduced,d2d455e,s5_x1.00,4,3,3,3,0,yes,
+validation_optimize_rev2_v3reduced,reduced,d2d455e,s5_x1.00,6,3,3,3,0,yes,
+validation_optimize_rev2_v3reduced,reduced,d2d455e,s5_x1.00,8,3,0,0,0,no,FAILED (n_placed=5): sa status infeasible: greedy start failed: no compatible candidate left after placing 5 of 8 tiles;
+validation_optimize_rev2_v3reduced,reduced,d2d455e,s6_x1.00,4,3,3,3,0,yes,
+validation_optimize_rev2_v3reduced,reduced,d2d455e,s6_x1.00,6,3,3,3,0,yes,
+validation_optimize_rev2_v3reduced,reduced,d2d455e,s6_x1.00,8,3,0,0,0,no,FAILED (n_placed=5): sa status infeasible: greedy start failed: no compatible candidate left after placing 5 of 8 tiles;

@@ -1,0 +1,946 @@
+"""F8 / Table 3 -- the patient run: the implanted configuration vs the
+optimizer's 8 tiles on the same post-operative cavity (Paper 2, Phase 4
+campaign, step 4; requirements rev 3 section 3 F8(c), decisions log
+2026-11-03 "F8(c) conditions" and "Phase 4 code decisions"; coordinator
+amendments 2026-11-03: demonstrated-reach eligibility, CTV_GT-optimized arm).
+
+What it does (one clinical case, PT-CT1mm + PT-RT; every number is
+calibration-set):
+
+1. ``reconstruct(vol, n_full_tiles="auto")`` -> the 32 localized seeds, the
+   gtcore cavity mask and its wall mesh (the mesh every arm is scored on).
+2. The scoring structures of Table 3 (``validation_clinical.build_targets``,
+   Phase 2 definitions, CT grid): ``RIND5(gtcore cavity, clip cranial
+   interior)`` (the implant-independent F8 / Table 3 target),
+   ``HRCTV_PHYS (CTV_GT)`` (the physician's hand-trimmed target), and
+   ``IMPLANT_REACH(r = 10 mm)`` (the physician's partial-rind convention, F6
+   only; ``RIND5(Cav_Post, clip Brain)`` and r = 12 mm alongside for
+   completeness).  Every arm is scored with the ONE ``dose_stats`` on the exact
+   TG-43 dose at the structure's voxel centres, S_K 3.5 U nominal.
+3. The eligible wall for the optimizer = the craniotomy-side rule WITHOUT the
+   implant-visibility term (``candidates.craniotomy_faces(mesh, opening,
+   implant_center_ras=None)``: facing the opening within the 90 deg cone AND
+   line of sight through the opening -- the decisions log's F8(b) rule)
+   UNION the *demonstrated reach*: wall faces within 10 mm of any implanted
+   seed centre (coordinator, 2026-11-03: the facing + line-of-sight rule
+   alone excluded wall the surgeon demonstrably used).  The mask is built
+   here and passed as ``optimize(eligible=EligibleFaces)``; the candidates
+   module's rules are untouched.  The fraction of implanted seeds on
+   eligible wall is the fairness check (reported for the union and for the
+   craniotomy rule alone).
+4. Arms: (i) **as implanted** = the pipeline's 32 localized seeds with their
+   physical (PCA) axes -- the dose is a property of the seeds, not of the
+   tile fit; the two count-known tile fits (N = 8 full, and 6 full + 4 half
+   -- ``scripts/leftover_seeds.py --halves 6,4``, decisions log "the eight
+   leftover seeds are half tiles") are reported as the implant's geometry
+   (tile count, overlaps, leftovers) and, for the N = 8 fit, the dose of the
+   seeds its tiles own (leftovers excluded) as a sensitivity line;
+   (ii) **optimized for RIND5** = ``plan.optimize(mesh, 8, solver="sa")`` on
+   the eligible wall with the optimizer's default target (the +5 mm shell of
+   the eligible wall, area weights -- the S5 surrogate of RIND5);
+   (iii) **optimized for the physician's target** = the same N, eligibility
+   and SA settings with ``target = TargetSet.from_points(CTV_GT voxel
+   centres, unit weights)`` (the optimizer's target set is a weighted point
+   set; the CTV_GT mask from the RTSTRUCT is given as its voxel centres with
+   unit weights, which equals volume weighting on the CT grid; the influence
+   matrix subsamples M_opt of them).  Frozen objective (lambda_tail 1,
+   TAIL_Q 0.10), SA 8 x 60, one run per ``--sa-seeds`` value; best and mean
+   reported per family (best = highest V100 on the family's own target:
+   RIND5(gtcore) for (ii), CTV_GT for (iii); the campaign's ``sa_best``
+   rule).  Both optimized families share one candidate set (same mesh, same
+   eligibility).
+5. Outputs: ``<out-csv>/f8_patient_arms.csv`` (arm x structure x metric),
+   ``<out-csv>/f8_patient_summary.csv`` (one row per arm), and the render
+   data ``<out-data>/f8b_patient_optimized.npz`` + ``.json`` (same array
+   conventions as ``f4b_patient_implant.npz``: RAS mm, [k, j, i] arrays,
+   shared ``sheet_faces``; two optimized modes ``opt_rind5_*`` and
+   ``opt_ctvgt_*``, the eligible-face masks and the opening).
+
+Usage (worktree root, PYTHONPATH=<worktree>, GTCORE_STRICT=1)::
+
+    python scripts/patient_optimize.py "$GT_DATA_ROOT/<PT-CT1mm>" \
+        --rtstruct "$GT_DATA_ROOT/<PT-RT RTSTRUCT>" --tiles 8 --sa-seeds 0 1 2 --halves 6,4 \
+        --out-csv docs/figures/optimize/data --out-data docs/figures/data --reports <scratch>
+
+No parameter is tuned here; the objective, the SA budget, S_K, the seed plane
+and the eligibility constants are the frozen gtcore values.
+"""
+from __future__ import annotations
+
+import argparse
+import csv
+import datetime as _dt
+import importlib.util
+import json
+import os
+import re
+import subprocess
+import sys
+import time
+
+import numpy as np
+import trimesh
+from scipy.spatial import cKDTree
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SCRIPTS = os.path.dirname(os.path.abspath(__file__))
+if ROOT not in sys.path:
+    sys.path.insert(0, ROOT)
+
+import gtcore  # noqa: E402
+import gtcore.plan as plan  # noqa: E402
+from gtcore import geometry as _geom  # noqa: E402
+from gtcore.dose.engine import TG43Engine  # noqa: E402
+from gtcore.dose.metrics import dose_stats  # noqa: E402
+from gtcore.dose.targets import target_doses_exact  # noqa: E402
+from gtcore.interact import (SEED_WALL_OFFSET_MM, _project_to_wall, _tangent_frame,  # noqa: E402
+                             find_overlapping_tiles, tiles_to_seed_arrays)
+from gtcore.io import load_volume  # noqa: E402
+from gtcore.io.rt import load_rtstruct, rasterize_rois  # noqa: E402
+from gtcore.pipeline import reconstruct  # noqa: E402
+from gtcore.plan import TargetSet  # noqa: E402
+from gtcore.plan import candidates as cand_mod  # noqa: E402
+from gtcore.planner import wall_mesh_for  # noqa: E402
+from gtcore.tiles import ImplantPrior, fit_tiles, fit_tiles_prior  # noqa: E402
+from gtcore.tiles.auto import to_placed_tiles  # noqa: E402
+
+SK_U = 3.5                  # nominal S_K per seed, never fitted
+RX_CGY = 6000.0
+REACH_R_MM = 10.0           # F6 calibration (docs/paper2-decisions.md)
+REACH_FACE_MM = 10.0        # demonstrated reach: wall faces within this distance of an implanted seed centre
+OVERLAP_MM = 1.0            # the planner's overlap rule (amber caution, never an error)
+SHEET_N = 9                 # grid points per tile side in the render sheets (as f4b)
+TILE_HALF_MM = 10.0
+CAVITY_FACE_MM = SEED_WALL_OFFSET_MM + 1.0   # f4b convention: tissue face -3, seed sheet 0, cavity face +1
+FLAG = "calibration-set"
+DATASETS = "PT-CT1mm (post-op CT, 1 mm), PT-RT (RTSTRUCT: Cav_Post, CTV_GT, Brain)"
+PRIMARY = ("RIND5(gtcore cavity, clip cranial interior)", "HRCTV_PHYS (CTV_GT)",
+           "IMPLANT_REACH(r=10 mm)")
+STAT_KEYS = ("D90", "V100", "V150", "V200", "Dmin", "Dmean", "Dmax", "D50", "volume_cc", "n")
+FAMILY_RIND5 = "rind5"
+FAMILY_CTV = "ctvgt"
+
+
+# ------------------------------------------------------------------ helpers
+def git_commit() -> str:
+    try:
+        return subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], cwd=ROOT,
+                                       stderr=subprocess.DEVNULL).decode().strip()
+    except Exception:                                                 # noqa: BLE001
+        return "unknown"
+
+
+def load_script(name: str):
+    """Import a sibling script as a module (its ``main`` is guarded)."""
+    if name in sys.modules:
+        return sys.modules[name]
+    spec = importlib.util.spec_from_file_location(name, os.path.join(SCRIPTS, name + ".py"))
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[name] = mod          # dataclasses resolve annotations through sys.modules
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def masked_argv(argv, flags=("--rtstruct", "--out-csv", "--out-data", "--reports")):
+    out, skip = [], False
+    for i, tok in enumerate(argv):
+        if skip:
+            out.append("<path>")
+            skip = False
+        elif tok in flags:
+            out.append(tok)
+            skip = True
+        elif i == 0 and not tok.startswith("-"):
+            out.append('"$GT_DATA_ROOT/<PT-CT1mm>"')
+        else:
+            out.append(tok)
+    return out
+
+
+def _fmt(v):
+    if v is None:
+        return ""
+    if isinstance(v, (float, np.floating)):
+        v = float(v)
+        return "nan" if not np.isfinite(v) else "%.6g" % v
+    if isinstance(v, (np.integer,)):
+        return str(int(v))
+    return str(v)
+
+
+def write_csv(path, rows, columns, header_lines):
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+    with open(path, "w", newline="", encoding="utf-8") as fh:
+        for ln in header_lines:
+            fh.write("# " + ln + "\n")
+        w = csv.writer(fh)
+        w.writerow(columns)
+        for r in rows:
+            w.writerow([_fmt(r.get(c)) for c in columns])
+
+
+def header(command, commit, what, columns, extra=()):
+    lines = [
+        "F8 / Table 3 patient run -- %s" % what,
+        "script: scripts/patient_optimize.py",
+        "command: " + command,
+        "commit: " + commit,
+        "date: " + _dt.datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "datasets: " + DATASETS,
+        "flag: %s (one clinical case; reference, not a cohort claim)" % FLAG,
+        "frozen: objective lambda_tail %g / TAIL_Q %g; SA %d x %d; S_K %.2f U nominal; rx %.0f cGy; "
+        "seed plane %.2f mm; eligibility cone %g deg, footprint tol %g mm, view offset %g mm; "
+        "candidate grid h %g mm / %d spins; M_opt %d"
+        % (plan.LAMBDA_TAIL, plan.TAIL_Q, plan.SA_N_RESTARTS, plan.SA_N_SWEEPS, SK_U, RX_CGY,
+           SEED_WALL_OFFSET_MM, cand_mod.CONE_DEG, cand_mod.FOOTPRINT_TOL_MM, cand_mod.VIEW_OFFSET_MM,
+           plan.DEFAULT_H_MM, plan.DEFAULT_N_SPINS_FULL, plan.M_OPT_MAX),
+        "scoring: exact TG-43 dose at the structure's CT-grid voxel centres, gtcore.dose.metrics.dose_stats "
+        "(one convention); the optimizer report's own RIND5 (1 mm report grid) is carried as report_RIND5_*",
+    ]
+    lines += list(extra)
+    lines.append("columns: " + ", ".join(columns))
+    return lines
+
+
+def cavity_centroid_ras(vol, mask):
+    kji = np.argwhere(np.asarray(mask, bool))
+    if kji.size == 0:
+        return None
+    return np.asarray(vol.index_to_ras(kji.mean(axis=0)[::-1]), float).reshape(3)
+
+
+# --------------------------------------------------------------------- arms
+def score(targets, centers, axes, eng):
+    out = {}
+    for label, t in targets:
+        d = np.asarray(target_doses_exact(t, centers, axes, SK_U, engine=eng), float).reshape(-1)
+        out[label] = dose_stats(d, RX_CGY, voxel_volume_mm3=t.voxel_volume_mm3)
+    return out
+
+
+def fit_geometry(fit, centers, axes, n_seeds):
+    """Tile count / kinds / leftovers / planner overlaps of a tile fit."""
+    poses = list(getattr(fit, "all_tiles", None) or fit.tiles)
+    assigned = sorted({int(i) for p in poses for i in p.seed_indices if int(i) >= 0})
+    left = [i for i in range(n_seeds) if i not in set(assigned)]
+    tiles = to_placed_tiles(fit, centers, axes) if poses else []
+    ov = find_overlapping_tiles(tiles, threshold_mm=OVERLAP_MM) if len(tiles) > 1 else []
+    return {
+        "poses": poses, "tiles": tiles, "assigned": assigned, "leftovers": left,
+        "n_tiles": len(poses), "n_full": sum(1 for p in poses if p.kind == "full"),
+        "n_half": sum(1 for p in poses if p.kind == "half"),
+        "n_degraded": sum(1 for p in poses if bool(getattr(p, "degraded", False))),
+        "n_overlaps": len(ov), "overlap_pairs": [(int(a), int(b)) for a, b in ov],
+    }
+
+
+def fairness(mesh, elig_mask, seed_centers, near_mm=6.0):
+    """Implanted seeds on eligible wall: nearest face eligible; within
+    ``near_mm`` of an eligible face."""
+    elig_mask = np.asarray(elig_mask, bool)
+    _cp, _d, fid = trimesh.proximity.closest_point(mesh, seed_centers)
+    on = elig_mask[np.asarray(fid, int)]
+    if elig_mask.any():
+        sub = mesh.submesh([np.flatnonzero(elig_mask)], append=True)
+        _cp2, d2, _f2 = trimesh.proximity.closest_point(sub, seed_centers)
+        near = np.asarray(d2) <= near_mm
+    else:
+        d2 = np.full(len(seed_centers), np.nan)
+        near = np.zeros(len(seed_centers), bool)
+    return {"n_seeds": int(len(seed_centers)), "nearest_face_eligible": int(on.sum()),
+            "fraction_nearest_face_eligible": float(on.mean()),
+            "within_%gmm_of_eligible" % near_mm: int(near.sum()),
+            "fraction_within_%gmm_of_eligible" % near_mm: float(near.mean()),
+            "seed_to_eligible_wall_mm": [float(v) for v in np.asarray(d2)],
+            "seed_nearest_face_eligible": [bool(v) for v in on]}
+
+
+def tile_sheets(mesh, tiles, n=SHEET_N):
+    """n x n render sheets of conformed tiles, draped the way the conformer
+    drapes a tile (``interact._project_to_wall`` from the tile's anchor along
+    its normal): the tissue face ON the wall, the seed sheet +3 mm and the
+    cavity face +4 mm along the local inward normal.  Row-major (r * n + c),
+    the faces are ``leftover_seeds.sheet_faces(n)``."""
+    u = np.linspace(-TILE_HALF_MM, TILE_HALF_MM, n)
+    uv_full = np.array([[a, b] for a in u for b in u], float)
+    out = {"wall": [], "seed": [], "cavity": []}
+    for t in tiles:
+        nrm, t1, t2 = _tangent_frame(t.normal_ras, t.axis_ras)
+        uv = uv_full.copy()
+        if t.kind == "half":
+            uv[:, 0] *= 0.5                       # a 10 x 20 mm strip along t2
+        anchor = t.anchor_ras if t.anchor_ras is not None else t.center_ras - SEED_WALL_OFFSET_MM * nrm
+        wall, loc_n = _project_to_wall(mesh, anchor, nrm, t1, t2, uv)
+        out["wall"].append(wall)
+        out["seed"].append(wall + SEED_WALL_OFFSET_MM * loc_n)
+        out["cavity"].append(wall + CAVITY_FACE_MM * loc_n)
+    return {k: (np.asarray(v, float) if v else np.zeros((0, n * n, 3))) for k, v in out.items()}
+
+
+def tile_arrays(tiles):
+    N = len(tiles)
+    seeds = np.full((N, 4, 3), np.nan)
+    saxes = np.full((N, 4, 3), np.nan)
+    for i, t in enumerate(tiles):
+        k = t.seed_centers.shape[0]
+        seeds[i, :k] = t.seed_centers
+        saxes[i, :k] = t.seed_axes
+    return {
+        "tile_kind": np.array([t.kind for t in tiles]) if N else np.zeros(0, dtype="<U4"),
+        "tile_center_ras": np.asarray([t.center_ras for t in tiles], float).reshape(N, 3),
+        "tile_normal_ras": np.asarray([t.normal_ras for t in tiles], float).reshape(N, 3),
+        "tile_axis_ras": np.asarray([t.axis_ras for t in tiles], float).reshape(N, 3),
+        "tile_anchor_ras": np.asarray([t.anchor_ras if t.anchor_ras is not None else t.center_ras
+                                       for t in tiles], float).reshape(N, 3),
+        "tile_corners_ras": np.asarray([t.corners_ras for t in tiles], float).reshape(N, 4, 3),
+        "tile_seed_ras": seeds, "tile_seed_axes_ras": saxes,
+    }
+
+
+def config_arrays(mesh, tiles, n=SHEET_N):
+    """Every render array of one tile configuration (no prefix)."""
+    out = dict(tile_arrays(tiles))
+    sh = tile_sheets(mesh, tiles, n)
+    out["sheet_wall_vertices"], out["sheet_seed_vertices"], out["sheet_cavity_vertices"] = (
+        sh["wall"], sh["seed"], sh["cavity"])
+    c, a = tiles_to_seed_arrays(tiles)
+    out["seed_centers_ras"], out["seed_axes_ras"] = np.asarray(c, float), np.asarray(a, float)
+    return out
+
+
+CONFIG_DOCS = {
+    "tile_kind": ("-", "'full' (4 seeds) or 'half' (2 seeds)"),
+    "tile_center_ras": ("mm", "centroid of the tile's seed centres"),
+    "tile_normal_ras": ("unit", "wall normal at the anchor, INTO the cavity"),
+    "tile_axis_ras": ("unit", "in-plane t1 (seed axes direction)"),
+    "tile_anchor_ras": ("mm", "wall anchor (on the mesh)"),
+    "tile_corners_ras": ("mm", "four corners at the seed plane (3 mm off the wall), loop order"),
+    "tile_seed_ras": ("mm", "seed centres per tile (-1/nan padded for half tiles)"),
+    "tile_seed_axes_ras": ("unit", "their axes"),
+    "sheet_wall_vertices": ("mm", "n x n tissue face ON the wall (interact._project_to_wall from the anchor)"),
+    "sheet_seed_vertices": ("mm", "the same sheet +3 mm along the local inward normal (seed plane)"),
+    "sheet_cavity_vertices": ("mm", "the same sheet +4 mm (cavity face)"),
+    "seed_centers_ras": ("mm", "all seeds of the configuration, flat (tiles_to_seed_arrays order)"),
+    "seed_axes_ras": ("unit", "their axes"),
+    "seed_tile_id": ("index", "[implant fit] tile owning each localized seed, -1 = leftover"),
+    "seed_leftover": ("bool", "[implant fit] no tile of the fit owns the seed"),
+    "tile_degraded": ("bool", "[implant fit] recovered outside the standard gates"),
+    "sa_seed": ("-", "[optimized] the SA seed of the exported configuration (best on its own target)"),
+    "objective_target": ("-", "[optimized] the optimizer's target set"),
+}
+
+
+def bound_start_sa(mesh, n, elig_mask, target, seed, rx, rind_kw, time_limit_s=300.0):
+    """The rev-1 V3 rule for a FAILED greedy start: the V100 bound
+    (``plan.milp.solve_milp(method="auto")``, coverage only, tail term dropped)
+    on the SAME candidate set / conflicts / influence ``plan.optimize`` builds
+    (its cached builders, the eligible mask, the default grid), then SA from
+    the bound's selection; ``final_report`` as ``optimize`` does.  Returns
+    ``(tiles, report, info)``; ``tiles`` is None when the bound packs no N."""
+    from gtcore.plan import api as _api
+    from gtcore.plan import milp as _milp
+    tgt = target if target is not None else _api.default_target(mesh, elig_mask)
+    t0 = time.perf_counter()
+    cand = _api.cached_candidates(mesh, h_mm=plan.DEFAULT_H_MM, n_spins=None, kinds=("full",),
+                                  eligible_faces=elig_mask)
+    infl = _api.cached_influence(cand, tgt, rx_cgy=rx)
+    conf = _api.cached_conflicts(cand)
+    objective = plan.make_objective(infl, conf, rx_cgy=rx)
+    objective.candidates = cand
+    t_inst = time.perf_counter() - t0
+    t0 = time.perf_counter()
+    mi = _milp.solve_milp(objective, int(n), time_limit_s=float(time_limit_s), method="auto")
+    t_b = time.perf_counter() - t0
+    sel_b = np.asarray(mi.selection, int).reshape(-1)
+    info = {"n_candidates": int(len(cand)), "bound_status": mi.status,
+            "bound_method": (mi.extra or {}).get("method") if isinstance(mi.extra, dict) else None,
+            "bound_n_placed": int(sel_b.size), "bound_s": t_b, "instance_s": t_inst,
+            "bound_V100_influence": float(mi.metrics.get("V100", float("nan"))) if mi.metrics else None,
+            "time_limit_s": float(time_limit_s)}
+    if sel_b.size != int(n) or not conf.is_feasible(sel_b):
+        info["reason"] = "V100 bound packs no %d-tile selection (status %s): %s" % (n, mi.status, mi.reason)
+        return None, None, info
+    t0 = time.perf_counter()
+    sa = plan.solve_sa(objective, int(n), seed=int(seed), start=sel_b, candidates=cand)
+    t_sa = time.perf_counter() - t0
+    sel = np.asarray(sa.selection, int).reshape(-1)
+    if sa.status not in ("ok", "optimal", "time_limit") or sel.size != int(n) or not conf.is_feasible(sel):
+        info["reason"] = "SA from the bound's selection: status %s, %d tiles" % (sa.status, sel.size)
+        return None, None, info
+    tiles = cand.tiles_of(sel)
+    rep = plan.final_report(mesh, tiles, rx_cgy=rx, target=tgt, solver_result=sa, **rind_kw)
+    rep.runtime = dict(rep.runtime or {}, candidates_influence_conflicts=t_inst, v100_bound=t_b, solver=t_sa)
+    rep.candidate_stats = dict(rep.candidate_stats or {}, n_candidates=int(len(cand)))
+    info["sa_s"] = t_sa
+    return tiles, rep, info
+
+
+# --------------------------------------------------------------------- main
+def main(argv=None) -> int:
+    p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    p.add_argument("ct_dir", help="PT-CT1mm DICOM series directory")
+    p.add_argument("--rtstruct", required=True, help="PT-RT RTSTRUCT directory/file (Cav_Post, CTV_GT, Brain)")
+    p.add_argument("--tiles", type=int, default=8, help="N full tiles for the optimizer (default 8)")
+    p.add_argument("--sa-seeds", type=int, nargs="+", default=(0, 1, 2), dest="sa_seeds")
+    p.add_argument("--halves", default="6,4", help="count-known fit with half tiles, F,H (default 6,4)")
+    p.add_argument("--count-known", type=int, default=8, dest="count_known",
+                   help="count-known N full fit (pipeline chord path, default 8)")
+    p.add_argument("--reach-face-mm", type=float, default=REACH_FACE_MM, dest="reach_face_mm",
+                   help="demonstrated reach: wall faces within this distance of an implanted seed centre are "
+                        "eligible too (default %g mm)" % REACH_FACE_MM)
+    p.add_argument("--out-csv", default=os.path.join("docs", "figures", "optimize", "data"), dest="out_csv")
+    p.add_argument("--out-data", default=os.path.join("docs", "figures", "data"), dest="out_data")
+    p.add_argument("--reports", default=None, help="scratch folder for the optimizer report JSONs")
+    p.add_argument("--rx", type=float, default=RX_CGY)
+    a = p.parse_args(argv)
+    argv_in = sys.argv[1:] if argv is None else list(argv)
+    command = "python scripts/patient_optimize.py " + " ".join(masked_argv(argv_in))
+    commit = git_commit()
+    print("gtcore.__file__ =", gtcore.__file__)
+    print("commit", commit)
+    if (plan.LAMBDA_TAIL, plan.TAIL_Q, plan.SA_N_RESTARTS, plan.SA_N_SWEEPS) != (1.0, 0.10, 8, 60):
+        raise SystemExit("frozen Phase 4 constants changed: %r" % ((plan.LAMBDA_TAIL, plan.TAIL_Q,
+                                                                   plan.SA_N_RESTARTS, plan.SA_N_SWEEPS),))
+    rx = float(a.rx)
+    reach_face_mm = float(a.reach_face_mm)
+    t_all = time.perf_counter()
+    if a.reports:
+        os.makedirs(a.reports, exist_ok=True)
+    vc = load_script("validation_clinical")
+    ls = load_script("leftover_seeds")
+
+    # 1. pipeline ----------------------------------------------------------
+    vol = load_volume(a.ct_dir)
+    print("volume %s @ %s mm" % (vol.array.shape, tuple(round(float(s), 3) for s in vol.spacing)))
+    t0 = time.perf_counter()
+    res = reconstruct(vol, verbose=False, n_full_tiles="auto", n_half_tiles=0)
+    t_rec = time.perf_counter() - t0
+    centers = np.asarray(res.seeds.centers_ras, float)
+    axes = np.asarray(res.seeds.axes_ras, float)
+    n_seeds = int(centers.shape[0])
+    mesh, label = wall_mesh_for(res)
+    if label != "cavity wall" or mesh is None:
+        raise SystemExit("no gtcore cavity wall on this scan (wall = %s)" % label)
+    aff = np.asarray(vol.affine, float)
+    cav_center = cavity_centroid_ras(vol, res.cavity_mask)
+    vox_ml = float(np.prod(vol.spacing)) / 1000.0
+    print("reconstruct %.1f s: %d seeds, gtcore cavity %.1f cc, wall %d faces %.0f mm2"
+          % (t_rec, n_seeds, res.cavity_mask.sum() * vox_ml, len(mesh.faces), mesh.area))
+
+    # 2. structures --------------------------------------------------------
+    rs = load_rtstruct(a.rtstruct)
+    names = [n for n in ("Cav_Post", "CTV_GT", "Brain") if n in rs.roi_names]
+    t0 = time.perf_counter()
+    masks_rt = rasterize_rois(rs, names, vol)
+    targets, _m = vc.build_targets(vol, rs, res, centers, masks=masks_rt)
+    t_targets = time.perf_counter() - t0
+    tdict = dict(targets)
+    for lab in PRIMARY:
+        if lab not in tdict:
+            raise SystemExit("structure %r missing from build_targets (have %r)" % (lab, list(tdict)))
+    print("structures (%.1f s):" % t_targets)
+    for lab, t in targets:
+        print("  %-46s %7.2f cc  %s" % (lab, t.volume_cc, t.describe()))
+    eng = TG43Engine()
+
+    # 3. eligibility ---------------------------------------------------------
+    area_f = np.asarray(mesh.area_faces, float)
+    area_tot = float(area_f.sum())
+
+    def frac(m):
+        return float(area_f[np.asarray(m, bool)].sum() / area_tot)
+
+    t0 = time.perf_counter()
+    opening = cand_mod.craniotomy_opening(res.masks, aff, cavity_mask=res.cavity_mask)
+    t_open = time.perf_counter() - t0
+    print(opening.describe())
+    t0 = time.perf_counter()
+    elig_cr = cand_mod.craniotomy_faces(mesh, opening, implant_center_ras=None)
+    t_elig = time.perf_counter() - t0
+    print("craniotomy rule (facing + line of sight, no implant term): %d of %d faces, %.1f %% of the area (%.1f s)"
+          % (elig_cr.n_eligible, elig_cr.mask.size, 100 * elig_cr.fraction, t_elig))
+    # demonstrated reach: faces within reach_face_mm of an implanted seed centre
+    cents = np.asarray(mesh.triangles_center, float)
+    d_face_seed, _i = cKDTree(centers).query(cents)
+    reach_mask = d_face_seed <= reach_face_mm
+    union = np.asarray(elig_cr.mask, bool) | reach_mask
+    elig = cand_mod.EligibleFaces(
+        mask=union, rule="craniotomy(facing+LOS, no implant term) | demonstrated_reach(%g mm)" % reach_face_mm,
+        fraction=frac(union), fraction_faces=float(union.mean()),
+        info={"rule": "union of (a) candidates.craniotomy_faces(mesh, opening, implant_center_ras=None) and (b) wall "
+                      "faces whose centroid lies within %g mm of an implanted seed centre (demonstrated reach; "
+                      "coordinator 2026-11-03)" % reach_face_mm,
+              "craniotomy": elig_cr.info, "n_craniotomy": int(elig_cr.n_eligible),
+              "area_fraction_craniotomy": float(elig_cr.fraction),
+              "reach_face_mm": reach_face_mm, "n_reach": int(reach_mask.sum()),
+              "area_fraction_reach": frac(reach_mask),
+              "n_reach_only": int((reach_mask & ~elig_cr.mask).sum()),
+              "area_fraction_reach_only": frac(reach_mask & ~elig_cr.mask),
+              "n_union": int(union.sum()), "area_fraction_union": frac(union),
+              "n_faces": int(union.size)})
+    print("demonstrated reach (faces within %g mm of a seed): %d faces, %.1f %%; union = eligible: %d faces, "
+          "%.1f %% of the area (%d faces added by the reach term)"
+          % (reach_face_mm, reach_mask.sum(), 100 * frac(reach_mask), union.sum(), 100 * elig.fraction,
+             elig.info["n_reach_only"]))
+    elig3 = cand_mod.craniotomy_faces(mesh, opening, implant_center_ras=centers.mean(axis=0))
+    print("  (CLI --eligible craniotomy with the implant-visibility term: %d faces, %.1f %%; not used)"
+          % (elig3.n_eligible, 100 * elig3.fraction))
+    fair = fairness(mesh, elig.mask, centers)
+    fair_cr = fairness(mesh, elig_cr.mask, centers)
+    fair3 = fairness(mesh, elig3.mask, centers)
+    print("fairness (eligible = union): %d/%d implanted seeds have their nearest wall face eligible; %d/%d within "
+          "6 mm" % (fair["nearest_face_eligible"], n_seeds, fair["within_6mm_of_eligible"], n_seeds))
+    print("fairness (craniotomy rule alone): %d/%d nearest face eligible; %d/%d within 6 mm"
+          % (fair_cr["nearest_face_eligible"], n_seeds, fair_cr["within_6mm_of_eligible"], n_seeds))
+    elig_area = float(area_f[union].sum())
+    rec = plan.recommend_tile_count(mesh, eligible_faces=elig.mask)
+    print("manufacturer rule on the eligible area (%.0f mm2): %d tiles" % (elig_area, rec.n_tiles))
+
+    # 4. arms ------------------------------------------------------------------
+    arms = []
+
+    def add_arm(name, label_txt, cent, ax, geom=None, sa_seed=None, rep=None, solve_s=None,
+                total_s=None, note="", family=None, objective_target=None):
+        t0 = time.perf_counter()
+        st = score(targets, cent, ax, eng)
+        row = {"arm": name, "label": label_txt, "sa_seed": sa_seed, "stats": st,
+               "n_seeds_scored": int(np.asarray(cent).shape[0]), "geom": geom, "report": rep,
+               "solve_s": solve_s, "total_s": total_s, "note": note, "score_s": time.perf_counter() - t0,
+               "centers": np.asarray(cent, float), "axes": np.asarray(ax, float),
+               "family": family, "objective_target": objective_target}
+        arms.append(row)
+        r5, ctv, rc = st[PRIMARY[0]], st[PRIMARY[1]], st[PRIMARY[2]]
+        print("  %-30s RIND5(gtcore) V100 %.3f D90 %5.0f | CTV_GT V100 %.3f D90 %5.0f | REACH10 V100 %.3f "
+              "D90 %5.0f | seeds %d%s" % (name, r5["V100"], r5["D90"], ctv["V100"], ctv["D90"], rc["V100"],
+                                          rc["D90"], row["n_seeds_scored"],
+                                          (" | %d tiles, %d overlaps" % (geom["n_tiles"], geom["n_overlaps"])
+                                           if geom else "")))
+        return row
+
+    print("arms:")
+    # (i) as implanted: the 32 localized seeds, physical axes
+    add_arm("as_implanted", "as implanted: %d localized seeds, physical (PCA) axes" % n_seeds, centers, axes,
+            note="the dose of the implant as found; independent of the tile fit")
+    t0 = time.perf_counter()
+    fit8 = fit_tiles(centers, axes, int(a.count_known), 0, cavity_center_ras=cav_center, complete_degraded=True)
+    g8 = fit_geometry(fit8, centers, axes, n_seeds)
+    g8["fit_s"] = time.perf_counter() - t0
+    sub = np.asarray(g8["assigned"], int)
+    add_arm("as_implanted_fit_count%d" % a.count_known,
+            "as implanted, count-known N = %d fit (pipeline chord path): the seeds its tiles own"
+            % a.count_known, centers[sub], axes[sub], geom=g8,
+            note="%d tiles (%d degraded), %d leftover seeds excluded from this dose row: %s"
+                 % (g8["n_tiles"], g8["n_degraded"], len(g8["leftovers"]), g8["leftovers"]))
+    nf, nh = (int(v) for v in a.halves.split(","))
+    t0 = time.perf_counter()
+    fit64 = fit_tiles_prior(centers, axes, ImplantPrior(n_full=nf, n_half=nh), cavity_center_ras=cav_center,
+                            mesh=mesh, spacing_mm=vol.spacing, complete_degraded=True)
+    g64 = fit_geometry(fit64, centers, axes, n_seeds)
+    g64["fit_s"] = time.perf_counter() - t0
+    sub = np.asarray(g64["assigned"], int)
+    add_arm("as_implanted_fit_%dfull_%dhalf" % (nf, nh),
+            "as implanted, count-known %d full + %d half fit (planner prior path): the seeds its tiles own"
+            % (nf, nh), centers[sub], axes[sub], geom=g64,
+            note="%d tiles (%d full, %d half, %d degraded), %d leftover seeds: %s"
+                 % (g64["n_tiles"], g64["n_full"], g64["n_half"], g64["n_degraded"], len(g64["leftovers"]),
+                    g64["leftovers"]))
+
+    # (ii) / (iii) optimized: N full tiles on the eligible wall, SA, several seeds, two objective targets
+    rind_kw = dict(cavity_mask=res.cavity_mask, cavity_affine=aff, clip_mask=res.masks["cranial_interior"],
+                   clip_affine=aff, cavity_source="gtcore:cavity", clip_source="gtcore:cranial_interior")
+    ctv_t = tdict[PRIMARY[1]]
+    ctv_pts = ctv_t.voxel_centers_ras()
+    tset_ctv = TargetSet.from_points(ctv_pts, name="HRCTV_PHYS(CTV_GT voxel centres, unit weights)")
+    families = [
+        (FAMILY_RIND5, None,
+         "optimizer default: +5 mm shell of the eligible wall, area weights (S5 surrogate of RIND5)",
+         PRIMARY[0]),
+        (FAMILY_CTV, tset_ctv,
+         "HRCTV_PHYS: CTV_GT voxel centres from the RTSTRUCT (%d points, unit weights = volume weights on the "
+         "CT grid; M_opt %d subsample)" % (len(tset_ctv), plan.M_OPT_MAX),
+         PRIMARY[1]),
+    ]
+    fam_rows = {f[0]: [] for f in families}
+    failures = []          # FAILED optimize calls (a result, recorded; never a lower score)
+    fam_best = {}
+    fam_desc = {f[0]: f[2] for f in families}
+    fam_key = {f[0]: f[3] for f in families}
+    for fam, tset, desc, best_key in families:
+        for s in a.sa_seeds:
+            lines = []
+            t0 = time.perf_counter()
+            kw = dict(rx_cgy=rx, solver="sa", seed=int(s), eligible=elig, report=True, verbose=False,
+                      log=lines.append, **rind_kw)
+            if tset is not None:
+                kw["target"] = tset
+            sa_start = "greedy"
+            try:
+                tiles, rep = plan.optimize(mesh, int(a.tiles), 0, **kw)
+            except RuntimeError as exc:
+                # SA's greedy start could not pack N on the eligible wall: record the FAILED
+                # row, then (coordinator 2026-11-03, the rev-1 V3 rule) start SA from the
+                # V100 bound's selection on the same candidate set as a labelled second row
+                failures.append({"arm": "optimized_%s_sa_seed%d" % (fam, s), "family": fam, "sa_seed": int(s),
+                                 "status": "FAILED", "reason": str(exc), "seconds": time.perf_counter() - t0})
+                print("  optimized_%s_sa_seed%d FAILED: %s" % (fam, s, exc))
+                t0 = time.perf_counter()
+                tiles, rep, bound_info = bound_start_sa(mesh, int(a.tiles), elig.mask, tset, int(s), rx, rind_kw)
+                failures[-1]["bound"] = bound_info
+                if tiles is None:
+                    print("  bound-start fallback FAILED too: %s" % bound_info)
+                    continue
+                sa_start = "v100_bound"
+            tot = time.perf_counter() - t0
+            if a.reports:
+                rep.to_json(os.path.join(a.reports, "f8_optimize_%s_sa_seed%d_report.json" % (fam, s)))
+                with open(os.path.join(a.reports, "f8_optimize_%s_sa_seed%d_log.txt" % (fam, s)), "w",
+                          encoding="utf-8") as fh:
+                    fh.write("\n".join(lines))
+            n_cand = None
+            for ln in lines:
+                m = re.match(r"candidates: (\d+)", ln)
+                if m:
+                    n_cand = int(m.group(1))
+            c_o, a_o = tiles_to_seed_arrays(tiles)
+            geom = {"poses": None, "tiles": list(tiles), "assigned": list(range(c_o.shape[0])), "leftovers": [],
+                    "n_tiles": len(tiles), "n_full": sum(1 for t in tiles if t.kind == "full"),
+                    "n_half": sum(1 for t in tiles if t.kind == "half"), "n_degraded": 0,
+                    "n_overlaps": len(rep.overlaps), "overlap_pairs": [(int(i), int(j)) for i, j in rep.overlaps]}
+            suffix = "" if sa_start == "greedy" else "_boundstart"
+            row = add_arm("optimized_%s_sa_seed%d%s" % (fam, s, suffix),
+                          "optimized for %s: %d full tiles, SA %d x %d, seed %d, start %s, eligible = craniotomy | "
+                          "reach" % (fam, a.tiles, plan.SA_N_RESTARTS, plan.SA_N_SWEEPS, s, sa_start),
+                          c_o, a_o, geom=geom, sa_seed=int(s), rep=rep,
+                          solve_s=float(rep.runtime.get("solver", float("nan"))), total_s=tot,
+                          note="target: %s; plan.optimize stages (s): %s"
+                               % (desc, ", ".join("%s %.1f" % (k, v) for k, v in rep.runtime.items())),
+                          family=fam, objective_target=desc)
+            row["objective"] = float(rep.solver.objective) if rep.solver is not None else float("nan")
+            row["solver_status"] = getattr(rep.solver, "status", None)
+            row["n_candidates"] = n_cand if n_cand is not None else (rep.candidate_stats or {}).get("n_candidates")
+            row["sa_start"] = sa_start
+            fam_rows[fam].append(row)
+        if not fam_rows[fam]:
+            print("family %s: no SA seed produced a plan (see FAILED rows)" % fam)
+            continue
+        best = max(fam_rows[fam], key=lambda r: (r["stats"][best_key]["V100"], r["stats"][best_key]["D90"]))
+        best_obj = max(fam_rows[fam], key=lambda r: r["objective"])
+        fam_best[fam] = best
+        print("family %s: best SA seed by %s V100 = %d (objective-best seed %d)"
+              % (fam, best_key, best["sa_seed"], best_obj["sa_seed"]))
+
+    done_fams = [f for f in fam_rows if fam_rows[f]]
+    # 5. tables -----------------------------------------------------------------
+    arm_cols = ["arm", "family", "sa_seed", "objective_target", "structure", "cavity_source", "clip_source",
+                "volume_cc", "n_voxels", "D90_cGy", "V100", "V150", "V200", "Dmin_cGy", "Dmean_cGy", "Dmax_cGy",
+                "n_seeds_scored", "n_tiles", "n_full", "n_half", "n_degraded", "n_leftover", "n_overlaps",
+                "solve_s", "optimize_total_s", "report_RIND5_V100", "report_RIND5_D90_cGy",
+                "report_RIND5_volume_cc", "flag", "note"]
+
+    def arm_row(r, lab, t, name=None, note=None):
+        g = r["geom"] or {}
+        rep = r["report"]
+        rr5 = (rep.metrics_grid or {}).get("RIND5", {}) if rep is not None else {}
+        st = r["stats"][lab]
+        prov = t.provenance or {}
+        return {"arm": name or r["arm"], "family": r.get("family"), "sa_seed": r["sa_seed"],
+                "objective_target": r.get("objective_target"), "structure": lab,
+                "cavity_source": prov.get("cavity_source"), "clip_source": prov.get("clip_source"),
+                "volume_cc": st.get("volume_cc", t.volume_cc), "n_voxels": st.get("n", t.n),
+                "D90_cGy": st.get("D90"), "V100": st.get("V100"), "V150": st.get("V150"), "V200": st.get("V200"),
+                "Dmin_cGy": st.get("Dmin"), "Dmean_cGy": st.get("Dmean"), "Dmax_cGy": st.get("Dmax"),
+                "n_seeds_scored": r["n_seeds_scored"], "n_tiles": g.get("n_tiles"), "n_full": g.get("n_full"),
+                "n_half": g.get("n_half"), "n_degraded": g.get("n_degraded"),
+                "n_leftover": (len(g["leftovers"]) if g else None), "n_overlaps": g.get("n_overlaps"),
+                "solve_s": r["solve_s"], "optimize_total_s": r["total_s"],
+                "report_RIND5_V100": rr5.get("V100"), "report_RIND5_D90_cGy": rr5.get("D90"),
+                "report_RIND5_volume_cc": rr5.get("volume_cc"), "flag": FLAG,
+                "note": note if note is not None else r["note"]}
+
+    arm_rows = []
+    for r in arms:
+        for lab, t in targets:
+            arm_rows.append(arm_row(r, lab, t))
+    for fam in done_fams:
+        rows_f = fam_rows[fam]
+        for lab, t in targets:
+            vals = {k: float(np.mean([r["stats"][lab][k] for r in rows_f])) for k in ("D90", "V100", "V150", "V200")}
+            sds = {k: (float(np.std([r["stats"][lab][k] for r in rows_f], ddof=1)) if len(rows_f) > 1 else 0.0)
+                   for k in ("D90", "V100")}
+            prov = t.provenance or {}
+            arm_rows.append({
+                "arm": "optimized_%s_sa_mean" % fam, "family": fam, "sa_seed": None,
+                "objective_target": fam_desc[fam], "structure": lab,
+                "cavity_source": prov.get("cavity_source"), "clip_source": prov.get("clip_source"),
+                "volume_cc": t.volume_cc, "n_voxels": t.n, "D90_cGy": vals["D90"], "V100": vals["V100"],
+                "V150": vals["V150"], "V200": vals["V200"], "n_seeds_scored": rows_f[0]["n_seeds_scored"],
+                "n_tiles": a.tiles, "n_full": a.tiles, "n_half": 0, "n_degraded": 0, "n_leftover": 0,
+                "n_overlaps": float(np.mean([r["geom"]["n_overlaps"] for r in rows_f])),
+                "solve_s": float(np.mean([r["solve_s"] for r in rows_f])),
+                "optimize_total_s": float(np.mean([r["total_s"] for r in rows_f])), "flag": FLAG,
+                "note": "mean over SA seeds %s; SD V100 %.4f, D90 %.0f cGy" % (list(a.sa_seeds), sds["V100"], sds["D90"])})
+        best = fam_best[fam]
+        for lab, t in targets:
+            arm_rows.append(arm_row(best, lab, t, name="optimized_%s_sa_best" % fam,
+                                    note="best of the SA seeds by %s V100 (campaign sa_best rule) = seed %d"
+                                         % (fam_key[fam], best["sa_seed"])))
+    hdr_extra = [
+        "eligible wall (both optimized families): craniotomy rule WITHOUT the implant-visibility term (facing within "
+        "%g deg of the view point AND line of sight through the opening: %d faces, %.1f %% of the area) UNION the "
+        "demonstrated reach (faces within %g mm of an implanted seed centre: %d faces, %.1f %%; %d faces added) = "
+        "%d of %d faces, %.1f %% of the wall area (%.0f mm2 of %.0f mm2); CLI --eligible craniotomy with the "
+        "implant term (not used): %.1f %%"
+        % (cand_mod.CONE_DEG, elig_cr.n_eligible, 100 * elig_cr.fraction, reach_face_mm, reach_mask.sum(),
+           100 * frac(reach_mask), elig.info["n_reach_only"], elig.n_eligible, elig.mask.size, 100 * elig.fraction,
+           elig_area, area_tot, 100 * elig3.fraction),
+        "opening: %s" % json.dumps(opening.summary(), default=str),
+        "fairness (eligible = union): %d/%d implanted seeds have their nearest wall face eligible (%.2f); %d/%d within "
+        "6 mm of eligible wall (%.2f); craniotomy rule alone: %d/%d nearest face, %d/%d within 6 mm"
+        % (fair["nearest_face_eligible"], n_seeds, fair["fraction_nearest_face_eligible"],
+           fair["within_6mm_of_eligible"], n_seeds, fair["fraction_within_6mm_of_eligible"],
+           fair_cr["nearest_face_eligible"], n_seeds, fair_cr["within_6mm_of_eligible"], n_seeds),
+        "as implanted = the pipeline's %d localized seeds (dose independent of the tile fit); the two fits "
+        "describe the implant's geometry; the fit rows score only the seeds the fitted tiles own" % n_seeds,
+        "optimized_rind5 = plan.optimize(mesh, %d, solver='sa') with the default target (+5 mm shell of the eligible "
+        "wall); optimized_ctvgt = the same with target = TargetSet.from_points(CTV_GT voxel centres, unit weights); "
+        "one row per SA seed; *_sa_mean / *_sa_best are derived rows (best on the family's own target)" % a.tiles,
+        "overlaps = planner rule (find_overlapping_tiles, %g mm): an amber caution, never an error" % OVERLAP_MM,
+    ]
+    os.makedirs(a.out_csv, exist_ok=True)
+    arms_csv = os.path.join(a.out_csv, "f8_patient_arms.csv")
+    write_csv(arms_csv, arm_rows, arm_cols, header(command, commit, "arm x structure x metric", arm_cols, hdr_extra))
+
+    # summary: one row per arm, the Table 3 structures side by side
+    sum_cols = ["arm", "status", "sa_start", "family", "sa_seed", "objective_target", "n_seeds_scored", "n_tiles", "n_full", "n_half",
+                "n_degraded", "n_leftover", "n_overlaps", "solve_s", "optimize_total_s", "objective",
+                "solver_status", "n_candidates",
+                "RIND5_gtcore_V100", "RIND5_gtcore_D90_cGy", "RIND5_gtcore_V150", "RIND5_gtcore_volume_cc",
+                "CTV_GT_V100", "CTV_GT_D90_cGy", "CTV_GT_V150", "CTV_GT_volume_cc",
+                "REACH10_V100", "REACH10_D90_cGy", "REACH10_volume_cc",
+                "RIND5_CavPost_V100", "RIND5_CavPost_D90_cGy", "report_RIND5_V100", "report_RIND5_D90_cGy",
+                "eligible_fraction_area", "eligible_fraction_craniotomy_only", "seeds_nearest_face_eligible",
+                "seeds_within_6mm_eligible", "seeds_nearest_face_eligible_craniotomy_only", "flag", "note"]
+    lab_cp = vc.ROW_RIND_TPS
+    metric_map = (("RIND5_gtcore_V100", PRIMARY[0], "V100"), ("RIND5_gtcore_D90_cGy", PRIMARY[0], "D90"),
+                  ("RIND5_gtcore_V150", PRIMARY[0], "V150"), ("CTV_GT_V100", PRIMARY[1], "V100"),
+                  ("CTV_GT_D90_cGy", PRIMARY[1], "D90"), ("CTV_GT_V150", PRIMARY[1], "V150"),
+                  ("REACH10_V100", PRIMARY[2], "V100"), ("REACH10_D90_cGy", PRIMARY[2], "D90"),
+                  ("RIND5_CavPost_V100", lab_cp, "V100"), ("RIND5_CavPost_D90_cGy", lab_cp, "D90"))
+    vol_map = (("RIND5_gtcore_volume_cc", PRIMARY[0]), ("CTV_GT_volume_cc", PRIMARY[1]),
+               ("REACH10_volume_cc", PRIMARY[2]))
+    common = {"eligible_fraction_area": elig.fraction, "eligible_fraction_craniotomy_only": elig_cr.fraction,
+              "seeds_nearest_face_eligible": fair["nearest_face_eligible"],
+              "seeds_within_6mm_eligible": fair["within_6mm_of_eligible"],
+              "seeds_nearest_face_eligible_craniotomy_only": fair_cr["nearest_face_eligible"], "flag": FLAG}
+
+    def sum_row(r, name=None, note=None):
+        st = r["stats"]
+        g = r["geom"] or {}
+        rep = r["report"]
+        rr5 = (rep.metrics_grid or {}).get("RIND5", {}) if rep is not None else {}
+        row = {"arm": name or r["arm"], "status": "ok", "sa_start": r.get("sa_start"),
+               "family": r.get("family"), "sa_seed": r["sa_seed"],
+               "objective_target": r.get("objective_target"), "n_seeds_scored": r["n_seeds_scored"],
+               "n_tiles": g.get("n_tiles"), "n_full": g.get("n_full"), "n_half": g.get("n_half"),
+               "n_degraded": g.get("n_degraded"), "n_leftover": (len(g["leftovers"]) if g else None),
+               "n_overlaps": g.get("n_overlaps"), "solve_s": r["solve_s"], "optimize_total_s": r["total_s"],
+               "objective": r.get("objective"), "solver_status": r.get("solver_status"),
+               "n_candidates": r.get("n_candidates"),
+               "report_RIND5_V100": rr5.get("V100"), "report_RIND5_D90_cGy": rr5.get("D90"),
+               "note": note if note is not None else r["note"], **common}
+        for col, lab, k in metric_map:
+            row[col] = st.get(lab, {}).get(k)
+        for col, lab in vol_map:
+            row[col] = st.get(lab, {}).get("volume_cc")
+        return row
+
+    sum_rows = [sum_row(r) for r in arms]
+    for fam in done_fams:
+        rows_f = fam_rows[fam]
+        mean_row = {k: None for k in sum_cols}
+        mean_row.update(arm="optimized_%s_sa_mean" % fam, status="derived", family=fam, objective_target=fam_desc[fam],
+                        n_seeds_scored=rows_f[0]["n_seeds_scored"], n_tiles=a.tiles, n_full=a.tiles, n_half=0,
+                        n_degraded=0, n_leftover=0,
+                        n_overlaps=float(np.mean([r["geom"]["n_overlaps"] for r in rows_f])),
+                        solve_s=float(np.mean([r["solve_s"] for r in rows_f])),
+                        optimize_total_s=float(np.mean([r["total_s"] for r in rows_f])),
+                        objective=float(np.mean([r["objective"] for r in rows_f])),
+                        n_candidates=rows_f[0].get("n_candidates"),
+                        note="mean over SA seeds %s" % list(a.sa_seeds), **common)
+        for col, lab, k in metric_map:
+            mean_row[col] = float(np.mean([r["stats"][lab][k] for r in rows_f]))
+        for col, lab in vol_map:
+            mean_row[col] = tdict[lab].volume_cc
+        sum_rows.append(mean_row)
+        best = fam_best[fam]
+        sum_rows.append(sum_row(best, name="optimized_%s_sa_best" % fam,
+                                note="best SA seed by %s V100 = seed %d" % (fam_key[fam], best["sa_seed"])))
+    for fl in failures:
+        frow = {k: None for k in sum_cols}
+        frow.update(arm=fl["arm"], family=fl["family"], sa_seed=fl["sa_seed"], status="FAILED",
+                    flag=FLAG, note="FAILED: %s; bound-start fallback: %s" % (fl["reason"], json.dumps(fl.get("bound"), default=str)))
+        sum_rows.append(frow)
+    summary_csv = os.path.join(a.out_csv, "f8_patient_summary.csv")
+    write_csv(summary_csv, sum_rows, sum_cols, header(command, commit, "one row per arm, the Table 3 structures side "
+                                                       "by side", sum_cols, hdr_extra))
+
+    # 6. render data (F8b) ---------------------------------------------------------
+    os.makedirs(a.out_data, exist_ok=True)
+    npz_path = os.path.join(a.out_data, "f8b_patient_optimized.npz")
+    cav_rt = ls.mesh_from_mask(masks_rt["Cav_Post"], aff) if "Cav_Post" in masks_rt else None
+    arrays = {
+        "seed_centers_ras": centers, "seed_axes_ras": axes,
+        "seed_length_mm": np.array(_geom.SEED_LENGTH_MM), "seed_diameter_mm": np.array(_geom.SEED_DIAMETER_MM),
+        "cavity_center_ras": (np.full(3, np.nan) if cav_center is None else np.asarray(cav_center, float)),
+        "volume_spacing_mm": np.asarray(vol.spacing, float),
+        "volume_shape_kji": np.asarray(vol.array.shape, np.int64),
+        "sheet_faces": ls.sheet_faces(SHEET_N), "sheet_grid_n": np.array(SHEET_N),
+        "wall_mesh_source": np.array("gtcore:cavity"),
+        "wall_mesh_vertices": np.asarray(mesh.vertices, float), "wall_mesh_faces": np.asarray(mesh.faces, np.int32),
+        "eligible_face_mask": np.asarray(elig.mask, bool),
+        "eligible_face_mask_craniotomy": np.asarray(elig_cr.mask, bool),
+        "eligible_face_mask_reach": np.asarray(reach_mask, bool),
+        "eligible_face_mask_with_implant_term": np.asarray(elig3.mask, bool),
+        "eligible_rule": np.array(elig.rule),
+        "eligible_fraction_area": np.array(float(elig.fraction)),
+        "reach_face_mm": np.array(reach_face_mm),
+        "opening_centroid_ras": np.asarray(opening.centroid_ras, float),
+        "opening_normal_ras": np.asarray(opening.normal_ras, float),
+        "opening_points_ras": np.asarray(opening.points_ras, float),
+        "opening_area_mm2": np.array(float(opening.area_mm2)),
+        "view_point_ras": np.asarray(opening.view_point(), float),
+        "implant_seed_nearest_face_eligible": np.asarray(fair["seed_nearest_face_eligible"], bool),
+        "implant_seed_to_eligible_wall_mm": np.asarray(fair["seed_to_eligible_wall_mm"], float),
+        "implant_seed_nearest_face_eligible_craniotomy": np.asarray(fair_cr["seed_nearest_face_eligible"], bool),
+    }
+    if cav_rt is not None:
+        arrays["cavity_rt_vertices"] = np.asarray(cav_rt.vertices, float)
+        arrays["cavity_rt_faces"] = np.asarray(cav_rt.faces, np.int32)
+    modes = {}
+    for fam in done_fams:
+        best = fam_best[fam]
+        pre = "opt_%s_" % fam
+        for k, v in config_arrays(mesh, best["geom"]["tiles"], SHEET_N).items():
+            arrays[pre + k] = v
+        arrays[pre + "sa_seed"] = np.array(int(best["sa_seed"]))
+        arrays[pre + "objective_target"] = np.array(fam_desc[fam])
+        modes[pre.rstrip("_")] = {"family": fam, "objective_target": fam_desc[fam], "sa_seed": int(best["sa_seed"]),
+                                  "best_rule": "highest %s V100 over the SA seeds" % fam_key[fam],
+                                  "n_tiles": best["geom"]["n_tiles"], "n_overlaps": best["geom"]["n_overlaps"]}
+    for name, g in (("count%d" % a.count_known, g8), ("count_%dfull_%dhalf" % (nf, nh), g64)):
+        pre = name + "_"
+        for k, v in config_arrays(mesh, g["tiles"], SHEET_N).items():
+            arrays[pre + k] = v
+        sid = np.full(n_seeds, -1, np.int32)
+        for ti, pose in enumerate(g["poses"]):
+            for i in pose.seed_indices:
+                if int(i) >= 0:
+                    sid[int(i)] = ti
+        arrays[pre + "seed_tile_id"] = sid
+        arrays[pre + "seed_leftover"] = sid < 0
+        arrays[pre + "tile_degraded"] = np.asarray([bool(getattr(p, "degraded", False)) for p in g["poses"]], bool)
+        modes[name] = {"family": "as_implanted_fit", "n_tiles": g["n_tiles"], "n_full": g["n_full"],
+                       "n_half": g["n_half"], "n_degraded": g["n_degraded"], "n_leftover": len(g["leftovers"]),
+                       "n_overlaps": g["n_overlaps"]}
+    arrays["readme"] = np.array("PT-CT1mm optimizer render data (Paper 2 F8(b)): the best SA seed's %d tiles per "
+                                "objective family (opt_rind5_*, opt_ctvgt_*) on the eligible wall (craniotomy | "
+                                "demonstrated reach) of the gtcore cavity, plus the implant's two count-known fits; "
+                                "see the JSON index for every array. F8(a) uses f4b_patient_implant.npz (same "
+                                "mesh, same camera)." % a.tiles)
+    np.savez_compressed(npz_path, **arrays)
+    docs = {
+        "seed_centers_ras": ("mm", "the 32 localized seed centres (pipeline, vault-filtered), RAS"),
+        "seed_axes_ras": ("unit", "per-seed PCA long axis (sign arbitrary), RAS"),
+        "seed_length_mm": ("mm", "capsule length to draw"), "seed_diameter_mm": ("mm", "capsule diameter"),
+        "cavity_center_ras": ("mm", "centroid of the gtcore cavity mask"),
+        "volume_spacing_mm": ("mm", "voxel spacing (si, sj, sk)"), "volume_shape_kji": ("voxels", "CT shape [k, j, i]"),
+        "sheet_faces": ("index", "triangles shared by every *_sheet_*_vertices array (row-major n x n grid)"),
+        "sheet_grid_n": ("-", "grid points per tile side"),
+        "wall_mesh_source": ("-", "gtcore:cavity"), "wall_mesh_vertices": ("mm", "the gtcore cavity wall (every arm)"),
+        "wall_mesh_faces": ("index", "triangles of wall_mesh_vertices"),
+        "eligible_face_mask": ("bool", "per wall face: eligible for the optimizer = craniotomy (facing + line of "
+                                       "sight, no implant term) UNION demonstrated reach (within reach_face_mm of an "
+                                       "implanted seed); the mask both optimized families used"),
+        "eligible_face_mask_craniotomy": ("bool", "the craniotomy term alone (facing + line of sight)"),
+        "eligible_face_mask_reach": ("bool", "the demonstrated-reach term alone"),
+        "eligible_face_mask_with_implant_term": ("bool", "the CLI's --eligible craniotomy mask (adds visible-from-implant); NOT used"),
+        "eligible_rule": ("-", "the rule"), "eligible_fraction_area": ("-", "eligible share of the wall area"),
+        "reach_face_mm": ("mm", "the demonstrated-reach radius"),
+        "opening_centroid_ras": ("mm", "craniotomy opening centroid"), "opening_normal_ras": ("unit", "outward normal"),
+        "opening_points_ras": ("mm", "opening voxel centres (skull defect + cavity mouth component)"),
+        "opening_area_mm2": ("mm^2", "opening area"), "view_point_ras": ("mm", "the surgeon's view point (centroid + 10 mm out)"),
+        "implant_seed_nearest_face_eligible": ("bool", "fairness: implanted seed's nearest wall face is eligible (union)"),
+        "implant_seed_to_eligible_wall_mm": ("mm", "fairness: distance from each implanted seed to the eligible wall (union)"),
+        "implant_seed_nearest_face_eligible_craniotomy": ("bool", "fairness under the craniotomy term alone"),
+        "cavity_rt_vertices": ("mm", "physician's Cav_Post (RTSTRUCT rasterised, marching cubes)"),
+        "cavity_rt_faces": ("index", "triangles of cavity_rt_vertices"),
+        "readme": ("-", "summary"),
+    }
+    prefixes = ["opt_%s_" % fam for fam in done_fams] + ["count%d_" % a.count_known, "count_%dfull_%dhalf_" % (nf, nh)]
+    index = {"dataset": "PT-CT1mm", "script": "scripts/patient_optimize.py", "command": command, "commit": commit,
+             "generated": _dt.datetime.now().strftime("%Y-%m-%d %H:%M"),
+             "gtcore_file": gtcore.__file__.replace(ROOT, "<worktree>"), "flag": FLAG,
+             "conventions": {"coordinates": "RAS mm; arrays indexed [k, j, i]; affine maps (i, j, k, 1) -> RAS",
+                             "sheets": "wall = the tile's tissue face draped onto the gtcore cavity wall the way "
+                                       "the conformer drapes it (flat offsets from the anchor cast along the anchor "
+                                       "normal); seed = +3 mm, cavity = +4 mm along the local inward normal; "
+                                       "row-major n x n, faces shared (sheet_faces)",
+                             "modes": "opt_rind5_* / opt_ctvgt_* = the optimizer's best SA seed per objective "
+                                      "family; count<N>_* = count-known N full fit (pipeline chord path); "
+                                      "count_<F>full_<H>half_* = planner prior fit; seed_tile_id -1 = leftover"},
+             "modes": modes, "optimized_modes": ["opt_%s" % fam for fam in done_fams],
+             "eligible": elig.info, "opening": opening.summary(),
+             "fairness": {k: v for k, v in fair.items() if not isinstance(v, list)},
+             "fairness_craniotomy_only": {k: v for k, v in fair_cr.items() if not isinstance(v, list)},
+             "fairness_with_implant_term": {k: v for k, v in fair3.items() if not isinstance(v, list)},
+             "manufacturer_rule_tiles_on_eligible_area": int(rec.n_tiles), "eligible_area_mm2": elig_area,
+             "arms": {r["arm"]: {"label": r["label"], "family": r.get("family"), "sa_seed": r["sa_seed"],
+                                 "objective_target": r.get("objective_target"),
+                                 "n_seeds_scored": r["n_seeds_scored"],
+                                 "geometry": ({k: v for k, v in (r["geom"] or {}).items()
+                                               if k not in ("poses", "tiles")} if r["geom"] else None),
+                                 "objective": r.get("objective"), "solver_status": r.get("solver_status"),
+                                 "n_candidates": r.get("n_candidates"),
+                                 "solve_s": r["solve_s"], "total_s": r["total_s"],
+                                 "stats": {lab: {k: r["stats"][lab].get(k) for k in STAT_KEYS if k in r["stats"][lab]}
+                                           for lab in r["stats"]},
+                                 "note": r["note"]} for r in arms},
+             "failures": failures,
+             "best_sa_seed": {fam: int(fam_best[fam]["sa_seed"]) for fam in done_fams},
+             "timings_s": {"reconstruct": t_rec, "structures": t_targets, "opening": t_open, "eligibility": t_elig,
+                           "fit_count%d" % a.count_known: g8["fit_s"], "fit_%dfull_%dhalf" % (nf, nh): g64["fit_s"],
+                           "total": time.perf_counter() - t_all},
+             "arrays": {}}
+    for k, v in arrays.items():
+        units, doc = docs.get(k, (None, None))
+        if units is None:
+            for pre in prefixes:
+                if k.startswith(pre):
+                    units, doc = CONFIG_DOCS.get(k[len(pre):], ("-", k))
+                    doc = "[%s] %s" % (pre.rstrip("_"), doc)
+                    break
+        if units is None:
+            units, doc = "-", k
+        index["arrays"][k] = {"shape": list(v.shape), "dtype": str(v.dtype), "units": units, "doc": doc}
+    with open(npz_path[:-4] + ".json", "w", encoding="utf-8") as fh:
+        json.dump(index, fh, indent=1, default=lambda o: o.tolist() if hasattr(o, "tolist") else str(o))
+
+    # 7. markdown for the notes ---------------------------------------------------
+    print("\n### F8 / Table 3 patient arms (commit %s; %s)\n" % (commit, FLAG))
+    print("| arm | objective target | seeds | tiles | overlaps | RIND5(gtcore) V100 | D90 | CTV_GT V100 | D90 | "
+          "REACH10 V100 | D90 | RIND5(Cav_Post) V100 | D90 | solve s |")
+    print("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
+    for r in sum_rows:
+        print("| %s | %s | %s | %s | %s | %.3f | %.0f | %.3f | %.0f | %.3f | %.0f | %.3f | %.0f | %s |"
+              % (r["arm"], (r.get("objective_target") or "-")[:28], r["n_seeds_scored"], r["n_tiles"],
+                 _fmt(r["n_overlaps"]), r["RIND5_gtcore_V100"], r["RIND5_gtcore_D90_cGy"], r["CTV_GT_V100"],
+                 r["CTV_GT_D90_cGy"], r["REACH10_V100"], r["REACH10_D90_cGy"],
+                 r["RIND5_CavPost_V100"] if r["RIND5_CavPost_V100"] is not None else float("nan"),
+                 r["RIND5_CavPost_D90_cGy"] if r["RIND5_CavPost_D90_cGy"] is not None else float("nan"),
+                 _fmt(r["solve_s"])))
+    print("\nwrote", arms_csv, summary_csv, npz_path, "(%.0f s total)" % (time.perf_counter() - t_all))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

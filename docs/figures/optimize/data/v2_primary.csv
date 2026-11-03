@@ -1,17 +1,40 @@
-cavity,N_star,uniform_never_reached_rx,N_used,fallback,V100_uniform,V100_sa,diff_pp,comparison,mean_pp,ci_lo_pp,ci_hi_pp,n,wilcoxon_p,n_flagged,n_fallback_N,n_no_pair
-s1_x0.80,4,True,4,False,0.316507,0.40838,9.18728,,,,,,,,,
-s3_x0.80,4,True,4,False,0.316215,0.442225,12.601,,,,,,,,,
-s6_x0.80,4,True,4,False,0.253854,0.468449,21.4595,,,,,,,,,
-s1_x1.00,6,True,6,False,0.424415,0.625325,20.091,,,,,,,,,
-s2_x1.00,6,True,6,False,0.374144,0.563896,18.9753,,,,,,,,,
-s3_x1.00,6,True,6,False,0.359767,0.57869,21.8922,,,,,,,,,
-s4_x1.00,4,True,4,False,0,0.242774,24.2774,,,,,,,,,
-s5_x1.00,6,True,6,False,0.284175,0.574661,29.0486,,,,,,,,,
-s6_x1.00,6,True,6,False,0.269195,0.595128,32.5933,,,,,,,,,
-s1_x1.25,6,True,6,False,0.0437721,0.333853,29.0081,,,,,,,,,
-s2_x1.25,8,True,8,False,0.263685,0.508297,24.4612,,,,,,,,,
-s3_x1.25,8,True,8,False,0.264293,0.516098,25.1805,,,,,,,,,
-s4_x1.25,8,True,8,False,0.224995,0.47794,25.2944,,,,,,,,,
-s5_x1.25,8,True,8,False,0.339455,0.530312,19.0857,,,,,,,,,
-s6_x1.25,6,True,6,False,0,0.294541,29.4541,,,,,,,,,
-,,,,,,,,SA - uniform at N*,22.8406,19.3311,26.3502,15,6.10352e-05,15,0,0
+# scripts/validation_optimize.py section v2 -- PRIMARY endpoint: SA (seed mean; and best seed) - uniform on RIND5_V100 at N* = smallest N where uniform reaches RIND5_D90 >= rx
+# command: python scripts/validation_optimize.py --section v2 --arms uniform,greedy,sa,v100_bound,truth,truth_raw --sa-seeds 3 --same-candidates --bound-time-limit 60 --out <path>
+# commit: d2d455e; date: 2026-11-03 06:50
+# datasets: synthetic cavities (gtcore.phantom.make_head_phantom, seeds x radius scales; no patient data)
+# RIND5_* = volumetric HR-CTV RIND5(cavity, clip) on the final 1 mm dose grid (final_report); S5_* = +5 mm shell vertices (surrogate); TGT_* = area-weighted optimizer target (surrogate); INFL_* = influence-subsample values the solver saw (not for statistics)
+# objective frozen: LAMBDA_TAIL = 1, TAIL_Q = 0.1; SA budget 8 restarts x 60 sweeps; v100_bound = solve_milp coverage-only (tail term dropped), same candidates as SA: True
+# grid: candidate anchors h 4 mm, 6 spins, M_opt 1000 (V4 sweeps the grid; V7 uses M_opt 4000); rx 6000 cGy; S_K 3.50 U nominal; report dose grid 1 mm, margin 15 mm
+cavity,N_star,uniform_never_reached_rx,N_used,fallback,RIND5_V100_uniform,RIND5_V100_sa,diff_pp,sa_arm,comparison,endpoint,mean_pp,ci_lo_pp,ci_hi_pp,n,wilcoxon_p,n_flagged,n_fallback_N,n_no_pair
+s1_x0.80,4,True,4,False,0.709609,0.752351,4.27417,sa,,,,,,,,,,
+s3_x0.80,4,True,4,False,0.601651,0.623513,2.18617,sa,,,,,,,,,,
+s6_x0.80,4,True,4,False,0.671952,0.672049,0.00961058,sa,,,,,,,,,,
+s1_x1.00,6,True,6,False,0.85,0.861496,1.14961,sa,,,,,,,,,,
+s2_x1.00,6,True,6,False,0.705279,0.707542,0.226326,sa,,,,,,,,,,
+s3_x1.00,6,True,6,False,0.721826,0.762457,4.06315,sa,,,,,,,,,,
+s4_x1.00,4,True,4,False,0.255186,0.278734,2.35481,sa,,,,,,,,,,
+s5_x1.00,6,True,6,False,0.784534,0.777031,-0.750359,sa,,,,,,,,,,
+s6_x1.00,6,True,6,False,0.835142,0.750203,-8.49395,sa,,,,,,,,,,
+s1_x1.25,6,True,6,False,0.36652,0.367293,0.0772886,sa,,,,,,,,,,
+s2_x1.25,8,True,8,False,0.548148,0.57899,3.08428,sa,,,,,,,,,,
+s3_x1.25,8,True,8,False,0.603461,0.614904,1.14431,sa,,,,,,,,,,
+s4_x1.25,8,True,8,False,0.558058,0.540849,-1.72091,sa,,,,,,,,,,
+s5_x1.25,8,True,8,False,0.597243,0.647131,4.98874,sa,,,,,,,,,,
+s6_x1.25,6,True,6,False,0.286701,0.339788,5.30865,sa,,,,,,,,,,
+,,,,,,,,sa,sa - uniform at N*,RIND5_V100,1.19346,-0.705842,3.09276,15,0.0553589,15,0,0
+s1_x0.80,4,True,4,False,0.709609,0.752351,4.27417,sa_best,,,,,,,,,,
+s3_x0.80,4,True,4,False,0.601651,0.623513,2.18617,sa_best,,,,,,,,,,
+s6_x0.80,4,True,4,False,0.671952,0.68066,0.870718,sa_best,,,,,,,,,,
+s1_x1.00,6,True,6,False,0.85,0.877961,2.79613,sa_best,,,,,,,,,,
+s2_x1.00,6,True,6,False,0.705279,0.71759,1.23111,sa_best,,,,,,,,,,
+s3_x1.00,6,True,6,False,0.721826,0.768347,4.65214,sa_best,,,,,,,,,,
+s4_x1.00,4,True,4,False,0.255186,0.287534,3.23481,sa_best,,,,,,,,,,
+s5_x1.00,6,True,6,False,0.784534,0.795329,1.07944,sa_best,,,,,,,,,,
+s6_x1.00,6,True,6,False,0.835142,0.760091,-7.50512,sa_best,,,,,,,,,,
+s1_x1.25,6,True,6,False,0.36652,0.380947,1.44272,sa_best,,,,,,,,,,
+s2_x1.25,8,True,8,False,0.548148,0.581268,3.31208,sa_best,,,,,,,,,,
+s3_x1.25,8,True,8,False,0.603461,0.620598,1.71368,sa_best,,,,,,,,,,
+s4_x1.25,8,True,8,False,0.558058,0.54874,-0.931759,sa_best,,,,,,,,,,
+s5_x1.25,8,True,8,False,0.597243,0.655934,5.86906,sa_best,,,,,,,,,,
+s6_x1.25,6,True,6,False,0.286701,0.365322,7.86204,sa_best,,,,,,,,,,
+,,,,,,,,sa_best,sa_best - uniform at N*,RIND5_V100,2.13916,0.225308,4.05301,15,0.0102539,15,0,0

@@ -1,27 +1,52 @@
+# scripts/validation_optimize.py section v2 -- paired differences per N (pp), t-based 95 % CI, Wilcoxon signed-rank; endpoint RIND5_V100 primary, S5_V100 surrogate
+# command: python scripts/validation_optimize.py --section v2 --arms uniform,greedy,sa,v100_bound,truth,truth_raw --sa-seeds 3 --same-candidates --bound-time-limit 60 --out <path>
+# commit: d2d455e; date: 2026-11-03 06:50
+# datasets: synthetic cavities (gtcore.phantom.make_head_phantom, seeds x radius scales; no patient data)
+# RIND5_* = volumetric HR-CTV RIND5(cavity, clip) on the final 1 mm dose grid (final_report); S5_* = +5 mm shell vertices (surrogate); TGT_* = area-weighted optimizer target (surrogate); INFL_* = influence-subsample values the solver saw (not for statistics)
+# objective frozen: LAMBDA_TAIL = 1, TAIL_Q = 0.1; SA budget 8 restarts x 60 sweeps; v100_bound = solve_milp coverage-only (tail term dropped), same candidates as SA: True
+# grid: candidate anchors h 4 mm, 6 spins, M_opt 1000 (V4 sweeps the grid; V7 uses M_opt 4000); rx 6000 cGy; S_K 3.50 U nominal; report dose grid 1 mm, margin 15 mm
 N,comparison,endpoint,mean_pp,ci_lo_pp,ci_hi_pp,n,wilcoxon_p
-4,sa - greedy,V100 (+5 mm),3.93931,1.86893,6.00969,18,0.000654958
-4,sa - uniform,V100 (+5 mm),17.6183,14.3606,20.876,15,6.10352e-05
-4,greedy - uniform,V100 (+5 mm),14.7459,10.8879,18.6038,15,6.10352e-05
-4,greedy+local - greedy,V100 (+5 mm),1.20583,-0.0571145,2.46878,18,0.0179605
-4,sa - random,V100 (+5 mm),17.5028,14.6137,20.3919,18,7.62939e-06
-4,continuous - sa,V100 (+5 mm),-1.5934,-2.92401,-0.262787,6,0.0625
-4,continuous - uniform,V100 (+5 mm),22.2349,20.018,24.4518,6,0.03125
-6,sa - greedy,V100 (+5 mm),4.61399,2.74142,6.48655,13,0.000488281
-6,sa - uniform,V100 (+5 mm),26.8691,23.8317,29.9064,11,0.000976562
-6,greedy - uniform,V100 (+5 mm),22.5589,17.9401,27.1777,11,0.000976562
-6,greedy+local - greedy,V100 (+5 mm),1.45295,0.402794,2.5031,13,0.0136719
-6,sa - random,V100 (+5 mm),23.8579,20.2838,27.4321,12,0.000488281
-6,continuous - sa,V100 (+5 mm),-6.18332,-8.47519,-3.89146,6,0.03125
-6,continuous - uniform,V100 (+5 mm),18.1658,9.07214,27.2595,5,0.0625
-8,sa - greedy,V100 (+5 mm),7.03605,4.18088,9.89123,12,0.000488281
-8,sa - uniform,V100 (+5 mm),23.5055,18.7803,28.2306,4,0.125
-8,greedy - uniform,V100 (+5 mm),17.9785,10.5842,25.3728,4,0.125
-8,greedy+local - greedy,V100 (+5 mm),4.10684,1.5645,6.64918,12,0.00195312
-8,sa - random,V100 (+5 mm),19.7639,14.0204,25.5074,9,0.00390625
-8,continuous - sa,V100 (+5 mm),-5.02738,-8.58923,-1.46553,6,0.03125
-8,continuous - uniform,V100 (+5 mm),nan,nan,nan,0,1
-10,sa - greedy,V100 (+5 mm),12.8462,6.3763,19.3161,6,0.03125
-10,greedy+local - greedy,V100 (+5 mm),6.90575,2.66544,11.1461,6,0.03125
-10,sa - random,V100 (+5 mm),11.2839,9.40044,13.1674,6,0.03125
-12,sa - greedy,V100 (+5 mm),2.91055,0.634745,5.18636,5,0.0625
-12,greedy+local - greedy,V100 (+5 mm),2.16757,0.43788,3.89726,5,0.0625
+4,sa - greedy,RIND5_V100,-1.32041,-2.92227,0.281443,18,0.118706
+4,sa - uniform,RIND5_V100,-0.177121,-1.45268,1.09844,15,0.803955
+4,greedy - uniform,RIND5_V100,1.63985,-0.278683,3.55839,15,0.072998
+4,v100_bound - sa,RIND5_V100,2.03676,-0.172113,4.24563,18,0.0987396
+4,sa_best - uniform,RIND5_V100,0.434878,-0.867131,1.73689,15,0.488708
+4,sa_best - greedy,RIND5_V100,-0.751273,-2.31826,0.815715,18,0.34655
+6,sa - greedy,RIND5_V100,2.46149,-0.661048,5.58403,13,0.129395
+6,sa - uniform,RIND5_V100,1.30877,-1.34103,3.95857,11,0.147461
+6,greedy - uniform,RIND5_V100,-0.956046,-6.24668,4.33458,11,1
+6,v100_bound - sa,RIND5_V100,-1.13562,-2.8822,0.61097,13,0.17627
+6,sa_best - uniform,RIND5_V100,2.79819,0.0885998,5.50779,11,0.0419922
+6,sa_best - greedy,RIND5_V100,3.8565,0.815947,6.89706,13,0.0209961
+8,sa - greedy,RIND5_V100,2.44505,0.674864,4.21523,12,0.00244141
+8,sa - uniform,RIND5_V100,1.8741,-2.68452,6.43273,4,0.375
+8,greedy - uniform,RIND5_V100,-0.580241,-5.80932,4.64884,4,1
+8,v100_bound - sa,RIND5_V100,-1.09428,-3.50067,1.31212,9,0.203125
+8,sa_best - uniform,RIND5_V100,2.49076,-2.0477,7.02923,4,0.25
+8,sa_best - greedy,RIND5_V100,2.74877,0.856638,4.6409,12,0.000976562
+10,sa - greedy,RIND5_V100,10.1553,3.41945,16.8912,6,0.03125
+10,sa_best - greedy,RIND5_V100,10.5436,3.54666,17.5405,6,0.03125
+12,sa - greedy,RIND5_V100,0.448149,-0.113242,1.00954,5,0.125
+12,sa_best - greedy,RIND5_V100,0.453679,-0.115446,1.0228,5,0.125
+4,sa - greedy,S5_V100,0.815597,-1.19416,2.82535,18,0.637767
+4,sa - uniform,S5_V100,5.56118,2.07893,9.04343,15,0.00768579
+4,greedy - uniform,S5_V100,5.63028,2.98094,8.27962,15,0.00334562
+4,v100_bound - sa,S5_V100,4.40624,0.827564,7.98492,18,0.013064
+4,sa_best - uniform,S5_V100,5.8626,2.19375,9.53145,15,0.00768579
+4,sa_best - greedy,S5_V100,1.07016,-0.991596,3.13192,18,0.330536
+6,sa - greedy,S5_V100,-1.46787,-3.92565,0.989899,13,0.30542
+6,sa - uniform,S5_V100,11.1958,7.30288,15.0887,11,0.000976562
+6,greedy - uniform,S5_V100,12.6944,9.8462,15.5427,11,0.000976562
+6,v100_bound - sa,S5_V100,-4.05633,-9.27579,1.16314,13,0.129395
+6,sa_best - uniform,S5_V100,11.3376,6.40341,16.2718,11,0.00292969
+6,sa_best - greedy,S5_V100,-1.51445,-4.80618,1.77728,13,0.497314
+8,sa - greedy,S5_V100,0.556008,-5.49066,6.60267,12,0.909668
+8,sa - uniform,S5_V100,2.08259,-5.91763,10.0828,4,0.625
+8,greedy - uniform,S5_V100,9.66809,4.8883,14.4479,4,0.125
+8,v100_bound - sa,S5_V100,-4.24235,-10.0941,1.60937,9,0.203125
+8,sa_best - uniform,S5_V100,1.58598,-7.20484,10.3768,4,0.875
+8,sa_best - greedy,S5_V100,0.50669,-5.60207,6.61545,12,0.850098
+10,sa - greedy,S5_V100,8.24999,2.68661,13.8134,6,0.03125
+10,sa_best - greedy,S5_V100,8.58044,2.0671,15.0938,6,0.0625
+12,sa - greedy,S5_V100,2.99905,0.490597,5.50751,5,0.0625
+12,sa_best - greedy,S5_V100,3.01224,0.486185,5.53829,5,0.0625

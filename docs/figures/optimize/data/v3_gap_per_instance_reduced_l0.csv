@@ -1,0 +1,23 @@
+# scripts/validation_optimize.py section v3 -- gap per (cavity, N): mean / best / worst over SA seeds
+# command: python scripts/validation_optimize.py --section v3 --sa-seeds 3 --bound-time-limit 300 --sa-lambda-tail 0 --out <path>
+# commit: 085fe60; date: 2026-11-03 11:48
+# datasets: synthetic cavities (gtcore.phantom.make_head_phantom, seeds x radius scales; no patient data)
+# RIND5_* = volumetric HR-CTV RIND5(cavity, clip) on the final 1 mm dose grid (final_report); S5_* = +5 mm shell vertices (surrogate); TGT_* = area-weighted optimizer target (surrogate); INFL_* = influence-subsample values the solver saw (not for statistics)
+# SA ARM OBJECTIVE OVERRIDDEN: lambda_tail = 0 for the SA arm only (--sa-lambda-tail; rows sa_objective); objective frozen: LAMBDA_TAIL = 1, TAIL_Q = 0.1; SA budget 8 restarts x 60 sweeps; v100_bound = solve_milp coverage-only (tail term dropped), same candidates as SA: False
+# grid: candidate anchors h 4 mm, 6 spins, M_opt 1000 (V4 sweeps the grid; V7 uses M_opt 4000); rx 6000 cGy; S_K 3.50 U nominal; report dose grid 1 mm, margin 15 mm
+cavity,N,n_seeds,gap_mean,gap_best,gap_worst,gap_RIND5_mean,gap_RIND5_best,bound_status,bound_method,n_candidates,bound_s
+s1_x1.00,4,3,0,0,0,0,0,optimal,enum_bb,126,0.854097
+s1_x1.00,6,3,-0.0241796,0,-0.0362694,-0.0196446,0,optimal,enum_bb,126,1.53
+s2_x1.00,4,3,0,0,0,0,0,optimal,enum_bb,128,1.34383
+s2_x1.00,6,3,0,0,0,0,0,optimal,enum_bb,128,4.62278
+s2_x1.00,8,3,0,0,0,0,0,optimal,enum_bb,128,2.2975
+s3_x1.00,4,3,0,0,0,0,0,optimal,enum_bb,123,0.968136
+s3_x1.00,6,3,0,0,0,0,0,optimal,enum_bb,123,5.12155
+s3_x1.00,8,3,0,0,0,0,0,optimal,enum_bb,123,2.5316
+s4_x1.00,4,3,-0.0622222,0,-0.186667,0.0181143,0.0543429,optimal,enum_bb,142,1.84355
+s4_x1.00,6,3,1.46082e-16,2.19123e-16,0,0.00138742,0.00355181,optimal,enum_bb,142,9.73945
+s4_x1.00,8,3,-0.0530035,-0.0530035,-0.0530035,-0.0446909,-0.0446909,optimal,enum_bb,142,5.0868
+s5_x1.00,4,3,0,0,0,0.00721055,0.0108158,optimal,enum_bb,120,0.893509
+s5_x1.00,6,3,-0.00766284,0,-0.0229885,0.0181231,0.0543694,optimal,enum_bb,120,2.56279
+s6_x1.00,4,3,0,0,0,0,0,optimal,enum_bb,129,1.18076
+s6_x1.00,6,3,0,0,0,0,0,optimal,enum_bb,129,4.12603

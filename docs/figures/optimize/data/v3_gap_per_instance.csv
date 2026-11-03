@@ -1,0 +1,26 @@
+# scripts/validation_optimize.py section v3 -- gap per (cavity, N): mean / best / worst over SA seeds
+# command: python scripts/validation_optimize.py --section v3 --same-candidates --sa-seeds 3 --bound-time-limit 300 --out <path>
+# commit: d2d455e; date: 2026-11-03 10:38
+# datasets: synthetic cavities (gtcore.phantom.make_head_phantom, seeds x radius scales; no patient data)
+# RIND5_* = volumetric HR-CTV RIND5(cavity, clip) on the final 1 mm dose grid (final_report); S5_* = +5 mm shell vertices (surrogate); TGT_* = area-weighted optimizer target (surrogate); INFL_* = influence-subsample values the solver saw (not for statistics)
+# objective frozen: LAMBDA_TAIL = 1, TAIL_Q = 0.1; SA budget 8 restarts x 60 sweeps; v100_bound = solve_milp coverage-only (tail term dropped), same candidates as SA: True
+# grid: candidate anchors h 4 mm, 6 spins, M_opt 1000 (V4 sweeps the grid; V7 uses M_opt 4000); rx 6000 cGy; S_K 3.50 U nominal; report dose grid 1 mm, margin 15 mm
+cavity,N,n_seeds,gap_mean,gap_best,gap_worst,gap_RIND5_mean,gap_RIND5_best,bound_status,bound_method,n_candidates,bound_s
+s1_x1.00,4,3,-0.759055,-0.75748,-0.762205,-0.0786206,-0.0610413,time_limit,highs,869,300.336
+s1_x1.00,6,3,-0.471052,-0.459404,-0.494347,0.1091,0.130297,time_limit,highs,869,300.292
+s1_x1.00,8,3,0,0,0,0,0,optimal,highs,869,283.154
+s2_x1.00,4,3,-0.78844,-0.745791,-0.873737,-0.186042,-0.137692,time_limit,highs,965,301.089
+s2_x1.00,6,3,-0.536594,-0.5,-0.566304,0.0305187,0.0451532,time_limit,highs,965,300.441
+s2_x1.00,8,3,1.55431e-15,1.55431e-15,1.55431e-15,0.0375102,0.0376263,time_limit,highs,965,302.471
+s3_x1.00,4,3,-0.778889,-0.72,-0.876667,-0.0911041,-0.042003,time_limit,highs,919,300.378
+s3_x1.00,6,3,-0.53405,-0.529032,-0.54086,0.0855611,0.093947,time_limit,highs,919,301.263
+s3_x1.00,8,3,0,0,0,0.000458173,0.000458173,optimal,highs,919,272.167
+s4_x1.00,4,3,-0.75,-0.722603,-0.770548,-0.162751,-0.136319,time_limit,highs,997,300.328
+s4_x1.00,6,3,-0.572905,-0.529347,-0.595792,0.0479838,0.0748479,time_limit,highs,997,300.891
+s4_x1.00,8,3,-6.66134e-16,-6.66134e-16,-6.66134e-16,0.0599715,0.0601401,time_limit,highs,997,300.297
+s5_x1.00,4,3,-0.741585,-0.734528,-0.745928,-0.154528,-0.120818,time_limit,highs,903,300.406
+s5_x1.00,6,3,-0.500532,-0.487753,-0.520767,0.1301,0.156713,time_limit,highs,903,300.248
+s5_x1.00,8,3,0,0,0,0.000345861,0.00038429,time_limit,highs,903,300.306
+s6_x1.00,4,3,-0.749045,-0.743044,-0.761047,-0.216677,-0.19773,time_limit,highs,935,300.318
+s6_x1.00,6,3,-0.520057,-0.505857,-0.530351,0.0216728,0.0351394,time_limit,highs,935,300.237
+s6_x1.00,8,3,0,0,0,0.000309107,0.000309107,optimal,highs,935,104.704

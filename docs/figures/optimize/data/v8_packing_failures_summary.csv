@@ -1,0 +1,13 @@
+# V8 packing failures -- scripts/packing_failures.py (post-processing of the campaign CSVs; no solver run)
+# command: python scripts/packing_failures.py --v2 <v2_rows.csv> --capacity <capacity.csv> --v3 <v3_gap.csv> --v3 <v3_gap.csv> --out <dir>
+# campaign commit (inputs): d2d455e; this table generated at 085fe60, 2026-11-03 11:42
+# datasets: synthetic cavities (make_head_phantom seeds 1-6 x scales 0.8/1.0/1.25); no patient data
+# packing_exists_on_grid: yes = some arm returned a conflict-free selection of >= N tiles at this cavity, or packing_capacity (greedy MIS) >= N; no (proved) = the V100 bound returned infeasible at some M <= N; unknown otherwise. Candidate grid h 4 mm / 6 spins / M_opt 1000 (V2).
+# truth never counts as evidence: the generator's 8 truth tiles overlap under the planner rule on every cavity and lie off the candidate grid
+# SA starts from greedy (frozen solver); a failed greedy start is a FAILED SA row, never a lower score
+N,n_cavities,sa_all_seeds_packed,sa_failed_packing_exists,sa_failed_no_packing_proved,sa_failed_existence_unknown,packing_exists_yes,packing_exists_proved_no,packing_exists_unknown,greedy_packed,bound_packed,bound_run
+4,18,18,0,0,0,18,0,0,18,18,18
+6,18,13,0,5,0,13,5,0,13,13,18
+8,18,12,0,6,0,12,6,0,12,9,18
+10,18,6,0,6,6,6,6,6,6,0,0
+12,18,5,0,6,7,5,6,7,5,0,0
