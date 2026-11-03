@@ -620,10 +620,14 @@ def test_greedy_result_metrics_rederived(phantom_case, phantom_objective):
 
 
 def _shell_entry(metrics_grid, offset=5.0):
+    # Paper 2 Phase 2 D (2026-11-03): the shell rows live under
+    # metrics_grid["S5"] ("S5 coverage"); older reports carried them as
+    # top-level float keys -- accept both
+    shells = metrics_grid["S5"] if isinstance(metrics_grid.get("S5"), dict) else metrics_grid
     for key in (offset, float(offset), str(offset), "5", "5.0", 5):
-        if key in metrics_grid:
-            return metrics_grid[key]
-    for key, val in metrics_grid.items():
+        if key in shells:
+            return shells[key]
+    for key, val in shells.items():
         try:
             if abs(float(key) - offset) < 1e-6:
                 return val
@@ -664,9 +668,10 @@ def test_reported_metrics_rederived_on_full_shell(phantom_case, optimized):
       metrics over the target set (shell-face vertex areas), sampled from
       the final dose grid.  Compared against the shell-weighted reference
       (exact point doses, same weights).
-    * ``metrics_grid[5.0]`` -- the planner's ``shell_report`` entry:
-      UNWEIGHTED ``dvh_stats`` over the shell vertices (each vertex counts
-      once).  Compared against the reference with unit weights.
+    * ``metrics_grid["S5"][5.0]`` (``metrics_grid[5.0]`` before Paper 2
+      Phase 2 D) -- the planner's ``shell_report`` entry, reported as "S5
+      coverage": UNWEIGHTED ``dvh_stats`` over the shell vertices (each
+      vertex counts once).  Compared against the reference with unit weights.
 
     Tolerances 0.5 pp on V100 and 1 % of rx on D90 for both; the residual is
     grid (1 mm trilinear) vs exact point dose.
@@ -700,7 +705,7 @@ def test_reported_metrics_rederived_on_full_shell(phantom_case, optimized):
     # --- unweighted planner entry
     grid_u = _shell_entry(report.metrics_grid)
     v100_u, d90_u = float(grid_u["V100"]), float(grid_u["D90"])
-    print("probe (e, unweighted): grid metrics_grid[5.0] V100 %.4f D90 %.1f "
+    print("probe (e, unweighted): grid metrics_grid['S5'][5.0] V100 %.4f D90 %.1f "
           "| reference (unit weights, exact points) V100 %.4f D90 %.1f"
           % (v100_u, d90_u, mine_u["V100"], mine_u["D90"]))
     assert abs(v100_u - mine_u["V100"]) <= 0.005, (
