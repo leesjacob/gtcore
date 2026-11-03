@@ -163,3 +163,21 @@ placement artifact. **Phase 4 consequence:** the phantom arms (V6, F8/Table 3
 phantom rows) conform and optimise on the registered PH0 wall (tile-free printed
 surface) and are scored on `RIND5(phantom cavity)` built from the PH0 lumen; the
 "as placed" arm is the pipeline's recovered tiles on that same wall.
+
+## 2026-11-03 — gamma results and two wording corrections (Phase 3 `gamma`)
+
+pymedphys 0.41.0 gamma, reference = RTDOSE voxels ≥ 30 Gy, evaluation = gtcore on a
+0.5 mm lattice, 32 gtcore seeds at nominal 3.5 U: over 30–200 Gy, 3 %/2 mm global
+99.33 % (local 99.37 %), 2 %/1 mm global 96.96 % (local 96.23 %); over ≥ 30 Gy
+98.71 / 98.92 / 95.21 / 94.78 %. With the TPS's own 30 contoured seeds + 2 maxima the
+numbers are within 0.3 pp, so the residual 3 % at 2 %/1 mm is engine/grid, not
+localisation. These supersede the rev-3 mock (99.2 / 88.1 %). Corrections to the
+paper text: (1) the voxels > 200 Gy (9 % of the ≥ 30 Gy set) lie a median 3.8 mm
+(p95 6.1 mm) from the nearest seed — they are the seed plane of each tile, not
+"within ~3 mm of a seed"; caption: "voxels above 200 Gy, where the 1 × 1 × 1.67 mm
+TPS grid averages the seed-plane dose, are excluded; the ≥ 30 Gy figure is given
+alongside". (2) Above the prescription dose, *local* normalisation is the lenient
+one (3 % of a 150 Gy voxel is 4.5 Gy), global-to-rx the strict one; §5's "global-to-rx
+is lenient near seeds" is reversed below rx only. Table 3 / F5 caption rows: gtcore
+seeds (pipeline result) and TPS contours (engine-equivalence reference); the
+RTDOSE-maxima set is a grid-limited position estimate and is not quoted.
