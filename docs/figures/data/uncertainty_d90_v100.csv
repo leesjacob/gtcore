@@ -1,0 +1,33 @@
+# script: scripts/validation_error_propagation.py
+# command: python scripts/validation_error_propagation.py "$GT_DATA_ROOT/<PT-CT1mm>" "$GT_DATA_ROOT/<PT-RT RTSTRUCT>" "$GT_DATA_ROOT/<PT-RT RTDOSE>" --n-draws 1000 --seed 0 --sk 3.5 --rx 6000 --seed-sets gtcore32,contoured30,gtcore30
+# commit: c557cf4
+# datasets: PT-CT1mm (thin-cut CT the RTSTRUCT references), PT-RT (RTSTRUCT CTV_GT + Seeds; RTDOSE)
+# target: HRCTV_PHYS = RTSTRUCT:CTV_GT rasterised on the CT grid (19.01 cc, 70438 voxels, 0.52x0.52x1.00 mm); rx 6000 cGy; S_K 3.5 U nominal for every seed; exact TG-43 engine at the voxel centres; axes fixed
+# seed sets: gtcore32 = the 32 gtcore detections on PT-CT1mm, PCA axes; contoured30 = the 30 TPS-contoured seeds (Seeds ROI centroids), PCA axes; gtcore30 = the 30 gtcore detections matched one-to-one to the contoured seeds; tps = the RTDOSE itself (trilinear at the CT voxel centres, no MC)
+# bands (both conservative: the residuals include the TPS contouring error): gtcore32/residual: resampled with replacement from 30 measured residual vectors (|r| median 0.15, p95 0.73, max 0.89 mm; per-axis SD 0.25 / 0.11 / 0.16 mm) [primary band]; runtime 88.0 s (4 threads); gtcore32/degraded_export: independent per-axis Gaussian, SD (x, y, z) = (0.51, 0.40, 0.63) mm [degraded export]; runtime 105.6 s (4 threads); contoured30/residual: resampled with replacement from 30 measured residual vectors (|r| median 0.15, p95 0.73, max 0.89 mm; per-axis SD 0.25 / 0.11 / 0.16 mm) [primary band]; runtime 105.4 s (4 threads); contoured30/degraded_export: independent per-axis Gaussian, SD (x, y, z) = (0.51, 0.40, 0.63) mm [degraded export]; runtime 106.3 s (4 threads); gtcore30/residual: resampled with replacement from 30 measured residual vectors (|r| median 0.15, p95 0.73, max 0.89 mm; per-axis SD 0.25 / 0.11 / 0.16 mm) [primary band]; runtime 97.5 s (4 threads); gtcore30/degraded_export: independent per-axis Gaussian, SD (x, y, z) = (0.51, 0.40, 0.63) mm [degraded export]; runtime 90.1 s (4 threads)
+# percentiles: p2.5 / p97.5 across the 1000 draws, pointwise per level for the DVH
+# calibration-set: yes (the one clinical case; there is no held-out scan)
+# generated: 2026-11-03
+# columns: band, seed_set, statistic (D90 cGy; V100 / V150 fraction), nominal, mean, sd, p2.5, p97.5, n_draws, seed
+band,seed_set,statistic,nominal,mean,sd,p2.5,p97.5,n_draws,seed
+rtdose,tps,D90,6364.650879,6364.650879,0,6364.650879,6364.650879,0,0
+rtdose,tps,V100,0.937363,0.937363,0,0.937363,0.937363,0,0
+rtdose,tps,V150,0.482027,0.482027,0,0.482027,0.482027,0,0
+residual,gtcore32,D90,6167.478947,6175.047448,19.474411,6133.448301,6212.387903,1000,0
+residual,gtcore32,V100,0.917104,0.9176,0.001797,0.913682,0.920995,1000,0
+residual,gtcore32,V150,0.467929,0.469954,0.00172,0.466608,0.473239,1000,0
+degraded_export,gtcore32,D90,6167.478947,6157.551079,48.685175,6068.177332,6254.775737,1000,0
+degraded_export,gtcore32,V100,0.917104,0.915882,0.004796,0.907137,0.925225,1000,0
+degraded_export,gtcore32,V150,0.467929,0.468972,0.005622,0.458075,0.479872,1000,0
+residual,contoured30,D90,5790.429706,5796.895592,16.354097,5761.013715,5828.261287,1000,0
+residual,contoured30,V100,0.873066,0.874481,0.002205,0.869799,0.878744,1000,0
+residual,contoured30,V150,0.377325,0.379128,0.001807,0.375663,0.382677,1000,0
+degraded_export,contoured30,D90,5790.429706,5776.534639,43.031534,5691.364196,5860.174393,1000,0
+degraded_export,contoured30,V100,0.873066,0.87158,0.005504,0.860913,0.882323,1000,0
+degraded_export,contoured30,V150,0.377325,0.378945,0.005585,0.368606,0.390116,1000,0
+residual,gtcore30,D90,5799.65302,5803.221339,16.634601,5766.989792,5834.618828,1000,0
+residual,gtcore30,V100,0.874727,0.876049,0.002092,0.871559,0.87994,1000,0
+residual,gtcore30,V150,0.380888,0.382481,0.001844,0.378799,0.386029,1000,0
+degraded_export,gtcore30,D90,5799.65302,5784.36027,44.003141,5696.234495,5872.304411,1000,0
+degraded_export,gtcore30,V100,0.874727,0.873527,0.005404,0.863168,0.884169,1000,0
+degraded_export,gtcore30,V150,0.380888,0.381985,0.00563,0.371573,0.393101,1000,0
