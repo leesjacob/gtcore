@@ -147,3 +147,19 @@ Euclidean distance to the nearest cavity voxel centre is <= 5 mm, outside the
 cavity, inside the clip — a centre-to-centre EDT, which makes the rind about
 0.2 mm thinner than a surface-based shell (−4 to −5 % volume on a digital
 sphere); the same definition is used in every table.
+
+## 2026-11-03 — seed-plane model confirmed in vivo (Phase 3 `seed-wall`); phantom wall reference
+
+Signed seed-to-surface distance (positive = cavity side), `scripts/seed_wall_distance.py`:
+clinical 32 gtcore seeds vs `Cav_Post` median +3.65 mm (10–90 % 1.70…5.46; TPS
+sources +3.57) — inside the hydrated 2.25–3.75 mm band → the 3 mm seed-plane model
+holds in vivo; `SEED_PLANE_OFFSET_MM` = 3.0 is not re-tuned (Table 2 row, Methods
+sentence in the notes). The v6/v7 caption number "median 4.6 mm" is superseded by
+3.65 mm. Phantom PH8 seeds vs the tile-less twin PH0 rigidly registered into PH8
+(registration residual 0.34 mm median): +3.05 mm (2.35…3.77, 26/32 in band) — the
+earlier "~1 mm off the mesh" was measured against the PH8 body mask, which includes
+the collagen tiles (tile free face), i.e. a reference-surface artifact, not a
+placement artifact. **Phase 4 consequence:** the phantom arms (V6, F8/Table 3
+phantom rows) conform and optimise on the registered PH0 wall (tile-free printed
+surface) and are scored on `RIND5(phantom cavity)` built from the PH0 lumen; the
+"as placed" arm is the pipeline's recovered tiles on that same wall.
