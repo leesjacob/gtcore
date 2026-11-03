@@ -5386,3 +5386,9 @@ The `--render` dry run rewrote `docs/figures/manifest.json` in the worktree; tha
   dashed reference at 0.90, legend below the axes, single column 3.35 x 2.9 in. All columns needed were in
   v2_summary.csv (v2_rows.csv not used). SA 0.356 / 0.581 / 0.812 / 0.981 / 1.000 at N = 4 / 6 / 8 / 10 / 12; bound
   0.377 / 0.570 / 0.739 at N = 4 / 6 / 8 (bound only to 8); n_cav per point in the manifest (infeasible cavities drop out).
+
+Full suite at `80bd480` (`GTCORE_STRICT=1`): `1 failed, 1156 passed, 15 skipped, 1 xfailed, 15536 warnings in 641.88s`.
+The one failure, `tests/test_paper_tables.py::test_campaign_rows_are_pending_until_the_files_land`, is
+pre-existing on `paper2/integration` c06b533 (same failure there, 1 failed / 10 passed in that file): the test
+expects the word "three arms" in the patient Table 3 row, which `paper_tables.py` now words "as implanted /
+optimized for RIND5 / optimized for CTV_GT". Not a paper_figures file; left to the paper-tables owner.
