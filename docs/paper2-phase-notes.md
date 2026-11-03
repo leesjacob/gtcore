@@ -3214,3 +3214,361 @@ below.
 Full suite on the final tree (`b20ae00`, same command, one job): **`951 passed,
 14 skipped, 15243 warnings in 593.86s (0:09:53)`**, exit 0 — 950 of `788df9d` plus
 the layer-class test added at `afb96ea`.
+
+## 2026-11-03 — Phase 4 — optimizer constants frozen, same-candidate V100 bound, SA seeds, full-grid rows, packing capacity (task `opt-constants-bound`, branch `p2/opt-constants-bound`)
+
+Requirements rev 3 §3 F8 ("DECIDE: objective frozen", "FIX SA convergence",
+"FIX the bound", "ADD `packing_capacity`", "Rename the campaign arm
+`as_implanted` → `as_placed`"), §6 Phase 4 first two checkboxes; Phase 4 plan
+row `opt-constants-bound`. Branched from `paper2/integration` at `00ba59f`.
+Commits: `e7e6b4e` (constants + `packing_capacity` + tests), `a7f2ddc`
+(campaign script + end-to-end smoke test), `3bd1c9d` (path masking in CSV
+headers); these notes in the follow-up docs commit. **Code only** — the V2–V8
+campaign itself is the later `campaign` run from one merged commit; every
+number below is a smoke / plumbing check on a deliberately coarse grid and a
+toy SA budget, never a paper number. Hardware as in the Phase 1 sections;
+other agents ran concurrently, so every timing is an upper bound.
+
+### What changed
+
+**`gtcore/plan/__init__.py` (constants + comments only).**
+`LAMBDA_TAIL = 1.0` and `TAIL_Q = 0.10` are frozen, with the evidence in the
+comment: the λ sweep (`docs/optimize-notes.md` "Objective: lower-tail term",
+2026-10-08; six synthetic cavities, N = 5…8, λ ∈ {0, 0.5, 1, 2}): λ = 1 leaves
+the minimum N and the above-N* result unchanged, costs ≈ 1.5 pp V100 one tile
+short of N*, lifts the coldest tenth of the target by 1.1–1.6 Gy two tiles
+short; λ = 2 loses a tile on one cavity. The minimum-N criterion cannot
+discriminate between objectives because D90 is the weighted 10th percentile,
+so D90 ≥ rx ⟺ V100 ≥ 0.90 exactly (0 disagreements on the 327 V2 rows and the
+196 sweep rows checked); only the behaviour below N* differs, and Jacob's
+decision (2026-10-08) is to prioritise D90 there. `SA_N_RESTARTS` 3 → **8**,
+`SA_N_SWEEPS` 40 → **60** (60 sweeps at α = 0.95 cool T to ≈ 4.6 % of T0;
+40: ≈ 13 %), because rev-1 SA sat 18.7 % below the exact optimum on cavity
+s4, N = 4 on the same influence matrix (rev 3 §3 F8 "Today"). Cost ≈ 4× the
+rev-1 SA wall time per run (rev-1: 5–8 s per (cavity, N) at C ≈ 900). The
+`gt optimize --solver sa` default and `plan.optimize(solver="sa")` inherit the
+new budget (they take the constants). `tests/test_plan_interface.py` pins the
+four values; `tests/test_packing_capacity.py::test_phase4_constants_frozen`
+pins them again together with the `solve_sa` defaults, the `Objective`
+defaults and the presence of the evidence citations in the comments.
+
+**Table 2 rows (parameters).** `LAMBDA_TAIL` | 1.0 | source: λ sweep on six
+synthetic cavities (`optimize-notes.md`, 2026-10-08) | calibration set:
+synthetic only, **not** re-tuned on PH8 or the clinical case | check: min-N
+identical to pure V100 for λ ≤ 1. `TAIL_Q` | 0.10 | the D90 mass.
+`SA_N_RESTARTS × SA_N_SWEEPS` | 8 × 60 | source: rev-1 gap 18.7 % on s4,
+N = 4 | check: the Phase 4 V3 gap on the same candidate set (campaign).
+
+**`gtcore/plan/candidates.py::packing_capacity(mesh, h_mm, n_spins,
+eligible=None, kind="full", ...) -> dict`** (the only change to that module;
+`gtcore.plan.api.packing_capacity`, the planner's greedy-solver variant with a
+target and fixed tiles, is untouched — the two live in different modules).
+Builds the candidate set at the stated grid (or reuses `candidates` /
+`conflicts` passed in), the robust conflict graph (`build_conflicts`: planner
+overlap rule ∪ geometric proxy) and returns `capacity` = the size of a greedy
+maximal independent set on that graph (`greedy_independent_set`: min static
+degree first — the rule of `solvers._packing_bound` — plus
+`CAPACITY_MIS_RANDOM_ORDERS` = 8 random orderings, the largest set kept,
+deterministic from `rng_seed`), `upper_bound_area` = ⌊eligible area / tile
+footprint area⌋ (4 cm² full, 2 cm² half; no packing loss), `eligible_area_mm2`,
+`n_candidates`, `n_anchors`, `n_pairs`, `h_mm`, `n_spins`, `kind`, the
+`selection` (ids; asserted conflict-free), `exact = False`, `method`, and
+`label` = `"capacity at grid (h = 4 mm, 6 spins), not exact"`. A wall too small
+for one tile returns `capacity` 0 with the `build_candidates` reason in
+`note`; a degenerate mesh or empty eligible region raises as
+`build_candidates` does.
+
+*Definition (Methods / Table 3 footnote).* "Capacity at grid" is the largest
+set of mutually non-conflicting candidate tiles the greedy maximal-independent
+-set heuristic finds among the candidates of the stated anchor spacing and spin
+set under the planner's overlap rule; it is a lower bound on the exact packing
+number of that candidate set (the exact maximum independent set is NP-hard at
+C ≈ 10³) and depends on the grid, so it is reported with (h, spins) and
+labelled "not exact". The area quotient is the upper bound when tiles cannot
+leave the eligible region (closed cavity); with a partial eligibility mask
+tiles anchored in the region may extend beyond it, so the quotient is then a
+rule-of-thumb only (the smoke run shows `capacity` 5 = quotient 5 on a 45 mm
+box plate because edge tiles drape over the box edge — a property of the
+conformer, not of the counter; the known-answer test keeps anchors ≥ 10 mm
+from the plate edge).
+
+**`scripts/validation_optimize.py`** (rev-1 campaign driver, Phase 4 upgrade;
+`gtcore/plan/sweep.py` is the N-sweep, not the driver, and was not touched):
+
+- **Full-grid rows.** `evaluate_tiles` now passes the cavity mask (the
+  generator's truth cavity lumen, `cavity_source = "synthetic:cavity"`) and
+  the clip (the generator's brain mask, which excludes skull, tract and seed
+  voxels — the role of the clinical `Brain` clip; `clip_source =
+  "synthetic:brain"`) to `final_report`, and every campaign row carries the
+  **full-grid RIND5** numbers `RIND5_V100`, `RIND5_D90`, `RIND5_V150`,
+  `RIND5_V200`, `RIND5_volume_cc`, `RIND5_n` (`metrics_grid["RIND5"]`, Phase 2
+  tail) next to the S5 surrogate (`S5_V100`, `S5_D90`, `S5_V150`, `S5_V200`;
+  `S0_V100`, `S10_V100`), the optimizer's area-weighted target (`TGT_V100` …,
+  surrogate) and the influence-subsample numbers the solver saw (`INFL_V100`,
+  `INFL_D90`, `INFL_objective`; reported, never used for statistics). The old
+  unprefixed `V100` / `D90` / `V100w` columns are gone. Summary, paired CIs
+  (SA − uniform, SA − greedy, greedy − uniform, greedy+local − greedy,
+  SA − random, continuous − SA, continuous − uniform, V100 bound − SA,
+  sa_best − uniform, sa_best − greedy; per N), the primary endpoint (N* =
+  smallest N where uniform reaches `RIND5_D90 ≥ rx`), the V4 / V5 / V3 tables
+  and the V2 figure all operate on `RIND5_V100` (`S5_V100` kept as a labelled
+  surrogate column in the paired table). A cavity mask that yields no RIND5
+  entry is an error, never a silent NaN. Cached cavities are re-keyed
+  (`cavity_v2_*.pkl`) because the rev-1 pickles carry no brain mask.
+- **`--sa-seeds k`.** k SA runs per (cavity, N) with seeds
+  `SA_SEED_BASE + cavity_seed + j·SA_SEED_STRIDE` (1000 + s + 10 000 j; j = 0
+  is the rev-1 seed). Every row carries `sa_seed`, `sa_rep`, `sa_n_sweeps`,
+  `sa_n_restarts`; `v2_rows.csv` keeps one row per seed, `collapse_seeds`
+  makes one row per (cavity, N, arm) with the SA metrics averaged over seeds
+  plus `RIND5_V100_seed_sd` / `_best` / `_worst` (same for `RIND5_D90`),
+  `n_seeds`, `sa_seed_best`, and adds the best seed's row as the pseudo-arm
+  `sa_best` (`v2_rows_collapsed.csv`, `v2_sa_seeds.csv`); the summary reports
+  mean ± SD over seeds (`RIND5_V100_seed_sd_mean`) and the best
+  (`RIND5_V100_best_mean`); the primary endpoint is computed for the SA seed
+  mean and for `sa_best`. V3 and V6 run the seeds too (one V3 row per seed;
+  `v3_gap_per_instance.csv` has mean / best / worst gap over seeds).
+- **`--same-candidates` and the "V100 bound" label.** The exact arm is now
+  `v100_bound` everywhere (`milp` accepted as an alias in `--arms`): with the
+  flag it runs `solve_milp(method="auto")` on the SAME candidate set, conflict
+  graph and influence subsample as SA (`assert_same_candidates` compares
+  length, `anchor_ids`, spins, kinds, anchors and seed centres, raises on any
+  difference, logs `C`, a 12-hex `candidate_ids_digest`, h and spins; the row
+  carries `same_candidates`, `candidate_ids_digest`, `bound_h_mm`,
+  `bound_n_spins`, `bound_n_candidates`, `bound_m_opt`); without the flag it
+  runs on the rev-1 reduced instance (h 6 mm / 2 spins / M 300) and the row
+  says `same_candidates = False`. `solve_milp` drops the tail term for its
+  call; the row records `lambda_tail_dropped` (= 1.0 under the frozen
+  objective; the arm raises if the objective has a tail weight and the solver
+  did not record the drop) and `bound_method` (`enum_bb` / `highs`),
+  `solver_status`, the normalised `bound` and `mip_gap`. `--bound-time-limit`
+  (default `MILP_TIME_LIMIT_S`) and `--bound-n` (default `V3_N` = 4, 6, 8 for
+  the V2 arm; V3 uses its own N list) control it. V3 runs SA and the bound on
+  one instance (the campaign grid with the flag, the reduced one otherwise)
+  and reports `gap` on the influence V100 (the quantity the bound bounds) and
+  `gap_RIND5_V100` on the full grid alongside.
+- **Budget / grid overrides** for smoke tests and the campaign agent:
+  `--sa-sweeps`, `--sa-restarts` (default: the frozen constants; rows record
+  the budget used), `--h-mm`, `--n-spins`, `--m-opt` (V2 grid; V3 with
+  `--same-candidates`, V5, V6, V7 follow it), `--phantom <PH8 dir>`,
+  `--ph0 <PH0 dir>`.
+- **Phantom arms renamed** `as_implanted` → `as_placed`,
+  `as_implanted_conformed` → `as_placed_conformed` in code, CSV (`arm`
+  column), JSON file names (`v6_as_placed*.json`) and the printed tables; the
+  V6 heading says "as placed vs optimized; plastic, not tissue; NOT
+  optimizer-vs-surgeon". `docs/optimize-notes.md` V6 carries a one-line alias
+  note (`as_implanted` = `as_placed`, `milp` = `v100_bound`); its rev-1 tables
+  keep the old names as history.
+- **Phantom RIND5 hook (not yet live).** `load_printed_phantom(..., ph0_path)`
+  calls `gtcore.segment.cavity.phantom_wall_and_cavity(vol_ph8, vol_ph0)`
+  when that helper exists (task `opt-eligibility-phantom`, concurrent) and
+  then uses the registered PH0 wall as the conforming / optimizing wall and
+  the PH0 lumen mask as the RIND5 cavity (`cavity_source = "PH0:lumen
+  (registered into PH8)"`); otherwise `RIND5_*` is NaN on the phantom, the
+  `TGT_*` columns are the endpoints and `v6_info.json["phantom_cavity_note"]`
+  says why. The campaign agent verifies the hook after the merge (the return
+  shape is accepted as `(wall, cavity_mask)` or a dict with `wall`/`mesh` and
+  `cavity_mask` keys).
+- **`--capacity` / `--section capacity`**: `packing_capacity` per synthetic
+  cavity of the grid and for the phantom (eligible = visible from the implant
+  centroid ∧ ≤ 35 mm of a seed, as in V6) at the campaign grid →
+  `capacity.csv` and a printed table "manufacturer rule (`rule_tiles`) vs
+  `capacity_at_grid` vs `upper_bound_area` vs implanted / placed"; V6 and V7
+  also print the phantom's / cavity's capacity (`capacity_at_grid` in
+  `v6_info.json`, `t_capacity` in V7).
+- **CSV header comments** (`write_csv(header=...)`, `# ...` lines before the
+  column row; `read_csv` skips them): script and section, the command (with
+  every filesystem token masked as `<path>` — `sanitise_argv`; also applied to
+  `runs.csv`), commit, date, dataset ids, the column definitions, the frozen
+  objective and the SA budget / bound mode of the run.
+- Unchanged: the conflict rule (planner ∪ proxy), the arm feasibility checks
+  (FAILED rows, never lower scores), the uniform / random heuristics, V8.
+
+**Tests.** `tests/test_packing_capacity.py` (5 tests): the four frozen
+constants + solver defaults + evidence citations; `greedy_independent_set` on
+a path (P5 → {0, 2, 4}), a star, an eligibility mask, the empty graph, a
+non-square matrix, determinism; a 7 × 7 toy grid at 10 mm pitch whose exact
+packing number is 9 (tiles at anchor Chebyshev distance ≤ 20 mm conflict
+under the planner rule, 30 mm apart do not) → `capacity` 9 with the expected
+ids, area quotient 25 (100 mm plate), label / method / grid fields; a 100 mm
+plate with the inner 60 × 60 mm square eligible → eligible area 3600 mm²
+exactly, `upper_bound_area` 9, `4 ≤ capacity ≤ 9` (measured 9 at h 5 mm,
+1 spin), every selected tile conflict-free under `tiles_conflict(robust=True)`,
+anchored inside the square and flat on the plate (no edge wrap); the
+face-index form of `eligible`; a 12 mm wall (capacity 0, note), empty
+eligibility, bad kind, empty mesh. `tests/test_plan_interface.py`: CONSTANTS
+pins `LAMBDA_TAIL`, `TAIL_Q`, `SA_N_SWEEPS` 60, `SA_N_RESTARTS` 8.
+`tests/test_validation_optimize_smoke.py` (+11 tests → 26): the **end-to-end
+smoke run** below as a module fixture (asserts < 180 s), the new columns and
+value ranges, the masked header, two distinct SA seeds per (cavity, N) with
+the documented seed formula and budget, the collapsed rows (mean between worst
+and best, `sa_best` present), the summary / seed CSVs, the bound rows
+(`same_candidates` True, `lambda_tail_dropped` 1.0, `enum_bb`/`highs`, SA's
+grid, an optimal bound's `INFL_V100` ≥ every SA seed's), the paired table
+(`sa - uniform`, `sa - greedy`, `v100_bound - sa`, `sa_best - greedy` on
+`RIND5_V100`; `sa - greedy` on `S5_V100`), the primary CSV, the figure; unit
+tests of `sa_seeds_for`, the new CLI flags and the `milp` alias,
+`assert_same_candidates` (raises on a subset and on a different grid),
+`collapse_seeds`, `write_csv` / `read_csv` with headers, `solver_columns`,
+`rind5_kwargs`, `sanitise_argv`.
+
+### Smoke run — V2 on two synthetic cavities (commit `a7f2ddc`; 55 s wall; `gtcore.__file__` printed = this worktree)
+
+```
+# from the p2-opt-constants-bound worktree root, PYTHONPATH=<worktree>, GTCORE_STRICT=1
+python scripts/validation_optimize.py --section v2 --seeds 1 2 --scales 1.0 --n-list 4 6 \
+    --arms uniform,greedy,sa,v100_bound,truth --sa-seeds 2 --same-candidates \
+    --sa-sweeps 4 --sa-restarts 2 --h-mm 6 --n-spins 2 --m-opt 300 --bound-time-limit 60 \
+    --out <dir> --no-cache
+```
+
+Cavities s1_x1.00 (24.4 mL, 4178 mm², rule 11 tiles) and s2_x1.00 (27.6 mL,
+4561 mm², rule 12); the rev-1 reduced grid (h 6 mm, 2 spins → C = 126 / 128,
+M = 300) so the enumeration bound closes in 1–6 s; **SA budget 2 × 4 — a
+plumbing budget, so SA is below greedy here; not a paper number.** Mean ± SD
+across the two cavities on the collapsed rows (`v2_summary.csv`):
+
+| N | arm | n_cav | RIND5 V100 | RIND5 D90 [cGy] | RIND5 V150 | S5 V100 | SA seed SD | solve s |
+|---|---|---|---|---|---|---|---|---|
+| 4 | uniform | 2 | 0.317 ± 0.025 | 2702 ± 451 | 0.082 ± 0.007 | 0.000 ± 0.000 | | 0.0 |
+| 4 | greedy | 2 | 0.303 ± 0.016 | 2624 ± 308 | 0.086 ± 0.011 | 0.015 ± 0.018 | | 0.0 |
+| 4 | sa (mean of 2 seeds) | 2 | 0.306 ± 0.007 | 2747 ± 383 | 0.104 ± 0.016 | 0.077 ± 0.013 | 0.001 | 0.2 |
+| 4 | sa_best | 2 | 0.307 ± 0.007 | 2764 ± 304 | 0.103 ± 0.014 | 0.085 ± 0.009 | | 0.2 |
+| 4 | v100_bound (same candidates) | 2 | 0.367 ± 0.006 | 1717 ± 119 | 0.157 ± 0.012 | 0.210 ± 0.053 | | 1.2 |
+| 6 | uniform | 1 | 0.755 | 5279 | 0.219 | 0.276 | | 0.0 |
+| 6 | greedy | 2 | 0.762 ± 0.085 | 5099 ± 485 | 0.268 ± 0.037 | 0.412 ± 0.116 | | 0.0 |
+| 6 | sa (mean of 2 seeds) | 2 | 0.782 ± 0.114 | 5299 ± 664 | 0.273 ± 0.037 | 0.411 ± 0.084 | 0.010 | 0.2 |
+| 6 | sa_best | 2 | 0.789 ± 0.105 | 5249 ± 734 | 0.278 ± 0.031 | 0.423 ± 0.067 | | 0.2 |
+| 6 | v100_bound (same candidates) | 2 | 0.707 ± 0.064 | 3654 ± 723 | 0.330 ± 0.022 | 0.570 ± 0.045 | | 4.0 |
+| 8 | truth (N fixed) | 2 | 0.742 ± 0.019 | 4424 ± 148 | 0.562 ± 0.013 | 0.646 ± 0.017 | | 0.0 |
+
+Bound rows (`v2_rows.csv`): `same_candidates` True on all four, digests
+`6d367d6e565c` (s1, C = 126) / `1364864c1352` (s2, C = 128) identical to SA's
+instance, `lambda_tail_dropped` 1.0, `bound_method` enum_bb, status optimal;
+`INFL_V100` = `bound` = 0.2767 / 0.6433 (s1, N 4 / 6) and 0.2100 / 0.5633
+(s2) — the rev-1 V3 optima at the same grid (`optimize-notes.md`, V3 table:
+0.277 / 0.643, 0.210 / 0.563), so the instance is reproduced bit-for-bit.
+SA seeds per (cavity, N) (`v2_sa_seeds.csv`): s1 N 4 RIND5_V100 0.3103 ±
+0.0022 (seeds 1001 / 11001), N 6 0.8633 ± 0 (identical selections); s2 N 4
+0.3010 ± 0.0006, N 6 0.7016 ± 0.0192. Primary endpoint (SA seed mean −
+uniform at N*, RIND5_V100): −3.9 pp [−22.5, 14.8], n = 2, Wilcoxon p 0.5,
+both cavities flagged (uniform never reached RIND5_D90 ≥ rx at N ≤ 6) —
+plumbing only. Paired table: 12 comparisons × {RIND5_V100, S5_V100} per N.
+
+**Reading worth carrying into the campaign notes.** (i) The exact arm bounds
+the *influence-subsample coverage of the S5 target* — at N = 6 it is the
+highest arm on `S5_V100` (0.570 vs SA 0.411) and the *lowest* on
+`RIND5_V100` (0.707 vs 0.782) and `RIND5_D90` (3654 vs 5299 cGy): dropping
+the tail term and optimising the surface surrogate on M = 300 points does not
+bound the volumetric rind, so `gap_RIND5_V100` can be positive and the V3 gap
+must be read on `INFL_V100` (where SA ≤ bound by construction) with the RIND5
+numbers alongside. (ii) At N = 4 (below N*) the bound's D90 is 1000 cGy below
+SA's and the uniform heuristic's — the λ-sweep behaviour (pure V100 clusters
+tiles and leaves a cold patch) seen on the full grid. (iii) At the reduced
+grid s1 cannot pack N = 6 for the uniform heuristic (4 of 6 anchors) and no
+arm packs N = 8 (bound: infeasible after 77 608 nodes, as in rev 1): N ≥ 8
+needs the campaign grid (h 4 mm / 6 spins).
+
+### Smoke runs — V3, capacity, V6 (phantom), V4 / V5 / V7 (commit `a7f2ddc`)
+
+- **V3** (`--section v3 --quick --seeds 1 --sa-seeds 2 --same-candidates
+  --sa-sweeps 4 --sa-restarts 2 --h-mm 6 --n-spins 2 --m-opt 300`; 13 s):
+  s1 N = 4, C = 126, bound 0.2767 optimal (enum_bb, 0.8 s), SA seeds 1001 /
+  11001 `INFL_V100` 0.083 / 0.103 → gap −69.9 % / −62.7 % (the 2 × 4 toy
+  budget), `RIND5_V100` SA 0.309 / 0.312 vs bound 0.362 (gap_RIND5 −14.8 /
+  −13.9 %), greedy 0.314, continuous 0.314; N = 8 FAILED on both arms (SA
+  greedy start stalls at 4, bound infeasible after 77 608 nodes — identical
+  node count to rev 1). `v3_gap_per_instance.csv` carries mean / best / worst
+  over seeds.
+- **Capacity** (`--capacity --seeds 1 2 --scales 1.0 --h-mm 6 --n-spins 2`;
+  8 s; phantom directory deliberately absent → PH8 row `skipped` with the
+  reason): s1 — rule 11, **capacity at grid 7**, area bound 10, truth 8
+  (C = 122, 3292 pairs); s2 — rule 12, capacity 7, bound 11, truth 8 (C =
+  132, 3610 pairs). At h 6 mm / 2 spins the candidate set cannot hold the
+  manufacturer's count; the campaign grid will give its own number (Table 3
+  reads the campaign's `capacity.csv`).
+- **V6 on PH8** (`--section v6 --quick --sa-seeds 2 --same-candidates
+  --sa-sweeps 4 --sa-restarts 2 --h-mm 6 --n-spins 2 --m-opt 300 --phantom
+  "$GT_DATA_ROOT/<PH8>"`; 239 s wall of which `reconstruct` 24 s and the
+  visible-face ray test most of the rest; no `--ph0`, so wall = PH8 `body`
+  mesh and `RIND5_*` NaN by design): body 53 863 mm² / 473.9 mL / 72 396
+  faces, eligible 4732 mm² (7498 faces), 32 seeds, 8 fitted tiles; **manufacturer
+  rule 12 vs capacity at grid 10 (h 6 mm, 2 spins; area bound 11) vs placed 8**;
+  `as_placed` TGT_V100 0.668, TGT_D90 2349 cGy, 3 overlaps; `as_placed_conformed`
+  0.683 / 2334, 6 overlaps → conformer substitution alone +1.50 pp, −16 cGy
+  (rev 1 at `93696e2`: 0.654 / 2349 and +1.75 pp, −4 cGy — the Phase 1 tree
+  moved the as-placed V100 by +1.4 pp; the 0.84 mm "seeds off the mesh" is the
+  tile-face reference artifact of the `seed-wall` section, unchanged); uniform
+  0.638 / 3830, greedy 0.684 / 3737, SA (2 seeds, toy budget) 0.735 / 4716
+  (identical selections), V100 bound on the same 47 candidates 0.792 / 4482
+  (enum_bb optimal, 2.1 s; `lambda_tail_dropped` 1.0), continuous 0.684 /
+  3737; greedy sweep reaches neither criterion by N = 10. Files
+  `v6_as_placed.json`, `v6_as_placed_conformed.json`, `v6_sa_seed1000.json`,
+  `v6_sa_seed11000.json`, `v6_v100_bound.json`, `v6_phantom.csv`,
+  `v6_phantom_collapsed.csv`, `v6_info.json`.
+- **V4 / V5 / V7** (seeds 1 and 2 separately, h 6 mm / 2 spins, N = 8, SA
+  1 × 2): the sections run and write `*_RIND5_V100` / `*_S5_V100` columns,
+  `t_capacity`, `t_v100_bound`; at this grid no heuristic packs N = 8 (greedy
+  stalls at 4 on s1, 6 on s2; the bound packs 8 on s2 in 9.7 s, is infeasible
+  on s1), so only the truth rows carry metrics (V5 truth spread over the six
+  perturbations 4.7 / 4.6 pp RIND5_V100 on s1 / s2; `t_final_report_15mm`
+  2.2–2.4 s, `_full_50mm` 19.2–19.5 s). The campaign grid is where V4 / V5
+  are meaningful; the smoke only proves the plumbing.
+
+### Commands
+
+```
+# worktree root, PYTHONPATH=<worktree>, GTCORE_STRICT=1; gtcore.__file__ is printed first by every run
+GTCORE_STRICT=1 python -m pytest -q tests/test_packing_capacity.py tests/test_plan_interface.py \
+    tests/test_plan_milp.py tests/test_plan_objective.py -p no:cacheprovider        # 84 passed, 13 skipped, 30 s
+GTCORE_STRICT=1 python -m pytest -q tests/test_validation_optimize_smoke.py           # 26 passed, 52-58 s
+python scripts/validation_optimize.py --section v2 --seeds 1 2 --scales 1.0 --n-list 4 6 \
+    --arms uniform,greedy,sa,v100_bound,truth --sa-seeds 2 --same-candidates \
+    --sa-sweeps 4 --sa-restarts 2 --h-mm 6 --n-spins 2 --m-opt 300 --out <dir> --no-cache   # 55 s
+python scripts/validation_optimize.py --capacity --seeds 1 2 --scales 1.0 --h-mm 6 --n-spins 2 \
+    --phantom "$GT_DATA_ROOT/<PH8>" --out <dir>
+python scripts/validation_optimize.py --section v6 --phantom "$GT_DATA_ROOT/<PH8>" \
+    [--ph0 "$GT_DATA_ROOT/<PH0>"] --sa-seeds 3 --same-candidates --out <dir>
+# the campaign (agent `campaign`, from the merged commit): defaults = frozen constants, h 4 mm / 6 spins / M 1000
+python scripts/validation_optimize.py --section v2,v3,v4,v5,v7,v8 --sa-seeds 3 --same-candidates --capacity --out <dir>
+```
+
+### Notes for the coordinator / open points
+
+- **Bound arm at the campaign grid.** With `--same-candidates` at h 4 mm /
+  6 spins the instance has C ≈ 900–1400 (> `ENUM_MAX_C` 600), so
+  `solve_milp(method="auto")` takes the HiGHS path, whose LP bound was loose
+  in the §7.3 scout (1.6–2.5× the optimum) and which hit the 300 s limit on
+  the 1.25-scale cavity in rev-1 V7. The row records `bound_method`,
+  `solver_status` and the normalised `bound`; the campaign agent decides
+  `--bound-time-limit` (and whether to report the enumeration on the reduced
+  grid as a second, labelled line). The V3 gap must be read on `INFL_V100`
+  (see "Reading" above); `gap_RIND5_V100` is informational.
+- **Phantom RIND5 hook** depends on `segment.cavity.phantom_wall_and_cavity`
+  from the concurrent task; verify the return shape after the merge, then V6
+  conforms / optimises on the registered PH0 wall and scores
+  `RIND5(phantom cavity)` as the decision log (2026-11-03, `seed-wall`)
+  requires. Until then the phantom endpoints are `TGT_*` and `RIND5_*` is NaN
+  (stated in the V6 block and `v6_info.json`).
+- **SA budget in the planner / CLI.** `gt optimize --solver sa` and the
+  planner's `O` key now run 8 × 60 (≈ 4× slower; rev-1 2–5 s → ~10–20 s at
+  C ≈ 900). No test changed its own budget (the solver tests pass explicit
+  `n_sweeps` / `n_restarts`); if the interactive latency matters, a planner
+  budget override is a one-line change outside this task.
+- When greedy cannot pack N but the bound can (s2, N = 8 at the reduced grid)
+  V2 / V4 / V5 record FAILED SA rows (SA's greedy start stalls); V3 restarts
+  SA from the bound's selection (`sa_start = v100_bound`, rev-1 rule). Whether
+  V2 should do the same is a campaign-design question (it changes the arm's
+  definition), left open.
+- The rev-1 machine-path constant `V6_PHANTOM_DIR` remains (Phase 5 scrub);
+  `--phantom` overrides it and every path token is masked in CSV headers and
+  `runs.csv`. Old cache pickles (`cavity_*.pkl`, `printed_phantom_*.pkl`,
+  `inst_printed_*.pkl`) are ignored by the new keys; `output/` is git-ignored.
+- `n_overlaps` of a collapsed SA row is the mean over seeds (can be
+  fractional); the per-seed rows keep the integers.
+- Nothing installed. No shared files touched (`pyproject.toml`,
+  `tests/conftest.py`, `README.md` untouched). Files: `gtcore/plan/__init__.py`
+  (constants + comments only), `gtcore/plan/candidates.py` (`packing_capacity`,
+  `greedy_independent_set`, docstring), `scripts/validation_optimize.py`,
+  `tests/test_packing_capacity.py` (new), `tests/test_plan_interface.py`
+  (CONSTANTS), `tests/test_validation_optimize_smoke.py` (+11),
+  `docs/optimize-notes.md` (parameter table rows, V6 alias note), this section.
