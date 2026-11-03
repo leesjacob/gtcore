@@ -906,59 +906,86 @@ def f8a_implant_3d(ctx) -> Dict[str, Any]:
     """F8(a): the same implant on the gtcore cavity mesh the optimizer uses,
     same camera as F4(b); V100 / D90 on the full rind and CTV_GT in the manifest."""
     r = _render_implant(ctx, "f8a_patient_implant", "wall_mesh", "patient", ctx["tile_mode"])
-    r["key_numbers"].update(_f8_numbers("as_implanted"))
+    r["key_numbers"]["f8_title_numbers"] = _f8_numbers("as_implanted")
     return r
 
 
-def _f8_numbers(arm_hint: str) -> Dict[str, Any]:
-    """V100 / D90 on RIND5(gtcore) and CTV_GT for the F8 titles: from the
-    campaign's f8_patient_summary.csv when present, else (as-implanted only)
-    from the Table 3 rows (gtcore @ 32 gtcore seeds)."""
-    if os.path.exists(F8_SUMMARY_FILE):
-        rows = read_csv(F8_SUMMARY_FILE)
-        arms = {}
-        for r in rows:
-            arms[r.get("arm", "?")] = {k: fnum(v) for k, v in r.items()
-                                       if k.endswith("_V100") or k.endswith("_D90_cGy") or k in ("solve_s", "n_overlaps", "n_tiles")}
-        return {"f8_arms": arms, "f8_numbers_source": rel(F8_SUMMARY_FILE) + " @ " + str(header_commit(F8_SUMMARY_FILE))}
-    if arm_hint == "as_implanted":
-        return {"RIND5_gtcore_V100": table3_value("RIND5(gtcore", "gtcore@32 gtcore seeds", "V100"),
-                "RIND5_gtcore_D90_cGy": table3_value("RIND5(gtcore", "gtcore@32 gtcore seeds", "D90"),
-                "CTV_GT_V100": table3_value("HRCTV_PHYS", "gtcore@32 gtcore seeds", "V100"),
-                "CTV_GT_D90_cGy": table3_value("HRCTV_PHYS", "gtcore@32 gtcore seeds", "D90"),
-                "f8_numbers_source": "clinical_table3_rows.csv (gtcore @ 32 gtcore seeds); campaign f8_patient_summary.csv pending"}
-    return {"f8_numbers_source": "campaign f8_patient_summary.csv pending"}
+F8_KEYS = ("RIND5_gtcore_V100", "RIND5_gtcore_D90_cGy", "CTV_GT_V100", "CTV_GT_D90_cGy", "REACH10_V100",
+           "REACH10_D90_cGy", "n_tiles", "n_overlaps", "solve_s", "sa_seed")
+
+
+def _f8_numbers(arm: str) -> Dict[str, Any]:
+    """V100 / D90 on RIND5(gtcore) and CTV_GT (+ reach) of one arm of the
+    campaign's f8_patient_summary.csv (arm names as in the CSV: as_implanted,
+    optimized_rind5_sa_best, optimized_ctvgt_sa_best, ...)."""
+    if not os.path.exists(F8_SUMMARY_FILE):
+        raise Skip("missing %s" % rel(F8_SUMMARY_FILE))
+    row = next((r for r in read_csv(F8_SUMMARY_FILE) if r.get("arm") == arm), None)
+    if row is None:
+        raise Skip("arm %r not in %s" % (arm, rel(F8_SUMMARY_FILE)))
+    out = {k: fnum(row.get(k)) for k in F8_KEYS if k in row}
+    out["arm"] = arm
+    out["source"] = "%s @ %s" % (rel(F8_SUMMARY_FILE), header_commit(F8_SUMMARY_FILE))
+    return out
+
+
+def smooth_sheet(points: np.ndarray, n: int, n_iter: int = S.RENDER["sheet_smooth_iter"]) -> np.ndarray:
+    """Display smoothing of a wall-draped n x n tile sheet: the committed
+    sheets follow the voxel-scale relief of the gtcore cavity wall, which
+    renders as spikes and folds.  Taubin smoothing on the grid (boundary and
+    corners included, volume-neutral lambda/mu pairs) removes that relief;
+    the tile's position and overall curvature are kept."""
+    g = np.asarray(points, float).reshape(n, n, 3).copy()
+
+    def step(a, lam):
+        out = a.copy()
+        for r in range(n):
+            for c in range(n):
+                nb = [a[rr, cc] for rr, cc in ((r - 1, c), (r + 1, c), (r, c - 1), (r, c + 1)) if 0 <= rr < n and 0 <= cc < n]
+                out[r, c] = a[r, c] + lam * (np.mean(nb, axis=0) - a[r, c])
+        return out
+
+    for _ in range(n_iter):
+        g = step(step(g, 0.5), -0.53)
+    return g.reshape(-1, 3)
+
+
+F8B_FAMILIES = (("rind5", "opt_rind5_", "optimized_rind5_sa_best"), ("ctvgt", "opt_ctvgt_", "optimized_ctvgt_sa_best"))
 
 
 def f8b_optimized_3d(ctx) -> Dict[str, Any]:
-    """F8(b): the optimizer's tiles on the same gtcore cavity mesh, same
-    camera; one render per optimized arm in f8b_patient_optimized.npz
-    (opt_* = optimized for RIND5; further opt<arm>_* prefixes if present)."""
+    """F8(b): the optimizer's 8 tiles on the same gtcore cavity mesh and with
+    the same camera as F8(a), one render per optimized family (optimized for
+    the full RIND5; optimized for the physician's CTV_GT), the best SA seed of
+    each (f8_patient_summary.csv *_sa_best = the NPZ's opt_<family>_sa_seed)."""
     if not os.path.exists(F8B_FILE):
         raise Skip("campaign output %s not committed yet (scripts/patient_optimize.py)" % rel(F8B_FILE))
     d = _npz(F8B_FILE)
     n = int(d["sheet_grid_n"])
-    prefixes = sorted({k[:-len("sheet_seed_vertices")] for k in d if k.endswith("sheet_seed_vertices") and k.startswith("opt")})
-    if not prefixes:
-        raise Skip("no opt*_sheet_seed_vertices arrays in %s" % rel(F8B_FILE))
     mesh = (d["wall_mesh_vertices"], d["wall_mesh_faces"])
-    elig = np.asarray(d["eligible_face_mask"], bool) if "eligible_face_mask" in d else None
-    outs, kn = [], {"arms": {}, "camera": S.CAMERA["patient"], "eligible_fraction_area":
-                    float(d["eligible_fraction_area"]) if "eligible_fraction_area" in d else None}
-    for pre in prefixes:
-        wall = d.get(pre + "sheet_wall_vertices", d.get(pre + "sheet_tissue_vertices"))
-        cav = d[pre + "sheet_cavity_vertices"]
+    outs, kn = [], {"camera": S.CAMERA["patient"], "families": {},
+                    "eligible_rule": str(d.get("eligible_rule", "")),
+                    "eligible_fraction_area": float(d["eligible_fraction_area"]) if "eligible_fraction_area" in d else None,
+                    "eligible_wall_shading": "omitted (the union is 67 % of the wall; a tint does not read)"}
+    for fam, pre, arm in F8B_FAMILIES:
+        if pre + "sheet_wall_vertices" not in d:
+            raise Skip("%ssheet_wall_vertices not in %s" % (pre, rel(F8B_FILE)))
+        wall = d[pre + "sheet_wall_vertices"]
         n_t = len(wall)
         colours = tile_colour_list(n_t, [False] * n_t)
-        tiles = [{"tissue": wall[i], "cavity": cav[i], "n": n, "colour": colours[i]} for i in range(n_t)]
+        tiles = [{"tissue": smooth_sheet(wall[i], n), "n": n, "colour": colours[i]} for i in range(n_t)]
         seeds = [{"centers": d[pre + "seed_centers_ras"], "axes": d[pre + "seed_axes_ras"], "colour": S.COL["seed"],
                   "length": float(d["seed_length_mm"]), "diameter": float(d["seed_diameter_mm"])}]
-        img = render_scene(S.CAMERA["patient"], mesh, tiles, seeds, eligible=elig)
-        suffix = "" if pre == "opt_" else "_" + pre.strip("_")
-        outs += S.save_raster_panel(img, ctx["out"], "f8b_optimized" + suffix, S.RENDER["panel_in"])
-        kn["arms"][pre.rstrip("_")] = {"n_tiles": n_t, "sa_seed": int(d["opt_sa_seed"]) if "opt_sa_seed" in d else None}
-    kn.update(_f8_numbers("optimized"))
-    return {"outputs": outs, "key_numbers": kn, "note": "eligible wall tinted darker grey"}
+        img = render_scene(S.CAMERA["patient"], mesh, tiles, seeds)
+        outs += S.save_raster_panel(img, ctx["out"], "f8b_optimized_" + fam, S.RENDER["panel_in"])
+        nums = _f8_numbers(arm)
+        npz_seed = int(d[pre + "sa_seed"])
+        if int(nums.get("sa_seed", npz_seed)) != npz_seed:
+            raise RuntimeError("best SA seed mismatch for %s: summary %s vs NPZ %s" % (fam, nums.get("sa_seed"), npz_seed))
+        nums.update({"n_tiles_rendered": n_t, "npz_sa_seed": npz_seed,
+                     "objective_target": str(d.get(pre + "objective_target", ""))})
+        kn["families"][fam] = nums
+    return {"outputs": outs, "key_numbers": kn, "note": "tissue face of each optimized tile on the gtcore cavity wall"}
 
 
 def f4c_phantom_3d(ctx) -> Dict[str, Any]:
@@ -1077,49 +1104,49 @@ def s2b_axis_boxplot(ctx) -> Dict[str, Any]:
     return {"outputs": outs, "key_numbers": kn, "note": ""}
 
 
-S4_ARMS = {  # arm key in v2_summary.csv -> (label, colour, marker, linestyle)
-    "sa": ("simulated annealing", S.OI["blue"], "o", "-"),
-    "greedy": ("greedy", S.OI["orange"], "s", "-"),
+S4_ARMS = {  # arm key in v2_summary.csv -> (label, colour, marker, linestyle); drawn in this order
     "uniform": ("uniform heuristic", S.OI["midgrey"], "D", "-"),
-    "milp": ("V100 bound (same candidates)", S.OI["black"], "^", (0, (4, 2))),
-    "bound": ("V100 bound (same candidates)", S.OI["black"], "^", (0, (4, 2))),
-    "greedy+local": ("greedy + local search", S.OI["purple"], "v", "-"),
-    "random": ("random feasible", S.OI["sky"], "x", (0, (1, 2))),
-    "continuous": ("continuous multi-start", S.OI["green"], "P", "-"),
+    "greedy": ("greedy", S.OI["orange"], "s", "-"),
+    "sa": ("SA (mean of 3 seeds)", S.OI["blue"], "o", "-"),
+    "v100_bound": ("V100 bound (same candidates)", S.OI["black"], "^", (0, (4, 2))),
 }
+S4_REF_V100 = 0.90
 
 
 def s4_v100_vs_n(ctx) -> Dict[str, Any]:
-    """S4: V100 of RIND5 vs tile count N on the synthetic cavities, mean +- SD
-    across cavities per arm (the Phase 4 campaign's v2_summary.csv)."""
+    """S4: V100 of the full 5 mm rind (RIND5, final 1 mm report grid) vs tile
+    count N on the synthetic cavities: uniform / greedy / SA (seed mean) /
+    V100 bound, mean +- SD across cavities (v2_summary.csv); 0.90 dashed."""
     if not has_header(S4_FILE):
         raise Skip("%s is not the Phase 4 campaign output yet (no '# commit' header)" % rel(S4_FILE))
     rows = read_csv(S4_FILE)
-    arms = []
-    for r in rows:
-        if r["arm"] not in arms:
-            arms.append(r["arm"])
     fig, (ax,) = S.chart_axes(S.SIZE["s4"])
-    kn: Dict[str, Any] = {}
-    unknown = [a for a in arms if a not in S4_ARMS]
-    for i, arm in enumerate([a for a in arms if a in S4_ARMS]):
+    ax.axhline(S4_REF_V100, color=S.OI["midgrey"], lw=S.LW["ref"], ls=(0, (3, 2)), zorder=1)
+    kn: Dict[str, Any] = {"metric": "RIND5_V100 (mean +- SD across cavities)", "reference_V100": S4_REF_V100}
+    arms = [a for a in S4_ARMS if any(r["arm"] == a for r in rows)]
+    for i, arm in enumerate(arms):
         lab, col, mk, ls = S4_ARMS[arm]
-        sub = sorted((r for r in rows if r["arm"] == arm), key=lambda r: fnum(r["N"]))
-        n = np.array([fnum(r["N"]) for r in sub]) + (i - 1.5) * 0.06
-        m = np.array([fnum(r["V100_mean"]) for r in sub])
-        sd = np.array([fnum(r["V100_sd"]) for r in sub])
+        sub = sorted((r for r in rows if r["arm"] == arm and np.isfinite(fnum(r.get("RIND5_V100_mean")))),
+                     key=lambda r: fnum(r["N"]))
+        n = np.array([fnum(r["N"]) for r in sub]) + (i - (len(arms) - 1) / 2.0) * 0.12
+        m = np.array([fnum(r["RIND5_V100_mean"]) for r in sub])
+        sd = np.array([fnum(r["RIND5_V100_sd"]) for r in sub])
         ax.errorbar(n, m, yerr=sd, color=col, marker=mk, ls=ls, lw=S.LW["data"], ms=S.MS["chart"], capsize=1.8,
                     elinewidth=0.6, label=lab, zorder=3)
-        kn[arm] = {"N": [int(fnum(r["N"])) for r in sub], "V100_mean": [round(float(v), 3) for v in m],
-                   "V100_sd": [round(float(v), 3) for v in sd]}
+        kn[arm] = {"N": [int(fnum(r["N"])) for r in sub], "RIND5_V100_mean": [round(float(v), 3) for v in m],
+                   "RIND5_V100_sd": [round(float(v), 3) for v in sd], "n_cav": [int(fnum(r["n_cav"])) for r in sub]}
+    ns = sorted({int(fnum(r["N"])) for r in rows if r["arm"] in arms})
+    ax.set_xticks(ns)
+    ax.set_xlim(ns[0] - 0.8, ns[-1] + 0.8)
+    ax.set_ylim(0, 1.05)
+    ax.set_yticks([0, 0.25, 0.5, 0.75, 1.0])
     ax.set_xlabel("tiles N")
     ax.set_ylabel("V100 of the 5 mm rind")
-    ax.set_ylim(0, 1.0)
-    ax.set_xticks(sorted({int(fnum(r["N"])) for r in rows}))
-    S.legend(ax, loc="lower right")
+    fig.subplots_adjust(bottom=0.31, top=0.97)
+    S.legend(ax, loc="upper center", bbox_to_anchor=(0.45, -0.19), ncol=2, columnspacing=1.0)
     outs = S.save_panel(fig, ctx["out"], "s4_v100_vs_n")
     return {"outputs": outs, "key_numbers": kn,
-            "note": ("arms without a style, not drawn: %s" % unknown) if unknown else ""}
+            "note": "n_cav per point differs (cavities where an arm is infeasible at N drop out; bound only to N = 8)"}
 
 
 def s3_gamma_map(ctx) -> Dict[str, Any]:

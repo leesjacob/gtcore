@@ -1,8 +1,8 @@
 {
  "script": "scripts/paper_figures.py",
  "style": "scripts/_figstyle.py",
- "script_commit": "997e6da",
- "generated": "2026-11-03 09:34",
+ "script_commit": "a1b9fb4",
+ "generated": "2026-11-03 12:19",
  "dpi_png": 600,
  "out_dir": "output/figures",
  "tile_mode": "auto",
@@ -107,7 +107,7 @@
    ],
    "s4": [
     3.35,
-    2.5
+    2.9
    ],
    "s3_gamma": [
     2.8,
@@ -199,8 +199,8 @@
    "figure": "F2",
    "description": "F2(c): one tile as the bent-sheet model: flat, wall-conformed (kappa = 1/17 mm^-1 on both axes) and folded (kappa1 = 0.35 mm^-1), the collagen sheet (tissue face) as a wireframe with the 2 x 2 seeds.",
    "sources": [],
-   "script_commit": "997e6da",
-   "rendered": "2026-11-03 09:34",
+   "script_commit": "a1b9fb4",
+   "rendered": "2026-11-03 12:19",
    "status": "ok",
    "outputs": [
     "output/figures/f2c_tile_model.png",
@@ -264,8 +264,8 @@
      "git_commit": "6f6c80b"
     }
    ],
-   "script_commit": "997e6da",
-   "rendered": "2026-11-03 09:34",
+   "script_commit": "a1b9fb4",
+   "rendered": "2026-11-03 12:19",
    "status": "ok",
    "outputs": [
     "output/figures/f3c_phantom_slice.png",
@@ -304,8 +304,8 @@
      "git_commit": "d36db1d"
     }
    ],
-   "script_commit": "997e6da",
-   "rendered": "2026-11-03 09:34",
+   "script_commit": "a1b9fb4",
+   "rendered": "2026-11-03 12:19",
    "status": "ok",
    "outputs": [
     "output/figures/f4a_seed_slice.png",
@@ -345,8 +345,8 @@
      "git_commit": "d36db1d"
     }
    ],
-   "script_commit": "997e6da",
-   "rendered": "2026-11-03 09:34",
+   "script_commit": "a1b9fb4",
+   "rendered": "2026-11-03 12:19",
    "status": "ok",
    "outputs": [
     "output/figures/f4b_patient_implant.png",
@@ -423,8 +423,8 @@
      "git_commit": "ab22718"
     }
    ],
-   "script_commit": "997e6da",
-   "rendered": "2026-11-03 09:34",
+   "script_commit": "a1b9fb4",
+   "rendered": "2026-11-03 12:19",
    "status": "ok",
    "outputs": [
     "output/figures/f4c_phantom_implant.png",
@@ -518,8 +518,8 @@
      "git_commit": "8ea0434"
     }
    ],
-   "script_commit": "997e6da",
-   "rendered": "2026-11-03 09:34",
+   "script_commit": "a1b9fb4",
+   "rendered": "2026-11-03 12:19",
    "status": "ok",
    "outputs": [
     "output/figures/f5a_isodoses.png",
@@ -569,8 +569,8 @@
      "git_commit": "1104fcb"
     }
    ],
-   "script_commit": "997e6da",
-   "rendered": "2026-11-03 09:34",
+   "script_commit": "a1b9fb4",
+   "rendered": "2026-11-03 12:19",
    "status": "ok",
    "outputs": [
     "output/figures/f5b_dvh.png",
@@ -628,8 +628,8 @@
      "git_commit": "8ea0434"
     }
    ],
-   "script_commit": "997e6da",
-   "rendered": "2026-11-03 09:34",
+   "script_commit": "a1b9fb4",
+   "rendered": "2026-11-03 12:19",
    "status": "ok",
    "outputs": [
     "output/figures/f6_target_definition.png",
@@ -671,9 +671,9 @@
     },
     {
      "path": "docs/figures/optimize/data/f8_patient_summary.csv",
-     "exists": false,
-     "header_commit": null,
-     "git_commit": null
+     "exists": true,
+     "header_commit": "085fe60",
+     "git_commit": "40a6bea"
     },
     {
      "path": "docs/figures/data/clinical_table3_rows.csv",
@@ -682,8 +682,8 @@
      "git_commit": "8ea0434"
     }
    ],
-   "script_commit": "997e6da",
-   "rendered": "2026-11-03 09:34",
+   "script_commit": "a1b9fb4",
+   "rendered": "2026-11-03 12:19",
    "status": "ok",
    "outputs": [
     "output/figures/f8a_patient_implant.png",
@@ -740,35 +740,112 @@
      2400,
      2400
     ],
-    "RIND5_gtcore_V100": 0.386861,
-    "RIND5_gtcore_D90_cGy": 2652.69,
-    "CTV_GT_V100": 0.917104,
-    "CTV_GT_D90_cGy": 6167.48,
-    "f8_numbers_source": "clinical_table3_rows.csv (gtcore @ 32 gtcore seeds); campaign f8_patient_summary.csv pending"
+    "f8_title_numbers": {
+     "RIND5_gtcore_V100": 0.386861,
+     "RIND5_gtcore_D90_cGy": 2652.69,
+     "CTV_GT_V100": 0.917104,
+     "CTV_GT_D90_cGy": 6167.48,
+     "REACH10_V100": 0.960215,
+     "REACH10_D90_cGy": 6700.37,
+     "n_tiles": null,
+     "n_overlaps": null,
+     "solve_s": null,
+     "sa_seed": null,
+     "arm": "as_implanted",
+     "source": "docs/figures/optimize/data/f8_patient_summary.csv @ 085fe60"
+    }
    },
    "note": ""
   },
   "f8b": {
    "figure": "F8",
-   "description": "F8(b): the optimizer's tiles on the same gtcore cavity mesh, same camera; one render per optimized arm in f8b_patient_optimized.npz (opt_* = optimized for RIND5; further opt<arm>_* prefixes if present).",
+   "description": "F8(b): the optimizer's 8 tiles on the same gtcore cavity mesh and with the same camera as F8(a), one render per optimized family (optimized for the full RIND5; optimized for the physician's CTV_GT), the best SA seed of each (f8_patient_summary.csv *_sa_best = the NPZ's opt_<family>_sa_seed).",
    "sources": [
     {
      "path": "docs/figures/data/f8b_patient_optimized.npz",
-     "exists": false,
-     "header_commit": null,
-     "git_commit": null
+     "exists": true,
+     "header_commit": "085fe60",
+     "git_commit": "40a6bea"
     },
     {
      "path": "docs/figures/optimize/data/f8_patient_summary.csv",
-     "exists": false,
-     "header_commit": null,
-     "git_commit": null
+     "exists": true,
+     "header_commit": "085fe60",
+     "git_commit": "40a6bea"
     }
    ],
-   "script_commit": "997e6da",
-   "rendered": "2026-11-03 09:35",
-   "status": "skipped",
-   "note": "campaign output docs/figures/data/f8b_patient_optimized.npz not committed yet (scripts/patient_optimize.py)"
+   "script_commit": "a1b9fb4",
+   "rendered": "2026-11-03 12:19",
+   "status": "ok",
+   "outputs": [
+    "output/figures/f8b_optimized_rind5.png",
+    "output/figures/f8b_optimized_rind5.pdf",
+    "output/figures/f8b_optimized_rind5.svg",
+    "output/figures/f8b_optimized_ctvgt.png",
+    "output/figures/f8b_optimized_ctvgt.pdf",
+    "output/figures/f8b_optimized_ctvgt.svg"
+   ],
+   "key_numbers": {
+    "camera": {
+     "focal_point": [
+      26.5,
+      210.7,
+      -513.2
+     ],
+     "position": [
+      -122.8,
+      210.7,
+      -498.3
+     ],
+     "view_up": [
+      0.0,
+      0.0,
+      1.0
+     ],
+     "parallel_scale": 27.7,
+     "mesh_culling": "front"
+    },
+    "families": {
+     "rind5": {
+      "RIND5_gtcore_V100": 0.503262,
+      "RIND5_gtcore_D90_cGy": 3140.76,
+      "CTV_GT_V100": 0.854624,
+      "CTV_GT_D90_cGy": 5706.13,
+      "REACH10_V100": 0.885087,
+      "REACH10_D90_cGy": 5897.97,
+      "n_tiles": 8.0,
+      "n_overlaps": 0.0,
+      "solve_s": 58.8439,
+      "sa_seed": 0.0,
+      "arm": "optimized_rind5_sa_best",
+      "source": "docs/figures/optimize/data/f8_patient_summary.csv @ 085fe60",
+      "n_tiles_rendered": 8,
+      "npz_sa_seed": 0,
+      "objective_target": "optimizer default: +5 mm shell of the eligible wall, area weights (S5 surrogate of RIND5)"
+     },
+     "ctvgt": {
+      "RIND5_gtcore_V100": 0.415839,
+      "RIND5_gtcore_D90_cGy": 3165.06,
+      "CTV_GT_V100": 0.981672,
+      "CTV_GT_D90_cGy": 6783.21,
+      "REACH10_V100": 0.992255,
+      "REACH10_D90_cGy": 7073.1,
+      "n_tiles": 8.0,
+      "n_overlaps": 0.0,
+      "solve_s": 47.6591,
+      "sa_seed": 1.0,
+      "arm": "optimized_ctvgt_sa_best",
+      "source": "docs/figures/optimize/data/f8_patient_summary.csv @ 085fe60",
+      "n_tiles_rendered": 8,
+      "npz_sa_seed": 1,
+      "objective_target": "HRCTV_PHYS: CTV_GT voxel centres from the RTSTRUCT (70438 points, unit weights = volume weights on the CT grid; M_opt 4000 subsample)"
+     }
+    },
+    "eligible_rule": "craniotomy(facing+LOS, no implant term) | demonstrated_reach(10 mm)",
+    "eligible_fraction_area": 0.6725682405406,
+    "eligible_wall_shading": "omitted (the union is 67 % of the wall; a tint does not read)"
+   },
+   "note": "tissue face of each optimized tile on the gtcore cavity wall"
   },
   "s2a": {
    "figure": "S2",
@@ -781,8 +858,8 @@
      "git_commit": "bdaa073"
     }
    ],
-   "script_commit": "997e6da",
-   "rendered": "2026-11-03 09:35",
+   "script_commit": "a1b9fb4",
+   "rendered": "2026-11-03 12:19",
    "status": "ok",
    "outputs": [
     "output/figures/s2a_recall_error_vs_spacing.png",
@@ -862,8 +939,8 @@
      "git_commit": null
     }
    ],
-   "script_commit": "997e6da",
-   "rendered": "2026-11-03 09:35",
+   "script_commit": "a1b9fb4",
+   "rendered": "2026-11-03 12:19",
    "status": "pending",
    "outputs": [
     "output/figures/s2b_axis_boxplot.PENDING.md"
@@ -873,19 +950,132 @@
   },
   "s4": {
    "figure": "S4",
-   "description": "S4: V100 of RIND5 vs tile count N on the synthetic cavities, mean +- SD across cavities per arm (the Phase 4 campaign's v2_summary.csv).",
+   "description": "S4: V100 of the full 5 mm rind (RIND5, final 1 mm report grid) vs tile count N on the synthetic cavities: uniform / greedy / SA (seed mean) / V100 bound, mean +- SD across cavities (v2_summary.csv); 0.90 dashed.",
    "sources": [
     {
      "path": "docs/figures/optimize/data/v2_summary.csv",
      "exists": true,
-     "header_commit": null,
-     "git_commit": "cca2120"
+     "header_commit": "d2d455e;",
+     "git_commit": "40a6bea"
     }
    ],
-   "script_commit": "997e6da",
-   "rendered": "2026-11-03 09:35",
-   "status": "skipped",
-   "note": "docs/figures/optimize/data/v2_summary.csv is not the Phase 4 campaign output yet (no '# commit' header)"
+   "script_commit": "a1b9fb4",
+   "rendered": "2026-11-03 12:19",
+   "status": "ok",
+   "outputs": [
+    "output/figures/s4_v100_vs_n.png",
+    "output/figures/s4_v100_vs_n.pdf",
+    "output/figures/s4_v100_vs_n.svg"
+   ],
+   "key_numbers": {
+    "metric": "RIND5_V100 (mean +- SD across cavities)",
+    "reference_V100": 0.9,
+    "uniform": {
+     "N": [
+      4,
+      6,
+      8
+     ],
+     "RIND5_V100_mean": [
+      0.306,
+      0.521,
+      0.577
+     ],
+     "RIND5_V100_sd": [
+      0.204,
+      0.253,
+      0.028
+     ],
+     "n_cav": [
+      15,
+      11,
+      4
+     ]
+    },
+    "greedy": {
+     "N": [
+      4,
+      6,
+      8,
+      10,
+      12
+     ],
+     "RIND5_V100_mean": [
+      0.37,
+      0.557,
+      0.788,
+      0.88,
+      0.995
+     ],
+     "RIND5_V100_sd": [
+      0.207,
+      0.218,
+      0.207,
+      0.075,
+      0.005
+     ],
+     "n_cav": [
+      18,
+      13,
+      12,
+      6,
+      5
+     ]
+    },
+    "sa": {
+     "N": [
+      4,
+      6,
+      8,
+      10,
+      12
+     ],
+     "RIND5_V100_mean": [
+      0.356,
+      0.581,
+      0.812,
+      0.981,
+      1.0
+     ],
+     "RIND5_V100_sd": [
+      0.229,
+      0.249,
+      0.2,
+      0.013,
+      0.0
+     ],
+     "n_cav": [
+      18,
+      13,
+      12,
+      6,
+      5
+     ]
+    },
+    "v100_bound": {
+     "N": [
+      4,
+      6,
+      8
+     ],
+     "RIND5_V100_mean": [
+      0.377,
+      0.57,
+      0.739
+     ],
+     "RIND5_V100_sd": [
+      0.199,
+      0.242,
+      0.177
+     ],
+     "n_cav": [
+      18,
+      13,
+      9
+     ]
+    }
+   },
+   "note": "n_cav per point differs (cavities where an arm is infeasible at N drop out; bound only to N = 8)"
   },
   "s3_gamma": {
    "figure": "S3 (optional)",
@@ -916,8 +1106,8 @@
      "git_commit": "d36db1d"
     }
    ],
-   "script_commit": "997e6da",
-   "rendered": "2026-11-03 09:35",
+   "script_commit": "a1b9fb4",
+   "rendered": "2026-11-03 12:19",
    "status": "ok",
    "outputs": [
     "output/figures/s3_gamma_map.png",
@@ -946,8 +1136,8 @@
      "git_commit": "d36db1d"
     }
    ],
-   "script_commit": "997e6da",
-   "rendered": "2026-11-03 09:35",
+   "script_commit": "a1b9fb4",
+   "rendered": "2026-11-03 12:19",
    "status": "skipped",
    "note": "only docs/figures/data/clinical_dvh_hrctv.csv is committed; validation_clinical.py exports no per-target DVH for the rind / reach (their D90s are F6 caption numbers)"
   },
@@ -962,8 +1152,8 @@
      "git_commit": "cacaa68"
     }
    ],
-   "script_commit": "997e6da",
-   "rendered": "2026-11-03 09:34",
+   "script_commit": "a1b9fb4",
+   "rendered": "2026-11-03 12:19",
    "status": "ok",
    "outputs": [
     "output/figures/f3a_scans.png",
