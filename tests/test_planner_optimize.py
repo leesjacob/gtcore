@@ -581,6 +581,41 @@ def test_cli_optimize_runs_on_the_phantom(result, monkeypatch, tmp_path, capsys)
     assert call[1] == 1 and call[3]["eligible_faces"] is not None
 
 
+def test_cli_optimize_forwards_the_cavity_mask_for_rind5(result, monkeypatch, tmp_path, capsys):
+    """Paper 2 Phase 2 D: ``gt optimize`` hands the pipeline's cavity mask and
+    the cranial-interior / brain clip (the planner's HR-CTV choice) to
+    ``plan.optimize`` so the report scores the volumetric RIND5; on a phantom
+    shell there is no cavity mask and the printout says so."""
+    import gtcore.pipeline as pipeline_mod
+    from gtcore.cli import main
+
+    calls = []
+    _install_fakes(monkeypatch, calls, n_recommended=2)
+    monkeypatch.setattr(pipeline_mod, "reconstruct", lambda vol, **kw: result)
+    rc = main(["optimize", "--spacing", "1.0", "--out", str(tmp_path / "cav"), "--tiles", "2",
+               "--no-report"])
+    assert rc == 0
+    kw = [c for c in calls if c[0] == "optimize"][-1][3]
+    assert kw["cavity_mask"] is result.cavity_mask
+    assert np.allclose(kw["cavity_affine"], result.volume.affine)
+    assert kw["clip_mask"] is not None and np.allclose(kw["clip_affine"], result.volume.affine)
+    assert kw["clip_source"] in ("gtcore:cranial_interior", "gtcore:brain")
+    text = capsys.readouterr().out
+    assert "HR-CTV: RIND5 of the gtcore cavity (clip %s)" % kw["clip_source"] in text
+
+    no_cavity = _shell_result(result)
+    monkeypatch.setattr(pipeline_mod, "reconstruct", lambda vol, **kw: no_cavity)
+    monkeypatch.setattr(plan, "visible_faces",
+                        lambda mesh, c: np.ones(len(mesh.faces), dtype=bool))
+    rc = main(["optimize", "--spacing", "1.0", "--out", str(tmp_path / "shell"), "--tiles", "1",
+               "--no-report"])
+    assert rc == 0
+    kw = [c for c in calls if c[0] == "optimize"][-1][3]
+    assert kw["cavity_mask"] is None and kw["clip_mask"] is None and kw["clip_source"] is None
+    text = capsys.readouterr().out
+    assert "HR-CTV: no cavity mask on this wall" in text and "no RIND5" in text
+
+
 def test_cli_uses_the_capacity_when_it_is_below_the_recommendation(result, monkeypatch,
                                                                      tmp_path, capsys):
     import gtcore.pipeline as pipeline_mod

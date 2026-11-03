@@ -517,7 +517,11 @@ def optimize(mesh, n_full: int, n_half: int = 0, rx_cgy: float = DEFAULT_RX_CGY,
              candidates: Optional[CandidateSet] = None,
              log: Optional[Callable[[str], None]] = None,
              time_budget_s: float = CONTINUOUS_TIME_BUDGET_S,
-             lambda_tail: Optional[float] = None
+             lambda_tail: Optional[float] = None,
+             cavity_mask=None, cavity_affine=None,
+             clip_mask=None, clip_affine=None,
+             cavity_source: str = "gtcore:cavity",
+             clip_source: Optional[str] = None
              ) -> Tuple[List[PlacedTile], OptimizeReport]:
     """Section 3 H entry point: candidates -> influence -> conflicts ->
     objective -> solver -> optional E5 refine -> report.
@@ -545,6 +549,14 @@ def optimize(mesh, n_full: int, n_half: int = 0, rx_cgy: float = DEFAULT_RX_CGY,
         prints the same lines.
     time_budget_s : float
         Wall-time budget for ``solve_continuous`` (ignored by the others).
+    cavity_mask, cavity_affine, clip_mask, clip_affine, cavity_source, clip_source
+        Forwarded to :func:`gtcore.plan.final_report` (Paper 2 Phase 2 D):
+        with a cavity mask the report scores the volumetric HR-CTV
+        ``RIND5(cavity, clip)`` on the final grid
+        (``report.metrics_grid["RIND5"]``, with provenance); without one the
+        report carries only the S5 coverage surrogate and says so in
+        ``notes``.  The optimizer itself still works on ``target`` (the S5
+        shell); these inputs change what is *reported*, not what is solved.
 
     Returns ``(tiles, report)`` with ``tiles`` the ``n_full + n_half`` new
     :class:`PlacedTile` objects.  Raises ``ValueError`` for bad inputs or an
@@ -719,7 +731,10 @@ def optimize(mesh, n_full: int, n_half: int = 0, rx_cgy: float = DEFAULT_RX_CGY,
     if report:
         t0 = time.perf_counter()
         rep = _plan.final_report(mesh, all_tiles, rx_cgy=rx, target=target,
-                                 solver_result=res, parameters=params)
+                                 solver_result=res, parameters=params,
+                                 cavity_mask=cavity_mask, cavity_affine=cavity_affine,
+                                 clip_mask=clip_mask, clip_affine=clip_affine,
+                                 cavity_source=cavity_source, clip_source=clip_source)
         runtime["report"] = time.perf_counter() - t0
         if not rep.tiles:
             rep.tiles = list(all_tiles)
@@ -742,6 +757,10 @@ def optimize(mesh, n_full: int, n_half: int = 0, rx_cgy: float = DEFAULT_RX_CGY,
             runtime=runtime)
         rep.notes.append("report=False: metrics are influence-matrix estimates "
                          "on %s, not dose-grid values" % target.name)
+        if cavity_mask is not None:
+            rep.notes.append("report=False: the volumetric HR-CTV RIND5 was not "
+                             "scored (a cavity mask was given but no dose grid "
+                             "was computed)")
     rep.seed = seed
     rep.wall_clock_s = time.perf_counter() - t_all
     rep.runtime.setdefault("total", rep.wall_clock_s)

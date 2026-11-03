@@ -882,10 +882,20 @@ class OptimizeReport:
     metrics_influence : dict
         Metrics from the influence matrix (optimization-time estimate).
     metrics_grid : dict
-        From ``compute_dose_grid`` + ``shell_report``: ``{offset_mm: dvh_stats}``
-        (keys are the shell offsets as strings in JSON); the reported numbers.
+        The reported numbers, all from the final dose grid (Paper 2 Phase 2
+        D): ``"RIND5"`` -> the volumetric HR-CTV (``dose_stats`` keys +
+        ``target`` + ``provenance``; only when a cavity mask was given,
+        otherwise a note says so), ``"S5"`` -> ``{offset_mm: dvh_stats +
+        curve}`` of the shell vertices (the "S5 coverage" surrogate; offsets
+        are strings in JSON, ``metrics_grid.S5.5.0.V100`` in the CSV) and
+        ``"target"`` -> weighted stats on the optimizer's target set
+        (surrogate).  Until 2026-11-03 the shells were top-level float keys
+        and the rind ``"rind"``; there is no alias.
     metrics_grid_interference : dict or None
         Same with the interseed-attenuation model on, if requested.
+    dose_volume : Volume or None
+        The final dose grid (cGy) the metrics were read from; kept for
+        downstream rendering / re-scoring, never serialised.
     overlaps : list of (i, j)
         ``find_overlapping_tiles`` on ``tiles`` (must be empty for optimizer output).
     shadowing : list
@@ -912,6 +922,7 @@ class OptimizeReport:
     seed: Optional[int] = None
     wall_clock_s: float = 0.0
     notes: List[str] = field(default_factory=list)
+    dose_volume: Optional[Any] = field(default=None, repr=False, compare=False)
 
     def __post_init__(self):
         if not self.gtcore_version:
@@ -919,8 +930,10 @@ class OptimizeReport:
             self.gtcore_version = __version__
 
     def to_dict(self) -> Dict[str, Any]:
-        """JSON-serializable dict (numpy converted, tiles as field dicts)."""
-        d = {f.name: getattr(self, f.name) for f in dataclasses.fields(self)}
+        """JSON-serializable dict (numpy converted, tiles as field dicts; the
+        dose grid is left out)."""
+        d = {f.name: getattr(self, f.name) for f in dataclasses.fields(self)
+             if f.name != "dose_volume"}
         d["tiles"] = [dataclasses.asdict(t) for t in self.tiles]
         d["n_tiles"] = len(self.tiles)
         return _jsonable(d)
@@ -940,7 +953,10 @@ class OptimizeReport:
                 w.writerow([k, "" if v is None else v])
 
     def summary(self) -> str:
-        """Short human-readable summary (tiles, solver, grid shell metrics)."""
+        """Short human-readable summary: tiles, solver, then the dose-grid rows
+        -- the volumetric HR-CTV (``RIND5``) first, the S5 coverage surrogate
+        shells, the weighted optimizer target -- and the notes.  Shell rows
+        are labelled "S5 coverage", never D90 / V100 of the HR-CTV."""
         n_full = sum(1 for t in self.tiles if t.kind == "full")
         n_half = len(self.tiles) - n_full
         lines = ["%d tiles (%d full, %d half); gtcore %s; %.1f s"
@@ -951,13 +967,22 @@ class OptimizeReport:
             lines.append("solver %s: objective %.4f, status %s%s"
                          % (s.solver, s.objective, s.status,
                             (" (" + s.reason + ")") if s.reason else ""))
-        for off, stats in self.metrics_grid.items():
-            st = stats.get("stats", stats) if isinstance(stats, dict) else stats
-            try:
-                lines.append("shell %s: V100 %.3f  D90 %.0f cGy  V150 %.3f  V200 %.3f"
-                             % (off, st["V100"], st["D90"], st["V150"], st["V200"]))
-            except (KeyError, TypeError):
-                lines.append("shell %s: %r" % (off, st))
+        mg = self.metrics_grid or {}
+        rind = mg.get("RIND5")
+        if isinstance(rind, dict):
+            lines.append(_summary_rind5_row(rind))
+        shells: Dict[Any, Any] = {}
+        if isinstance(mg.get("S5"), dict):
+            shells.update(mg["S5"])
+        # pre-2026-11-03 layout (reports assembled by hand): shells as top-level
+        # float keys -- still printed, and still as the surrogate they are
+        shells.update({k: v for k, v in mg.items()
+                       if isinstance(k, (int, float)) and not isinstance(k, bool)})
+        for off in sorted(shells, key=float):
+            lines.append(_summary_shell_row(off, shells[off]))
+        tgt = mg.get("target")
+        if isinstance(tgt, dict):
+            lines.append(_summary_target_row(tgt))
         if self.overlaps:
             lines.append("overlaps: %r" % (list(self.overlaps),))
         if self.shadowing:
@@ -965,6 +990,50 @@ class OptimizeReport:
         for n in self.notes:
             lines.append("note: " + str(n))
         return "\n".join(lines)
+
+
+def _shell_name(off) -> str:
+    try:
+        o = float(off)
+    except (TypeError, ValueError):
+        return str(off)
+    return "wall" if abs(o) < 1e-9 else "%+g mm" % o
+
+
+def _summary_shell_row(off, stats) -> str:
+    """One S5 coverage line (surrogate shell vertices)."""
+    st = stats.get("stats", stats) if isinstance(stats, dict) else stats
+    try:
+        return ("S5 coverage %s (surrogate shell vertices): V100 %.3f  D90 %.0f cGy  "
+                "V150 %.3f  V200 %.3f"
+                % (_shell_name(off), st["V100"], st["D90"], st["V150"], st["V200"]))
+    except (KeyError, TypeError):
+        return "S5 coverage %s: %r" % (_shell_name(off), st)
+
+
+def _summary_target_row(st) -> str:
+    try:
+        return ("target %s (surrogate, area-weighted): V100 %.3f  D90 %.0f cGy  "
+                "V150 %.3f  V200 %.3f"
+                % (st.get("name", "target"), st["V100"], st["D90"], st["V150"], st["V200"]))
+    except (KeyError, TypeError):
+        return "target: %r" % (st,)
+
+
+def _summary_rind5_row(st) -> str:
+    """The HR-CTV line: volumetric RIND5 with its provenance."""
+    prov = st.get("provenance", {}) if isinstance(st, dict) else {}
+    grid = prov.get("grid") or {}
+    sp = grid.get("spacing_mm")
+    sp_txt = ("x".join("%g" % float(v) for v in sp) + " mm grid") if sp else "dose grid"
+    try:
+        return ("HR-CTV RIND5 (volumetric, %s; cavity %s, clip %s, depth %s mm): "
+                "D90 %.0f cGy  V100 %.3f  V150 %.3f  V200 %.3f  %.1f cc (%d voxels)"
+                % (sp_txt, prov.get("cavity_source"), prov.get("clip_source"),
+                   prov.get("depth_mm"), st["D90"], st["V100"], st["V150"], st["V200"],
+                   st["volume_cc"], int(st.get("n", 0))))
+    except (KeyError, TypeError, ValueError):
+        return "HR-CTV RIND5: %r" % (st,)
 
 
 # ------------------------------------------------------------ stub helpers
@@ -1202,19 +1271,26 @@ def final_report(mesh, tiles: Sequence[PlacedTile], rx_cgy: float = DEFAULT_RX_C
                  cavity_affine=None, interference: bool = False,
                  grid_mm: float = 1.0, margin_mm: float = 50.0,
                  solver_result: Optional[SolverResult] = None,
-                 parameters: Optional[Dict[str, Any]] = None) -> OptimizeReport:
+                 parameters: Optional[Dict[str, Any]] = None,
+                 clip_mask=None, clip_affine=None,
+                 cavity_source: str = "gtcore:cavity",
+                 clip_source: Optional[str] = None) -> OptimizeReport:
     """Section 3 G reporting for any configuration: ``compute_dose_grid``
-    (exact kernel, ``grid_mm``, cavity bounds + ``margin_mm``), ``shell_report``
-    on the full target shells, rind DVH when ``cavity_mask`` / ``cavity_affine``
-    are given, optional second grid with the interference model, conflicts
-    re-verified with ``find_overlapping_tiles``, shadowing via
+    (exact kernel, ``grid_mm``, cavity bounds + ``margin_mm``); the
+    volumetric HR-CTV ``RIND5`` (``metrics_grid["RIND5"]``, with provenance)
+    when ``cavity_mask`` / ``cavity_affine`` are given -- optionally clipped
+    by ``clip_mask`` / ``clip_affine`` -- and an explicit note when they are
+    not; the "S5 coverage" shell surrogates (``metrics_grid["S5"]``) and the
+    weighted target; optional second grid with the interference model;
+    conflicts re-verified with ``find_overlapping_tiles``, shadowing via
     ``find_shadowing_tiles``.  O(grid voxels * seeds).
     """
     from .report import final_report as _impl
     return _impl(mesh, tiles, rx_cgy=rx_cgy, target=target, cavity_mask=cavity_mask,
                  cavity_affine=cavity_affine, interference=interference,
                  grid_mm=grid_mm, margin_mm=margin_mm, solver_result=solver_result,
-                 parameters=parameters)
+                 parameters=parameters, clip_mask=clip_mask, clip_affine=clip_affine,
+                 cavity_source=cavity_source, clip_source=clip_source)
 
 
 def recommend_tile_count(mesh, contraction_pct: float = 0.0, untreated_pct: float = 0.0,

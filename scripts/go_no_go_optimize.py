@@ -170,10 +170,14 @@ def main(argv=None):
         try:
             rep = plan.final_report(mesh, cands.tiles_of(g.selection), rx_cgy=args.rx,
                                     target=target, grid_mm=1.0)
-            gm = rep.metrics_grid.get(5.0, {})
-            print("  grid check (N=%d greedy): shell+5 V100 %.3f D90 %.0f vs influence "
-                  "V100 %.3f D90 %.0f" % (n, gm.get("V100", np.nan), gm.get("D90", np.nan),
-                                          mg.get("V100", np.nan), mg.get("D90", np.nan)))
+            # Phase 2 D (2026-11-03): shells live under metrics_grid["S5"][offset]
+            # and are "S5 coverage" (a surrogate, not the HR-CTV)
+            gm = rep.metrics_grid.get("S5", {}).get(5.0, {})
+            print("  grid check (N=%d greedy): S5 coverage +5 mm V100 %.3f D90 %.0f vs "
+                  "influence V100 %.3f D90 %.0f" % (n, gm.get("V100", np.nan),
+                                                    gm.get("D90", np.nan),
+                                                    mg.get("V100", np.nan),
+                                                    mg.get("D90", np.nan)))
         except NotImplementedError:
             print("  (final_report not implemented yet: no grid cross-check)")
         except Exception as e:  # pragma: no cover
