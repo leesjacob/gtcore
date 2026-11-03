@@ -4,22 +4,32 @@ Runs ``fit_tiles(..., "auto")`` -- no implant count -- on
 
 1. the synthetic phantom: rng seeds x tile counts x voxel spacings
    (truth known: n chosen vs truth, exact partition, pose errors),
-2. the physical 8-tile printed phantom (count known = 8, one crumpled tile),
-3. the real post-op CT (27-seed cluster; count unknown, 4 tiles by
-   saturation),
+2. the printed 8-tile phantom ``PH8`` (count known = 8, one crumpled tile),
+3. the clinical thin-cut ``PT-CT1mm`` (8 full tiles = 32 sources implanted;
+   count-free saturates below that -- the F4 leftover question) and, when
+   present, the gapped export ``PT-CT2mm``,
 
 and writes ``output/validation_autogen.csv`` (one row per case),
-``output/validation_autogen.png`` (score-saturation curves, the paper
-figure) and a summary on stdout.  Real-scan folders are optional: pass
-``--phantom8 <dir>`` / ``--postop <dir>`` or set the defaults below.
+``output/validation_autogen.png`` (score-saturation curves) and a summary on
+stdout.  Real-scan folders are optional: pass ``--phantom8 <dir>``,
+``--ct1mm <dir>``, ``--postop <dir>`` (no machine paths are built in).
 
-Run from the repo root:  python scripts/validation_autogen.py [--quick]
+The real scans' marginal-score curves (``ScorePoint.marginal`` of the
+count-free fit for every feasible tile count ``n``, with the ``LAMBDA_FULL``
+penalty line) go to ``--marginal-csv`` (default
+``docs/figures/data/marginal_score_real.csv``) for the F4 Supplement curve.
+
+Run from the repo root::
+
+    python scripts/validation_autogen.py [--quick] [--no-synthetic]
+        --phantom8 "$GT_DATA_ROOT/<PH8>" --ct1mm "$GT_DATA_ROOT/<PT-CT1mm>"
 """
 from __future__ import annotations
 
 import argparse
 import csv
 import os
+import subprocess
 import sys
 import time
 
@@ -35,8 +45,17 @@ from gtcore.seeds import detect_seed_candidates  # noqa: E402
 from gtcore.tiles import fit_tiles  # noqa: E402
 from gtcore.tiles.fit import _orient_normal, _plane_fit  # noqa: E402
 
-DEFAULT_PHANTOM8 = r"C:\Users\jacob\Documents\3D-Printed Phantom-8tiles (223)"
-DEFAULT_POSTOP = r"C:\Users\jacob\Documents\PostOp CT"
+_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+DEFAULT_MARGINAL_CSV = os.path.join("docs", "figures", "data", "marginal_score_real.csv")
+
+
+def _git_commit():
+    try:
+        out = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=_ROOT,
+                             capture_output=True, text=True, timeout=10)
+        return out.stdout.strip() or "unknown"
+    except Exception:
+        return "unknown"
 
 
 def _angle(a, b):
@@ -104,7 +123,12 @@ def real_case(name, path, n_truth):
                center_err_mean=float("nan"), center_err_max=float("nan"),
                normal_err_mean=float("nan"), seconds=dt,
                curve=[(p.n, p.score, p.marginal) for p in fit.score_curve
-                      if p.feasible])
+                      if p.feasible],
+               score_points=list(fit.score_curve),
+               n_tentative=len(fit.tentative_tiles or []),
+               n_unassigned=len(fit.unassigned_indices or []),
+               n_clutter=len(fit.clutter_indices or []),
+               lambda_full=float(fit.lambda_full))
     print("  %s: %d seeds -> n=%d (%s); tiles %s" % (
         name, len(res.seeds), fit.n_selected, fit.summary(),
         [(p.seed_indices, "crumpled" if p.degraded else
@@ -118,13 +142,62 @@ def real_case(name, path, n_truth):
     return row
 
 
+def write_marginal_csv(path, real_rows, args):
+    """Marginal score of the n-th tile vs n for each real scan (count-free
+    fit), with the penalty line, as the F4 Supplement curve's data."""
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+    cmd = ("python scripts/validation_autogen.py%s%s%s%s --marginal-csv %s" % (
+        " --quick" if args.quick else "",
+        " --no-synthetic" if args.no_synthetic else "",
+        ' --phantom8 "$GT_DATA_ROOT/<PH8>"' if args.phantom8 else "",
+        ' --ct1mm "$GT_DATA_ROOT/<PT-CT1mm>"' if args.ct1mm else "",
+        args.marginal_csv.replace(os.sep, "/")))
+    with open(path, "w", newline="", encoding="utf-8") as fh:
+        fh.write("# script: scripts/validation_autogen.py\n")
+        fh.write("# command: %s\n" % cmd)
+        fh.write("# commit: %s\n" % _git_commit())
+        fh.write("# datasets: %s\n" % ", ".join(r["case"] for r in real_rows))
+        fh.write("# generated: %s\n" % time.strftime("%Y-%m-%d %H:%M"))
+        fh.write("# count-free fit (reconstruct n_full_tiles='auto'): per feasible tile "
+                 "count n, score = best total unpenalised bent-tile score with exactly n "
+                 "tiles, marginal = score(n) - score(n-1), penalized = score - lambda_full "
+                 "* n_full - lambda_half * n_half; the fit selects n_selected = argmax "
+                 "penalized; lambda_full is the penalty line "
+                 "(gtcore.tiles.auto.LAMBDA_FULL)\n")
+        fh.write("# n_seeds = seeds after the vault filter; n_true_tiles = implanted full "
+                 "tiles (8 for PH8 and PT-CT1mm); spacing_mm = max voxel dimension\n")
+        w = csv.writer(fh)
+        w.writerow(["dataset", "n", "n_full", "n_half", "score", "marginal",
+                    "penalized", "feasible", "lambda_full", "n_selected",
+                    "n_true_tiles", "n_seeds", "n_tentative", "n_unassigned",
+                    "spacing_mm"])
+        for r in real_rows:
+            for p in r["score_points"]:
+                w.writerow([r["case"], p.n, p.n_full, p.n_half,
+                            "%.4f" % p.score if p.feasible else "nan",
+                            "%.4f" % p.marginal if p.feasible else "nan",
+                            "%.4f" % p.penalized if p.feasible else "nan",
+                            bool(p.feasible), "%.2f" % r["lambda_full"],
+                            r["n_auto"], r["n_truth"], r["n_seeds"],
+                            r["n_tentative"], r["n_unassigned"],
+                            "%.3f" % r["spacing"]])
+    print("marginal-score curves: %s" % os.path.relpath(path, _ROOT))
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--quick", action="store_true",
                     help="smaller synthetic sweep")
-    ap.add_argument("--phantom8", default=DEFAULT_PHANTOM8)
-    ap.add_argument("--postop", default=DEFAULT_POSTOP)
+    ap.add_argument("--phantom8", default=None, help="PH8 series directory")
+    ap.add_argument("--ct1mm", default=None, help="PT-CT1mm series directory")
+    ap.add_argument("--postop", default=None,
+                    help="PT-CT2mm (gapped export) series directory, if it exists")
     ap.add_argument("--no-real", action="store_true")
+    ap.add_argument("--no-synthetic", action="store_true",
+                    help="skip the synthetic sweep (real scans only)")
+    ap.add_argument("--marginal-csv", default=DEFAULT_MARGINAL_CSV,
+                    help="where the real scans' marginal-score curves go "
+                         "(relative to the repo root; '' disables)")
     args = ap.parse_args()
 
     out_dir = os.path.join(os.path.dirname(__file__), "..", "output")
@@ -134,6 +207,8 @@ def main():
     rngs = [0, 1, 2] if args.quick else list(range(6))
     tiles = [1, 3, 5] if args.quick else [1, 2, 3, 4, 5]
     spacings = [0.8] if args.quick else [0.8, 1.2]
+    if args.no_synthetic:
+        rngs, tiles = [], []
     print("synthetic sweep: %d cases" % (len(rngs) * len(tiles) * len(spacings)))
     for sp in spacings:
         for nt in tiles:
@@ -145,24 +220,41 @@ def main():
                           sp, nt, rng, r["n_auto"], r["exact"], r["n_degraded"],
                           r["center_err_mean"], r["center_err_max"],
                           r["normal_err_mean"], r["seconds"]))
+    real_rows = []
     if not args.no_real:
         print("real scans:")
-        for name, path, n in (("phantom8", args.phantom8, 8),
-                              ("postop", args.postop, -1)):
+        # dataset ids (figure plan v6): PH8 = printed 8-tile phantom (8 full
+        # tiles, hand-placed), PT-CT1mm = clinical thin-cut (8 full tiles =
+        # 32 sources implanted), PT-CT2mm = its gapped export (if restored)
+        for name, path, n in (("PH8", args.phantom8, 8),
+                              ("PT-CT1mm", args.ct1mm, 8),
+                              ("PT-CT2mm", args.postop, 8)):
+            if not path:
+                print("  [skip] %s: no folder given" % name)
+                continue
             r = real_case(name, path, n)
             if r is not None:
                 rows.append(r)
+                real_rows.append(r)
+    if not rows:
+        print("nothing to report")
+        return
 
     # ---------------------------------------------------------------- csv
-    fields = [k for k in rows[0].keys() if k != "curve"] + ["curve"]
+    skip = {"curve", "score_points"}
+    fields = [k for k in rows[0].keys() if k not in skip] + ["curve"]
     with open(os.path.join(out_dir, "validation_autogen.csv"), "w",
               newline="") as fh:
-        w = csv.DictWriter(fh, fieldnames=fields)
+        w = csv.DictWriter(fh, fieldnames=fields, extrasaction="ignore")
         w.writeheader()
         for r in rows:
             rr = dict(r)
             rr["curve"] = ";".join("%d:%.2f:%.2f" % c for c in r["curve"])
             w.writerow(rr)
+
+    # -------------------------------------------- marginal score vs n (real)
+    if real_rows and args.marginal_csv:
+        write_marginal_csv(os.path.join(_ROOT, args.marginal_csv), real_rows, args)
 
     # ------------------------------------------------------------- summary
     syn = [r for r in rows if r["case"] == "synthetic"]
@@ -194,7 +286,7 @@ def main():
         fig, axes = plt.subplots(1, 2, figsize=(11, 4.6))
         ax = axes[0]
         for r in syn:
-            if r["spacing"] != spacings[0] or r["rng"] != rngs[0]:
+            if not rngs or r["spacing"] != spacings[0] or r["rng"] != rngs[0]:
                 continue
             ns = [c[0] for c in r["curve"]]
             marg = [c[2] for c in r["curve"]]
@@ -218,7 +310,7 @@ def main():
         ax.axhline(LAMBDA_FULL, color="k", ls="--", label="penalty lambda")
         ax.set_xlabel("tile count n")
         ax.set_ylabel("marginal score of the n-th tile")
-        ax.set_title("real scans: printed 8-tile phantom, post-op CT")
+        ax.set_title("real scans (count-free fit)")
         ax.legend(fontsize=8)
         fig.tight_layout()
         fig.savefig(os.path.join(out_dir, "validation_autogen.png"), dpi=150)
