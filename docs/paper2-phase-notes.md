@@ -317,6 +317,12 @@ printed cavity's lumpy surface), unchanged and out of this task's scope.
   `6198fa1` (the flag is not yet read by the tree at `aff83c0`; set for the
   record): 828 passed, 14 skipped in 613.3 s (842 collected = the 829
   baseline at `aff83c0` + the 13 new tests; 0 failed, 0 errors).
+- After merging `paper2/integration` (`d722022`, strict-exceptions; the
+  conftest now sets `GTCORE_STRICT=1`) into this branch as `09e7fc7`:
+  `python -m pytest -q -p no:cacheprovider` 850 passed, 14 skipped in
+  517.7 s (864 collected = 842 + the 22 strict-mode tests; 0 failed).
+  The only merge conflict was this notes file (both tasks created it);
+  resolved by keeping both sections under the strict-exceptions header.
 
 Hardware for the timings: AMD Ryzen 5 7600X, 31 GB RAM, Windows 11, with
 other agents running concurrently (timings are upper bounds).
