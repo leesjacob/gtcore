@@ -195,8 +195,9 @@ def _dice(a, b):
 def test_isotropic_synthetic_phantom_does_not_regress(phantom_case):
     """The 0.7 mm isotropic synthetic phantom through the demo / integration
     path at the default reach.  Voxel-step growth at aff83c0 gave Dice 0.839
-    (22.8 cc of the 26.3 cc truth); the physical-mm geodesic must not fall
-    below that, and the reach must still bound the volume (no leak)."""
+    (22.8 cc of the 26.3 cc truth); the physical-mm geodesic gives 0.896
+    (26.9 cc; docs/paper2-phase-notes.md, Phase 1) and must not fall below
+    the old value, and the reach must still bound the volume (no leak)."""
     vol, truth, cands, clean, masks = phantom_case
     cav = cavity_mod.segment_cavity(clean, masks["cranial_interior"], masks["brain"],
                                     cands.centers_ras)
