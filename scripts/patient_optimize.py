@@ -330,6 +330,51 @@ CONFIG_DOCS = {
 }
 
 
+def bound_start_sa(mesh, n, elig_mask, target, seed, rx, rind_kw, time_limit_s=300.0):
+    """The rev-1 V3 rule for a FAILED greedy start: the V100 bound
+    (``plan.milp.solve_milp(method="auto")``, coverage only, tail term dropped)
+    on the SAME candidate set / conflicts / influence ``plan.optimize`` builds
+    (its cached builders, the eligible mask, the default grid), then SA from
+    the bound's selection; ``final_report`` as ``optimize`` does.  Returns
+    ``(tiles, report, info)``; ``tiles`` is None when the bound packs no N."""
+    from gtcore.plan import api as _api
+    from gtcore.plan import milp as _milp
+    tgt = target if target is not None else _api.default_target(mesh, elig_mask)
+    t0 = time.perf_counter()
+    cand = _api.cached_candidates(mesh, h_mm=plan.DEFAULT_H_MM, n_spins=None, kinds=("full",),
+                                  eligible_faces=elig_mask)
+    infl = _api.cached_influence(cand, tgt, rx_cgy=rx)
+    conf = _api.cached_conflicts(cand)
+    objective = plan.make_objective(infl, conf, rx_cgy=rx)
+    objective.candidates = cand
+    t_inst = time.perf_counter() - t0
+    t0 = time.perf_counter()
+    mi = _milp.solve_milp(objective, int(n), time_limit_s=float(time_limit_s), method="auto")
+    t_b = time.perf_counter() - t0
+    sel_b = np.asarray(mi.selection, int).reshape(-1)
+    info = {"n_candidates": int(len(cand)), "bound_status": mi.status,
+            "bound_method": (mi.extra or {}).get("method") if isinstance(mi.extra, dict) else None,
+            "bound_n_placed": int(sel_b.size), "bound_s": t_b, "instance_s": t_inst,
+            "bound_V100_influence": float(mi.metrics.get("V100", float("nan"))) if mi.metrics else None,
+            "time_limit_s": float(time_limit_s)}
+    if sel_b.size != int(n) or not conf.is_feasible(sel_b):
+        info["reason"] = "V100 bound packs no %d-tile selection (status %s): %s" % (n, mi.status, mi.reason)
+        return None, None, info
+    t0 = time.perf_counter()
+    sa = plan.solve_sa(objective, int(n), seed=int(seed), start=sel_b, candidates=cand)
+    t_sa = time.perf_counter() - t0
+    sel = np.asarray(sa.selection, int).reshape(-1)
+    if sa.status not in ("ok", "optimal", "time_limit") or sel.size != int(n) or not conf.is_feasible(sel):
+        info["reason"] = "SA from the bound's selection: status %s, %d tiles" % (sa.status, sel.size)
+        return None, None, info
+    tiles = cand.tiles_of(sel)
+    rep = plan.final_report(mesh, tiles, rx_cgy=rx, target=tgt, solver_result=sa, **rind_kw)
+    rep.runtime = dict(rep.runtime or {}, candidates_influence_conflicts=t_inst, v100_bound=t_b, solver=t_sa)
+    rep.candidate_stats = dict(rep.candidate_stats or {}, n_candidates=int(len(cand)))
+    info["sa_s"] = t_sa
+    return tiles, rep, info
+
+
 # --------------------------------------------------------------------- main
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
@@ -516,6 +561,7 @@ def main(argv=None) -> int:
          PRIMARY[1]),
     ]
     fam_rows = {f[0]: [] for f in families}
+    failures = []          # FAILED optimize calls (a result, recorded; never a lower score)
     fam_best = {}
     fam_desc = {f[0]: f[2] for f in families}
     fam_key = {f[0]: f[3] for f in families}
@@ -527,7 +573,23 @@ def main(argv=None) -> int:
                       log=lines.append, **rind_kw)
             if tset is not None:
                 kw["target"] = tset
-            tiles, rep = plan.optimize(mesh, int(a.tiles), 0, **kw)
+            sa_start = "greedy"
+            try:
+                tiles, rep = plan.optimize(mesh, int(a.tiles), 0, **kw)
+            except RuntimeError as exc:
+                # SA's greedy start could not pack N on the eligible wall: record the FAILED
+                # row, then (coordinator 2026-11-03, the rev-1 V3 rule) start SA from the
+                # V100 bound's selection on the same candidate set as a labelled second row
+                failures.append({"arm": "optimized_%s_sa_seed%d" % (fam, s), "family": fam, "sa_seed": int(s),
+                                 "status": "FAILED", "reason": str(exc), "seconds": time.perf_counter() - t0})
+                print("  optimized_%s_sa_seed%d FAILED: %s" % (fam, s, exc))
+                t0 = time.perf_counter()
+                tiles, rep, bound_info = bound_start_sa(mesh, int(a.tiles), elig.mask, tset, int(s), rx, rind_kw)
+                failures[-1]["bound"] = bound_info
+                if tiles is None:
+                    print("  bound-start fallback FAILED too: %s" % bound_info)
+                    continue
+                sa_start = "v100_bound"
             tot = time.perf_counter() - t0
             if a.reports:
                 rep.to_json(os.path.join(a.reports, "f8_optimize_%s_sa_seed%d_report.json" % (fam, s)))
@@ -544,9 +606,10 @@ def main(argv=None) -> int:
                     "n_tiles": len(tiles), "n_full": sum(1 for t in tiles if t.kind == "full"),
                     "n_half": sum(1 for t in tiles if t.kind == "half"), "n_degraded": 0,
                     "n_overlaps": len(rep.overlaps), "overlap_pairs": [(int(i), int(j)) for i, j in rep.overlaps]}
-            row = add_arm("optimized_%s_sa_seed%d" % (fam, s),
-                          "optimized for %s: %d full tiles, SA %d x %d, seed %d, eligible = craniotomy | reach"
-                          % (fam, a.tiles, plan.SA_N_RESTARTS, plan.SA_N_SWEEPS, s),
+            suffix = "" if sa_start == "greedy" else "_boundstart"
+            row = add_arm("optimized_%s_sa_seed%d%s" % (fam, s, suffix),
+                          "optimized for %s: %d full tiles, SA %d x %d, seed %d, start %s, eligible = craniotomy | "
+                          "reach" % (fam, a.tiles, plan.SA_N_RESTARTS, plan.SA_N_SWEEPS, s, sa_start),
                           c_o, a_o, geom=geom, sa_seed=int(s), rep=rep,
                           solve_s=float(rep.runtime.get("solver", float("nan"))), total_s=tot,
                           note="target: %s; plan.optimize stages (s): %s"
@@ -554,14 +617,19 @@ def main(argv=None) -> int:
                           family=fam, objective_target=desc)
             row["objective"] = float(rep.solver.objective) if rep.solver is not None else float("nan")
             row["solver_status"] = getattr(rep.solver, "status", None)
-            row["n_candidates"] = n_cand
+            row["n_candidates"] = n_cand if n_cand is not None else (rep.candidate_stats or {}).get("n_candidates")
+            row["sa_start"] = sa_start
             fam_rows[fam].append(row)
+        if not fam_rows[fam]:
+            print("family %s: no SA seed produced a plan (see FAILED rows)" % fam)
+            continue
         best = max(fam_rows[fam], key=lambda r: (r["stats"][best_key]["V100"], r["stats"][best_key]["D90"]))
         best_obj = max(fam_rows[fam], key=lambda r: r["objective"])
         fam_best[fam] = best
         print("family %s: best SA seed by %s V100 = %d (objective-best seed %d)"
               % (fam, best_key, best["sa_seed"], best_obj["sa_seed"]))
 
+    done_fams = [f for f in fam_rows if fam_rows[f]]
     # 5. tables -----------------------------------------------------------------
     arm_cols = ["arm", "family", "sa_seed", "objective_target", "structure", "cavity_source", "clip_source",
                 "volume_cc", "n_voxels", "D90_cGy", "V100", "V150", "V200", "Dmin_cGy", "Dmean_cGy", "Dmax_cGy",
@@ -593,7 +661,7 @@ def main(argv=None) -> int:
     for r in arms:
         for lab, t in targets:
             arm_rows.append(arm_row(r, lab, t))
-    for fam in fam_rows:
+    for fam in done_fams:
         rows_f = fam_rows[fam]
         for lab, t in targets:
             vals = {k: float(np.mean([r["stats"][lab][k] for r in rows_f])) for k in ("D90", "V100", "V150", "V200")}
@@ -643,7 +711,7 @@ def main(argv=None) -> int:
     write_csv(arms_csv, arm_rows, arm_cols, header(command, commit, "arm x structure x metric", arm_cols, hdr_extra))
 
     # summary: one row per arm, the Table 3 structures side by side
-    sum_cols = ["arm", "family", "sa_seed", "objective_target", "n_seeds_scored", "n_tiles", "n_full", "n_half",
+    sum_cols = ["arm", "status", "sa_start", "family", "sa_seed", "objective_target", "n_seeds_scored", "n_tiles", "n_full", "n_half",
                 "n_degraded", "n_leftover", "n_overlaps", "solve_s", "optimize_total_s", "objective",
                 "solver_status", "n_candidates",
                 "RIND5_gtcore_V100", "RIND5_gtcore_D90_cGy", "RIND5_gtcore_V150", "RIND5_gtcore_volume_cc",
@@ -670,7 +738,8 @@ def main(argv=None) -> int:
         g = r["geom"] or {}
         rep = r["report"]
         rr5 = (rep.metrics_grid or {}).get("RIND5", {}) if rep is not None else {}
-        row = {"arm": name or r["arm"], "family": r.get("family"), "sa_seed": r["sa_seed"],
+        row = {"arm": name or r["arm"], "status": "ok", "sa_start": r.get("sa_start"),
+               "family": r.get("family"), "sa_seed": r["sa_seed"],
                "objective_target": r.get("objective_target"), "n_seeds_scored": r["n_seeds_scored"],
                "n_tiles": g.get("n_tiles"), "n_full": g.get("n_full"), "n_half": g.get("n_half"),
                "n_degraded": g.get("n_degraded"), "n_leftover": (len(g["leftovers"]) if g else None),
@@ -686,10 +755,10 @@ def main(argv=None) -> int:
         return row
 
     sum_rows = [sum_row(r) for r in arms]
-    for fam in fam_rows:
+    for fam in done_fams:
         rows_f = fam_rows[fam]
         mean_row = {k: None for k in sum_cols}
-        mean_row.update(arm="optimized_%s_sa_mean" % fam, family=fam, objective_target=fam_desc[fam],
+        mean_row.update(arm="optimized_%s_sa_mean" % fam, status="derived", family=fam, objective_target=fam_desc[fam],
                         n_seeds_scored=rows_f[0]["n_seeds_scored"], n_tiles=a.tiles, n_full=a.tiles, n_half=0,
                         n_degraded=0, n_leftover=0,
                         n_overlaps=float(np.mean([r["geom"]["n_overlaps"] for r in rows_f])),
@@ -706,6 +775,11 @@ def main(argv=None) -> int:
         best = fam_best[fam]
         sum_rows.append(sum_row(best, name="optimized_%s_sa_best" % fam,
                                 note="best SA seed by %s V100 = seed %d" % (fam_key[fam], best["sa_seed"])))
+    for fl in failures:
+        frow = {k: None for k in sum_cols}
+        frow.update(arm=fl["arm"], family=fl["family"], sa_seed=fl["sa_seed"], status="FAILED",
+                    flag=FLAG, note="FAILED: %s; bound-start fallback: %s" % (fl["reason"], json.dumps(fl.get("bound"), default=str)))
+        sum_rows.append(frow)
     summary_csv = os.path.join(a.out_csv, "f8_patient_summary.csv")
     write_csv(summary_csv, sum_rows, sum_cols, header(command, commit, "one row per arm, the Table 3 structures side "
                                                        "by side", sum_cols, hdr_extra))
@@ -743,7 +817,7 @@ def main(argv=None) -> int:
         arrays["cavity_rt_vertices"] = np.asarray(cav_rt.vertices, float)
         arrays["cavity_rt_faces"] = np.asarray(cav_rt.faces, np.int32)
     modes = {}
-    for fam in fam_rows:
+    for fam in done_fams:
         best = fam_best[fam]
         pre = "opt_%s_" % fam
         for k, v in config_arrays(mesh, best["geom"]["tiles"], SHEET_N).items():
@@ -802,7 +876,7 @@ def main(argv=None) -> int:
         "cavity_rt_faces": ("index", "triangles of cavity_rt_vertices"),
         "readme": ("-", "summary"),
     }
-    prefixes = ["opt_%s_" % fam for fam in fam_rows] + ["count%d_" % a.count_known, "count_%dfull_%dhalf_" % (nf, nh)]
+    prefixes = ["opt_%s_" % fam for fam in done_fams] + ["count%d_" % a.count_known, "count_%dfull_%dhalf_" % (nf, nh)]
     index = {"dataset": "PT-CT1mm", "script": "scripts/patient_optimize.py", "command": command, "commit": commit,
              "generated": _dt.datetime.now().strftime("%Y-%m-%d %H:%M"),
              "gtcore_file": gtcore.__file__.replace(ROOT, "<worktree>"), "flag": FLAG,
@@ -814,7 +888,7 @@ def main(argv=None) -> int:
                              "modes": "opt_rind5_* / opt_ctvgt_* = the optimizer's best SA seed per objective "
                                       "family; count<N>_* = count-known N full fit (pipeline chord path); "
                                       "count_<F>full_<H>half_* = planner prior fit; seed_tile_id -1 = leftover"},
-             "modes": modes, "optimized_modes": ["opt_%s" % fam for fam in fam_rows],
+             "modes": modes, "optimized_modes": ["opt_%s" % fam for fam in done_fams],
              "eligible": elig.info, "opening": opening.summary(),
              "fairness": {k: v for k, v in fair.items() if not isinstance(v, list)},
              "fairness_craniotomy_only": {k: v for k, v in fair_cr.items() if not isinstance(v, list)},
@@ -831,7 +905,8 @@ def main(argv=None) -> int:
                                  "stats": {lab: {k: r["stats"][lab].get(k) for k in STAT_KEYS if k in r["stats"][lab]}
                                            for lab in r["stats"]},
                                  "note": r["note"]} for r in arms},
-             "best_sa_seed": {fam: int(fam_best[fam]["sa_seed"]) for fam in fam_rows},
+             "failures": failures,
+             "best_sa_seed": {fam: int(fam_best[fam]["sa_seed"]) for fam in done_fams},
              "timings_s": {"reconstruct": t_rec, "structures": t_targets, "opening": t_open, "eligibility": t_elig,
                            "fit_count%d" % a.count_known: g8["fit_s"], "fit_%dfull_%dhalf" % (nf, nh): g64["fit_s"],
                            "total": time.perf_counter() - t_all},
