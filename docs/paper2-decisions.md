@@ -181,3 +181,22 @@ one (3 % of a 150 Gy voxel is 4.5 Gy), global-to-rx the strict one; §5's "globa
 is lenient near seeds" is reversed below rx only. Table 3 / F5 caption rows: gtcore
 seeds (pipeline result) and TPS contours (engine-equivalence reference); the
 RTDOSE-maxima set is a grid-limited position estimate and is not quoted.
+
+## 2026-11-03 — the eight leftover seeds are half tiles (Phase 3 `leftovers`); tile count to confirm
+
+Count-free: 6/8 tiles, 8 leftovers; count-known N = 8: 7/8 with one degraded
+completion that is two abutting pairs misread as a crumpled tile. The leftovers are
+four 2-seed pairs at the manufactured pitch (9.0–9.6 mm), one pair 3.2–3.5 mm beneath
+a fitted tile's seed sheet (stacked), the others at the edges of fitted tiles; two
+single-linkage clusters span 18.0 and 25.5 mm (> 14.1 mm, the seed diagonal of an
+intact tile), so they cannot be crumpled full tiles; all eight are TPS-contoured,
+brighter than the assigned seeds; no merged blobs, no misses (32 = 32 sources). The
+model-free reading is **6 full + 4 half tiles = 32 seeds**. This contradicts the
+brief's "8 full tiles = 32 sources"; **Jacob to check the operative record (were two
+tiles cut?)**. If confirmed, the count-known Table 3 row becomes
+`ImplantPrior(n_full=6, n_half=4)` (the fitter already recovers 6 full + {11,21},
+{13,16} with halves allowed), F4(b) shows 6 sheets + 4 half-tile pairs, and the
+Results sentence names half tiles as the cause. No two-layer model extension is
+warranted (§4 item 18 not triggered). Marginal-score curves on real scans end at
+the implanted count (no 7th / 9th candidate) rather than crossing λ = 3.5 — caption
+point for the Supplement curve.
