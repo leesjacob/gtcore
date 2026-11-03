@@ -292,7 +292,8 @@ Branch `p2/packaging` (worktree `p2-packaging`), based on `paper2/integration`
 | `3d10eb9` | `pyproject.toml`: `rtree>=1.0` runtime dependency; `requires-python = ">=3.11,<3.13"`; extras `dev = ["pytest>=8"]`, `clinical = ["pymedphys>=0.41", "numba>=0.60"]`, `viz = ["pyvista"]` (unchanged) |
 | `a5d3d13` | `tests/test_tiles_fuse.py`: `test_no_covariance_is_bit_identical_to_the_historical_fit` → `test_no_covariance_is_identical_to_the_historical_fit_to_1e6`, `np.testing.assert_allclose(rtol=1e-6, atol=1e-8)` on R, t, (kappa1, kappa2, psi), rms; assignment / wrms / None checks kept; `seed_cov=None` vs default kept exactly equal (same code path); module docstring says "identical ... to 1e-6" |
 | `9ebb13d` | `requirements-lock.txt` (new) and `README.md` (Install section + Python-version bullet) |
-| `3921ee0`, re-based onto the shared notes file in the follow-up commit | this notes section |
+| `3921ee0`, `7706697` | this notes section (then appended to the shared notes file) |
+| `9179bce`, `dba5ff0` | merge of `paper2/integration` (strict-exceptions + vault-filter) into this branch so it merges clean; notes file = integration's two sections + this one |
 
 ### 1. pymedphys / numba (what was installed, exact versions)
 
@@ -355,14 +356,16 @@ SimpleITK 2.5.6, pyvista 0.48.4, vtk 9.6.2, pytest 9.1.1 — both sets pass.)
 Hardware: AMD Ryzen 5 7600X, 6 cores / 12 threads, 31 GB RAM, Windows 11 Home
 10.0.26200. Other agents ran test suites and installs concurrently, so both
 wall-clock figures are **upper bounds**. `GTCORE_STRICT=1` was set for both
-runs but is a no-op at these commits (the flag is introduced by the
-hidden-exceptions task on another branch).
+runs but is a no-op at `aff83c0`/`9ebb13d` (the flag comes from the
+strict-exceptions branch); the last row, after merging `paper2/integration`,
+runs with the flag functional (`tests/conftest.py` sets `GTCORE_STRICT=1`).
 
 | Run | Commit | Interpreter | Command | Result | Runtime |
 |---|---|---|---|---|---|
 | Baseline, shared venv, worktree | `aff83c0` (test modules collected before this branch's edits) | shared venv, Python 3.12.10, numpy 2.5.2 | `GTCORE_STRICT=1 python -m pytest -q -p no:cacheprovider` | `815 passed, 14 skipped, 15122 warnings in 558.68s (0:09:18)` | wall 9 min 21 s |
 | Edited file only, shared venv | working tree of `a5d3d13` | shared venv | `GTCORE_STRICT=1 python -m pytest -q tests/test_tiles_fuse.py` | `13 passed in 16.84s` | — |
 | **Clean clone, fresh venv from the lock file** | `9ebb13d` | `<scratchpad>/clonenv`, Python 3.12.10, numpy 2.5.4 | see below | **`815 passed, 14 skipped, 161 warnings in 646.89s (0:10:46)`** | wall 10 min 49 s (pytest only; venv + lock install took 64 s with a warm pip cache) |
+| Clean clone, same lock-file venv, after merging `paper2/integration` (strict-exceptions + vault-filter, 36 new tests) | `dba5ff0` | `<scratchpad>/clonenv` (lock and pyproject unchanged, no reinstall) | same recipe with `git checkout dba5ff0` | `851 passed, 14 skipped, 164 warnings in 508.82s (0:08:28)` | wall 8 min 30 s |
 
 Clean-clone recipe (the brief's "tests green on a clean clone" check; it also
 exercises the README Install paragraph):
