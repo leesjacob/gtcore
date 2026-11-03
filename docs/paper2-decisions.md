@@ -240,3 +240,27 @@ side by side) does not model — a model change on the stop list, so the rendere
 draws half tiles from the pair geometry (20 × 10 mm along the seed axis) and the
 notes state the template limitation. Which count-known row the paper quotes waits
 for the operative record.
+
+## 2026-11-03 — Phase 4 code decisions: F8(b) eligibility rule; phantom cavity definition
+
+1. **F8(b) eligibility** = the wall the surgeon could reach through the craniotomy:
+   faces whose inward normal points toward the skull opening (cone 90°) AND with a
+   clear line of sight to the opening (ray cast). The opening is the component of
+   (skull defect ∪ cavity mouth on the sealed vault) with the most mouth voxels
+   (on PT-CT1mm the bone flap is replaced, so the defect alone is weak; both
+   definitions agree to 1.2 mm here: 28.7 cm², normal (0.86, 0.50, −0.07)). The
+   third available term, "visible from the implant centre", is NOT used for the
+   patient run: it would bias the optimizer toward where the implant already is.
+   Eligible wall 26.5 % of the area, packing capacity 13 tiles at h 2.5 mm /
+   6 spins; the campaign reports the fraction of implanted seeds that lie on
+   eligible wall as a fairness check.
+2. **Phantom cavity** (RIND5 target for the phantom arms, F3 caption / Table 1
+   "cavity at print time"): the print is a partial head section whose cavity mouth
+   is as wide as the craniotomy, so a geometric fill of the lumen has no plateau
+   (36 → 118 mL over 6–28 mm closing). The phantom cavity is therefore gtcore's
+   own cavity rule applied to the registered tile-less twin around the carried
+   seeds: 55.3 cc, 32/32 seeds inside; the wall is the twin's plastic surface
+   within 1.5 mm of a cavity voxel. Same rule as the patient (41.3 cc on
+   PT-CT1mm; `Cav_Post` 35.1 cc), stated as implant-informed (14 mm reach from
+   the seed hull). An implant-independent print volume would need the STL or a
+   hand-placed mouth plane; neither exists.
