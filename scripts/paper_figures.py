@@ -319,8 +319,7 @@ def f2c_deform(ctx) -> Dict[str, Any]:
         sides = sorted(d[np.triu_indices(4, 1)])[:4]
         key_numbers[name] = {"kappa1_per_mm": k1, "kappa2_per_mm": k2,
                              "fold_deg": params.fold_deg, "bending_energy": params.bending_energy,
-                             "seed_chords_mm": [round(float(x), 2) for x in sides],
-                             "chord_formula_mm": round(10.0 / (1.0 + G.SEED_PLANE_OFFSET_MM * max(k1, k2)), 2)}
+                             "seed_chords_mm": [round(float(x), 2) for x in sides]}
     outs = S.save_panel(fig, ctx["out"], "f2c_tile_model")
     return {"outputs": outs, "key_numbers": key_numbers,
             "note": "gtcore.tiles.deform on an ideal pose; tissue-face wireframe at -3 mm, seeds on the seed sheet; "
