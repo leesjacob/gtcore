@@ -140,6 +140,10 @@ def test_decoy_gates_are_reported(decoy_case):
         assert r["clutter"] and not r["in_implant"]
         assert r["nearest_tile"] in {p.tile_id for p in m.tiles}
         assert not r["inside_footprint"]
+        assert r["layer_class"] == "far" and r["dist_sheet_mm"] > 18.0
+    lay = ls.layer_rows(c, a, left, m)
+    assert len(lay) == 4 * N_TILES
+    assert all(r["layer_class"] == "far" for r in lay)
     q = ls.quad_gate_rows(c, a, left)
     assert len(q) == 1                      # C(4, 4)
     row = q[0]
@@ -161,6 +165,31 @@ def test_decoy_gates_are_reported(decoy_case):
     f = ls.cluster_finding(c, left, q)
     assert f["n_clusters"] == 4 and f["n_disjoint_passing"] == 0
     assert f["verdict"].startswith("no leftover quad passes")
+
+
+def test_layer_classes_sheet_and_stacked(phantom, clean_modes):
+    """A tile's own seed is 'sheet' in its tile; a point one tile thickness
+    (4 mm) above the tile's seed sheet, toward the cavity, is 'stacked'."""
+    m = clean_modes["auto"]
+    c, a = phantom["centers"], phantom["axes"]
+    p = m.tiles[0]
+    fit = m.deforms[p.tile_id]
+    own = ls.layer_rows(c, a, [p.seed_indices[0]], m)
+    mine = [r for r in own if r["tile"] == p.tile_id][0]
+    assert mine["inside_footprint"] and abs(mine["h_mm"]) < 1.5
+    assert mine["layer_class"] == "sheet" and mine["dist_sheet_mm"] < 1.5
+    n_cav = ls._model_normal_sign(p, fit) * np.asarray(fit.pose.normal)
+    stacked_pt = np.asarray(fit.pose.t) + 4.0 * n_cav
+    c2 = np.vstack([c, stacked_pt[None, :]])
+    a2 = np.vstack([a, a[p.seed_indices[0]][None, :]])
+    rows = ls.layer_rows(c2, a2, [len(c)], m)
+    r0 = [r for r in rows if r["tile"] == p.tile_id][0]
+    assert r0["inside_footprint"]
+    assert 3.0 < r0["h_mm"] < 5.0, r0
+    assert r0["layer_class"] == "stacked"
+    # the stacked point is also what seed_rows reports as nearest
+    srow = ls.seed_rows(c2, a2, [len(c)], m)[0]
+    assert srow["nearest_tile"] == p.tile_id and srow["layer_class"] == "stacked"
 
 
 def test_true_tile_quad_passes_the_standard_gates(phantom, clean_modes):
@@ -237,3 +266,6 @@ def test_patch_png_is_written(tmp_path, phantom, clean_modes):
     assert rows[0]["peak_hu_1mm"] > 1500.0
     assert rows[0]["inside_footprint"]          # a tile seed sits in its own tile
     assert abs(rows[0]["tile_h_mm"]) < 1.5
+    assert rows[0]["layer_class"] == "sheet"
+    owner = [p.tile_id for p in m.tiles if 0 in p.seed_indices][0]
+    assert rows[0]["nearest_tile"] == owner

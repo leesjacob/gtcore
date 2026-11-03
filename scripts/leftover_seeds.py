@@ -408,12 +408,60 @@ def tile_frame_coords(point, pose, fit):
     return float(q[0]), float(q[1]), float(q[2] * _model_normal_sign(pose, fit))
 
 
+# layer classification of a leftover seed against a fitted tile (mm)
+LAYER_COPLANAR_H_MM = 2.0        # |h| below: in the tile's own seed sheet
+LAYER_STACK_H_MM = (2.0, 6.0)    # |h| in: one tile thickness away (stacked)
+LAYER_MAX_OVERHANG_MM = 12.0     # beyond the footprint by more: unrelated
+
+
+def layer_rows(centers, axes, idx: Sequence[int], mode: ModeFit,
+               n: int = SHEET_N) -> List[dict]:
+    """Every (leftover seed, fitted tile) pair: the seed in the tile's
+    bent-tile frame (``u, v, h``; +h toward the cavity), its distance to
+    the tile's seed sheet, whether it lies inside the footprint, and a
+    layer class: ``sheet`` (|h| < 2 mm, in or just beyond the footprint:
+    the seed is in that tile's own plane), ``stacked`` (inside the
+    footprint, 2-6 mm above or below the sheet: one tile thickness away,
+    the signature of two tiles laid on top of each other), ``edge`` (within
+    12 mm beyond the footprint, |h| < 6 mm), else ``far``."""
+    centers = np.asarray(centers, dtype=float)
+    axes = np.asarray(axes, dtype=float)
+    rows = []
+    for p in mode.tiles:
+        fit = mode.deforms.get(p.tile_id) or ensure_deform(p, centers, axes)
+        sheet = deformed_surface_grid(fit.pose, fit.params, n=n, offset_mm=0.0, kind=p.kind)
+        cu = _geom.TILE_HALF_SIZE_MM if p.kind == "full" else _geom.SEED_PITCH_MM / 2.0
+        for i in idx:
+            i = int(i)
+            u, v, h = tile_frame_coords(centers[i], p, fit)
+            du = max(0.0, abs(u) - cu)
+            dv = max(0.0, abs(v) - _geom.TILE_HALF_SIZE_MM)
+            over = float(np.hypot(du, dv))
+            dist = float(np.linalg.norm(sheet - centers[i][None, :], axis=1).min())
+            inside = over == 0.0
+            if abs(h) < LAYER_COPLANAR_H_MM and over <= LAYER_MAX_OVERHANG_MM:
+                cls = "sheet"
+            elif inside and LAYER_STACK_H_MM[0] <= abs(h) <= LAYER_STACK_H_MM[1]:
+                cls = "stacked"
+            elif over <= LAYER_MAX_OVERHANG_MM and abs(h) <= LAYER_STACK_H_MM[1]:
+                cls = "edge"
+            else:
+                cls = "far"
+            rows.append(dict(seed=i, tile=int(p.tile_id), tile_seeds=list(int(k) for k in p.seed_indices),
+                             u_mm=u, v_mm=v, h_mm=h, dist_sheet_mm=dist, overhang_mm=over,
+                             inside_footprint=bool(inside), layer_class=cls))
+    rows.sort(key=lambda r: (r["seed"], r["dist_sheet_mm"]))
+    return rows
+
+
 def seed_rows(centers, axes, idx: Sequence[int], mode: ModeFit, seeds=None,
               vol=None, meshes: Optional[Dict[str, object]] = None) -> List[dict]:
     """One row per leftover seed (see the module docstring)."""
     centers = np.asarray(centers, dtype=float)
     axes = np.asarray(axes, dtype=float)
     idx = [int(i) for i in idx]
+    if not idx:
+        return []
     n = centers.shape[0]
     assigned = set(mode.assigned)
     allD = np.linalg.norm(centers[:, None, :] - centers[None, :, :], axis=2)
@@ -446,26 +494,21 @@ def seed_rows(centers, axes, idx: Sequence[int], mode: ModeFit, seeds=None,
         row["nn_assigned_seed"] = int(asg[int(np.argmin(allD[i, asg]))]) if asg else -1
         if row["nn_leftover_seed"] >= 0:
             row["nn_leftover_axis_deg"] = _axis_angle_deg(axes[i], axes[row["nn_leftover_seed"]])
-        # nearest fitted tile and the seed in its frame
-        best = None
-        for p in mode.tiles:
-            fit = mode.deforms.get(p.tile_id) or ensure_deform(p, centers, axes)
-            u, v, h = tile_frame_coords(centers[i], p, fit)
-            du = max(0.0, abs(u) - _geom.TILE_HALF_SIZE_MM)
-            dv = max(0.0, abs(v) - _geom.TILE_HALF_SIZE_MM)
-            inplane = float(np.hypot(du, dv))        # 0 when inside the footprint
-            key = (inplane, abs(h))
-            if best is None or key < best[0]:
-                best = (key, p, u, v, h, inplane)
-        if best is not None:
-            _k, p, u, v, h, inplane = best
-            row.update(nearest_tile=int(p.tile_id), tile_u_mm=u, tile_v_mm=v,
-                       tile_h_mm=h, tile_inplane_overhang_mm=inplane,
-                       inside_footprint=bool(inplane == 0.0))
+        # nearest fitted tile (by distance to its seed sheet) and the seed in
+        # its frame; the full seed x tile table is layer_rows()
+        lay = layer_rows(centers, axes, [i], mode)
+        if lay:
+            b = min(lay, key=lambda r_: r_["dist_sheet_mm"])
+            row.update(nearest_tile=b["tile"], dist_sheet_mm=b["dist_sheet_mm"],
+                       tile_u_mm=b["u_mm"], tile_v_mm=b["v_mm"], tile_h_mm=b["h_mm"],
+                       tile_inplane_overhang_mm=b["overhang_mm"],
+                       inside_footprint=b["inside_footprint"],
+                       layer_class=b["layer_class"])
         else:
-            row.update(nearest_tile=-1, tile_u_mm=float("nan"), tile_v_mm=float("nan"),
-                       tile_h_mm=float("nan"), tile_inplane_overhang_mm=float("nan"),
-                       inside_footprint=False)
+            row.update(nearest_tile=-1, dist_sheet_mm=float("nan"), tile_u_mm=float("nan"),
+                       tile_v_mm=float("nan"), tile_h_mm=float("nan"),
+                       tile_inplane_overhang_mm=float("nan"), inside_footprint=False,
+                       layer_class="")
         row["in_implant"] = i in set(mode.unassigned_in_implant)
         row["clutter"] = i in set(mode.clutter)
         if seeds is not None:
@@ -802,9 +845,14 @@ def write_patch(vol, center_ras, seed_index: int, out_png: str,
                 for k in np.flatnonzero(near):
                     if np.allclose(others[k], c):
                         continue
+                    da, db = others[k, ia] - c[ia], others[k, ib] - c[ib]
+                    if abs(da) > half_mm or abs(db) > half_mm:
+                        continue                      # outside the crop
                     colr = "#D55E00" if (k < len(leftover) and leftover[k]) else "white"
-                    ax.plot([others[k, ia] - c[ia]], [others[k, ib] - c[ib]], "o",
-                            mfc="none", mec=colr, ms=10, mew=1.0)
+                    ax.plot([da], [db], "o", mfc="none", mec=colr, ms=10, mew=1.0)
+            ax.set_xlim(-half_mm, half_mm)
+            ax.set_ylim(-half_mm, half_mm)
+            ax.set_aspect("equal")
             ax.set_xticks([])
             ax.set_yticks([])
             ax.set_title("%s mm  W %d / L %d" % (title, int(W), int(L)), fontsize=7)
@@ -1197,10 +1245,21 @@ def main(argv=None) -> int:
         meshes["cav_post"] = cavity_rt
     srows = seed_rows(centers, axes, left, prim, seeds=seeds, vol=vol, meshes=meshes)
     write_csv(stem % "seeds", srows, hdr + [
-        "one row per leftover seed of the count-free fit; tile_u/v/h_mm = position in the "
-        "nearest fitted tile's bent-tile frame (h > 0 toward the cavity); dist_*_mm unsigned "
-        "distance to the wall mesh / Cav_Post mesh; blob_* from detection; peak_hu_1mm = max HU "
-        "within 1 mm of the centre on the raw volume"])
+        "one row per leftover seed of the count-free fit; nearest_tile = fitted tile whose seed "
+        "sheet is closest (dist_sheet_mm); tile_u/v/h_mm = position in that tile's bent-tile "
+        "frame (h > 0 toward the cavity); layer_class: sheet / stacked / edge / far (see "
+        "layer_rows); dist_*_mm unsigned distance to the wall mesh / Cav_Post mesh; blob_* from "
+        "detection (split_k > 1 = from a k-means split of a merged blob, n_fragments > 1 = "
+        "rejoined fragments); peak_hu_1mm = max HU within 1 mm of the centre on the raw volume"])
+    lrows = layer_rows(centers, axes, left, prim)
+    write_csv(stem % "layers", lrows, hdr + [
+        "every (leftover seed, fitted tile) pair of the count-free fit: u/v in-plane and h along "
+        "the normal (+ toward the cavity) in the tile's bent-tile frame, distance to the tile's "
+        "seed sheet, overhang beyond the 20 mm footprint, layer_class as in layer_rows()"])
+    for cls in ("sheet", "stacked", "edge"):
+        hits = [(r["seed"], r["tile"], round(r["h_mm"], 1)) for r in lrows if r["layer_class"] == cls]
+        if hits:
+            print("[%s] layer '%s': (seed, tile, h mm) %s" % (ds, cls, hits))
     tol = _auto.spacing_tolerance(vol.spacing)
     qrows = quad_gate_rows(centers, axes, left, tol=tol)
     write_csv(stem % "quads", qrows, hdr + [
