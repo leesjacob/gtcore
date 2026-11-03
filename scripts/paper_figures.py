@@ -328,6 +328,65 @@ def f2c_deform(ctx) -> Dict[str, Any]:
                     "kappa values in key_numbers (titles are Inkscape's)"}
 
 
+# ============================================================ panels: F3(a)
+F3A_ORDER = (("preop", "mri_pre", "wl_mri_pre", "PT-preMRI"), ("intraop", "mri_intra", "wl_mri_intra", "PT-intraMRI"),
+             ("postop", "mri_post", "wl_mri_post", "PT-postMRI"), ("ct", "ct_hu", "wl_ct", "PT-CT1mm"))
+
+
+def _f3a_draw(ax, d, key, wl, outline: bool, scale_bar: bool):
+    x, y = d["x_ras"], d["y_ras"]
+    ext = _extent(x, y)
+    w, l = [float(v) for v in wl]
+    ax.imshow(d[key], cmap="gray", vmin=l - w / 2.0, vmax=l + w / 2.0, extent=ext, origin="upper",
+              interpolation="nearest", zorder=0)
+    x0, x1, y0, y1 = [float(v) for v in d["crop_extent_ras"]]
+    dx = abs(float(x[0, 1] - x[0, 0])) / 2.0
+    invert = ext[0] > ext[1]
+    xl, xr = (x1 + dx, x0 - dx) if invert else (x0 - dx, x1 + dx)
+    ax.set_xlim(xl, xr)
+    ax.set_ylim(y0 - dx, y1 + dx)
+    ax.set_aspect("equal")
+    ax.set_axis_off()
+    if outline:
+        m = np.asarray(d["mask_cav_post"], float)
+        cs = ax.contour(x, y, m, levels=[0.5], colors="white", linewidths=S.LW["overlay"], zorder=5)
+        for coll in (cs.collections if hasattr(cs, "collections") else [cs]):
+            coll.set_path_effects(S.halo(S.LW["overlay"], "black", 0.9))
+    if scale_bar:
+        S.add_scale_bar(ax, (xl, xr, y0 - dx, y1 + dx), invert_x=invert)
+
+
+def f3a_scans(ctx) -> Dict[str, Any]:
+    """F3(a): the same axial slice and crop on the three registered MRIs
+    (pre-, intra-, post-operative) and the post-operative CT; CT with the
+    Cav_Post outline (F6 style), MRIs without outlines, one 10 mm bar on the
+    first image; each image also saved on its own."""
+    p = dpath("f3a_scans_slice.npz")
+    if not os.path.exists(p):
+        raise Skip("missing %s (scripts/cavity_change.py)" % rel(p))
+    with np.load(p, allow_pickle=True) as z:
+        d = {k: z[k] for k in z.files}
+    side = S.SIZE["f3a_single"][0]
+    gap = S.F3A_GAP_IN
+    W = 4 * side + 3 * gap
+    fig = plt.figure(figsize=(W, side))
+    outs = []
+    for i, (name, key, wlk, ds) in enumerate(F3A_ORDER):
+        ax = fig.add_axes([i * (side + gap) / W, 0.0, side / W, 1.0])
+        _f3a_draw(ax, d, key, d[wlk], outline=(name == "ct"), scale_bar=(i == 0))
+    outs += S.save_panel(fig, ctx["out"], "f3a_scans")
+    for i, (name, key, wlk, ds) in enumerate(F3A_ORDER):
+        fig, ax = S.image_axes(S.SIZE["f3a_single"])
+        _f3a_draw(ax, d, key, d[wlk], outline=(name == "ct"), scale_bar=(i == 0))
+        outs += S.save_panel(fig, ctx["out"], "f3a_" + name)
+    kn = {"slice_k": int(d["slice_k"]), "slice_z_ras_mm": float(d["slice_z_ras"]), "crop_mm": float(d["crop_mm"]),
+          "crop_center_ras_xy": [float(v) for v in d["crop_center_ras_xy"]],
+          "windows_W_L": {ds: [round(float(v), 1) for v in d[wlk]] for _n, _k, wlk, ds in F3A_ORDER},
+          "order": [ds for *_x, ds in F3A_ORDER]}
+    return {"outputs": outs, "key_numbers": kn,
+            "note": "MRIs rigidly registered to PT-CT1mm (cavity_change.py), sampled at the CT slice; MRI windows = 1st-99th percentile"}
+
+
 # ============================================================ panels: F3(c)
 def f3c_phantom_slice(ctx) -> Dict[str, Any]:
     """F3(c): one axial PH8 slice through the seeds (W 1000 / L 0), the
@@ -1135,6 +1194,7 @@ def s5_dvh_three_targets(ctx) -> Dict[str, Any]:
 PANELS: List[Tuple[str, str, Callable, List[str]]] = [
     # (panel id, figure, function, source files)
     ("f2c", "F2", f2c_deform, []),
+    ("f3a", "F3", f3a_scans, [dpath("f3a_scans_slice.npz")]),
     ("f3c", "F3", f3c_phantom_slice, [dpath("f3c_phantom_slice.npz"), dpath("f4c_phantom_implant.npz")]),
     ("f4a", "F4", f4a_seed_slice, [dpath("clinical_slice.npz"), dpath("clinical_slice_seeds.csv")]),
     ("f4b", "F4", f4b_patient_3d, [dpath("f4b_patient_implant.npz")]),
