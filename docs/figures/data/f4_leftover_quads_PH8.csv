@@ -1,0 +1,10 @@
+# script: scripts/leftover_seeds.py
+# command: python scripts/leftover_seeds.py "$GT_DATA_ROOT/<PH8>" --dataset PH8 --n-full 8 --out docs/figures/data
+# commit: afb96ea
+# dataset: PH8
+# generated: 2026-11-03 02:05
+# gtcore imported from tree: p2-leftovers
+# strict_mode: True
+# n_seeds: 32; n_full requested: 8
+# every 4-combination of the leftover seeds; std_* = gtcore.tiles.fit quad gates, loose_* / cover_* = gtcore.tiles.auto tiers (cover scaled by tol 1.00), completion_* = count-constrained completion rule; def_* = bent-tile fit; gates_failed lists every failed gate
+

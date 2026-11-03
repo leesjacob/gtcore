@@ -1,0 +1,34 @@
+# script: scripts/leftover_seeds.py
+# command: python scripts/leftover_seeds.py "$GT_DATA_ROOT/<PH8>" --dataset PH8 --n-full 8 --out docs/figures/data
+# commit: afb96ea
+# dataset: PH8
+# generated: 2026-11-03 02:05
+# gtcore imported from tree: p2-leftovers
+# strict_mode: True
+# n_seeds: 32; n_full requested: 8
+# one row per fitted tile and mode; bent_rms_mm from gtcore.tiles.deform.fit_deformable (attached by the fit, or computed here for chord-path tiles); seed_indices into the pass-1 seed list; surface_* from the cavity-mesh cross-check when a mesh existed
+mode,tile_id,kind,confidence,degraded,n_seeds,seed_indices,inferred_seed,chord_residual_mm,bent_rms_mm,bending_energy,fold_deg,axis_err_deg,kappa1,kappa2,surface_verdict,surface_rms_mm,detachment_mm,center_x,center_y,center_z,normal_x,normal_y,normal_z
+auto,0,full,supported,False,4,0;1;2;5,False,0.2569,0.2569,0.01753,145,6.049,0.03896,0.1266,,nan,nan,-4.556,-196.2,-626.2,-0.9036,0.06697,0.4231
+auto,1,full,supported,False,4,10;11;17;18,False,0.3097,0.3097,0.002587,57.68,5.398,0.00729,0.05034,,nan,nan,-24.82,-195,-642.2,0.2379,0.9262,-0.2926
+auto,2,full,supported,False,4,7;13;15;20,False,0.3969,0.3969,0.001645,42.65,4.118,0.03722,0.01612,,nan,nan,-5.318,-180.4,-612.3,-0.02295,-0.8357,0.5487
+auto,3,full,supported,False,4,3;4;6;9,False,0.4973,0.4973,0.001173,37.34,6.439,0.03259,0.01052,,nan,nan,-23.1,-178.5,-615.2,0.3331,0.6105,-0.7186
+auto,4,full,supported,False,4,14;22;23;28,False,0.5588,0.5588,0.01242,96.93,18.8,0.08459,0.07253,,nan,nan,-24.4,-208.1,-619.5,0.7104,0.691,-0.1335
+auto,5,full,supported,False,4,8;16;24;25,False,0.7814,0.7814,0.01214,117.4,19.5,-0.04049,0.1025,,nan,nan,-13.37,-211,-630.7,-0.2323,0.6995,0.6758
+auto,6,full,supported,False,4,26;29;30;31,False,0.8685,0.8685,0.002493,52.36,10.59,0.04569,-0.02013,,nan,nan,-10.3,-211.2,-624.8,-0.3068,0.9517,-0.009658
+auto,7,full,supported,True,4,12;19;21;27,False,0.4645,0.4645,0.06585,287.7,7.449,0.05313,0.251,,nan,nan,-14.41,-204,-614.8,-0.2724,0.4389,-0.8562
+count8,0,full,supported,False,4,7;13;15;20,False,0.3244,0.3969,0.001645,42.65,4.118,0.03722,0.01612,,nan,nan,-5.318,-180.4,-612.3,-0.01907,-0.8338,0.5517
+count8,1,full,supported,False,4,10;11;17;18,False,0.4751,0.3097,0.002587,57.68,5.398,0.00729,0.05034,,nan,nan,-24.82,-195,-642.2,0.2364,0.9266,-0.2923
+count8,2,full,supported,False,4,3;4;6;9,False,0.4971,0.4973,0.001173,37.34,6.439,0.03259,0.01052,,nan,nan,-23.1,-178.5,-615.2,0.3478,0.604,-0.7171
+count8,3,full,supported,False,4,14;22;23;28,False,0.4986,0.5588,0.01242,96.93,18.8,0.08459,0.07253,,nan,nan,-24.4,-208.1,-619.5,-0.7167,-0.692,0.08655
+count8,4,full,supported,False,4,0;1;2;5,False,0.9703,0.2569,0.01753,145,6.049,0.03896,0.1266,,nan,nan,-4.556,-196.2,-626.2,-0.9106,0.04375,0.4111
+count8,5,full,supported,False,4,25;26;29;30,False,1.176,1.112,0.001942,46.01,10.02,0.01816,0.04015,,nan,nan,-10.18,-212.1,-624.3,-0.1277,0.9689,-0.2118
+count8,6,full,supported,False,4,8;16;24;31,False,1.365,1.47,0.008877,106.9,19.81,0.09327,0.01329,,nan,nan,-13.49,-210.2,-631.2,0.2571,-0.7086,-0.6571
+count8,7,full,supported,True,4,12;19;21;27,False,1.384,0.4645,0.06585,287.7,7.449,0.05313,0.251,,nan,nan,-14.41,-204,-614.8,0.2779,-0.5039,0.8178
+prior8,0,full,supported,False,4,0;1;2;5,False,0.2569,0.2569,0.01753,145,6.049,0.03896,0.1266,detached: seeds sit 2.2 mm off the 3 mm wall offset (segmentation error or tile lift-off),2.492,2.19,-4.556,-196.2,-626.2,-0.9036,0.06697,0.4231
+prior8,1,full,supported,False,4,10;11;17;18,False,0.3097,0.3097,0.002587,57.68,5.398,0.00729,0.05034,detached: seeds sit 2.8 mm off the 3 mm wall offset (segmentation error or tile lift-off),2.916,2.787,-24.82,-195,-642.2,0.2379,0.9262,-0.2926
+prior8,2,full,supported,False,4,7;13;15;20,False,0.3969,0.3969,0.001645,42.65,4.118,0.03722,0.01612,detached: seeds sit 2.1 mm off the 3 mm wall offset (segmentation error or tile lift-off),2.315,2.094,-5.318,-180.4,-612.3,-0.02295,-0.8357,0.5487
+prior8,3,full,supported,False,4,3;4;6;9,False,0.4973,0.4973,0.001173,37.34,6.439,0.03259,0.01052,detached: seeds sit 2.8 mm off the 3 mm wall offset (segmentation error or tile lift-off),2.877,2.831,-23.1,-178.5,-615.2,0.3331,0.6105,-0.7186
+prior8,4,full,supported,False,4,14;22;23;28,False,0.5588,0.5588,0.01242,96.93,18.8,0.08459,0.07253,detached: seeds sit 2.3 mm off the 3 mm wall offset (segmentation error or tile lift-off),5.272,2.251,-24.4,-208.1,-619.5,0.7104,0.691,-0.1335
+prior8,5,full,supported,False,4,8;16;24;25,False,0.7814,0.7814,0.01214,117.4,19.5,-0.04049,0.1025,inconsistent: free and surface fits disagree by 4.6 mm,4.631,1.379,-13.37,-211,-630.7,-0.2323,0.6995,0.6758
+prior8,6,full,supported,False,4,26;29;30;31,False,0.8685,0.8685,0.002493,52.36,10.59,0.04569,-0.02013,detached: seeds sit 1.9 mm off the 3 mm wall offset (segmentation error or tile lift-off),4.299,1.879,-10.3,-211.2,-624.8,-0.3068,0.9517,-0.009658
+prior8,7,full,supported,True,4,12;19;21;27,False,1.384,0.4645,0.06585,287.7,7.449,0.05313,0.251,detached: seeds sit 1.9 mm off the 3 mm wall offset (segmentation error or tile lift-off),3.724,1.852,-14.41,-204,-614.8,-0.2724,0.4389,-0.8562

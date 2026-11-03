@@ -1,0 +1,18 @@
+# script: scripts/leftover_seeds.py
+# command: python scripts/leftover_seeds.py "$GT_DATA_ROOT/<PT-CT1mm>" --dataset PT-CT1mm --rtstruct "$GT_DATA_ROOT/<PT-RT RTSTRUCT>" --n-full 8 --out docs/figures/data
+# commit: afb96ea
+# dataset: PT-CT1mm
+# generated: 2026-11-03 02:04
+# gtcore imported from tree: p2-leftovers
+# strict_mode: True
+# n_seeds: 32; n_full requested: 8
+# one row per leftover seed of the count-free fit; nearest_tile = fitted tile whose seed sheet is closest (dist_sheet_mm); tile_u/v/h_mm = position in that tile's bent-tile frame (h > 0 toward the cavity); layer_class: sheet / stacked / edge / far (see layer_rows); dist_*_mm unsigned distance to the wall mesh / Cav_Post mesh; blob_* from detection (split_k > 1 = from a k-means split of a merged blob, n_fragments > 1 = rejoined fragments); peak_hu_1mm = max HU within 1 mm of the centre on the raw volume
+seed,x,y,z,axis_x,axis_y,axis_z,nn_any_mm,nn_any_seed,nn_leftover_mm,nn_leftover_seed,nn_assigned_mm,nn_assigned_seed,nn_leftover_axis_deg,nearest_tile,dist_sheet_mm,tile_u_mm,tile_v_mm,tile_h_mm,tile_inplane_overhang_mm,inside_footprint,layer_class,in_implant,clutter,blob_volume_mm3,elongation,split_k,n_fragments,source_blob,peak_hu_1mm,dist_wall_mm,dist_cav_post_mm
+0,29.95,224.8,-508,-0.2013,-0.5526,0.8088,8.935,16,8.935,16,9.312,4,32.72,3,4.609,-12.88,-7.083,-2.741,2.882,False,edge,True,False,8.097,2.721,1,1,81,3067,3.083,1.335
+2,47.79,199.3,-510.8,-0.5188,0.4702,-0.7139,9.627,5,9.627,5,10.15,22,5.065,2,5.038,12.89,9.892,1.079,2.886,False,sheet,True,False,7.558,2.743,1,1,75,3066,0.1994,3.162
+5,42.8,204.3,-517.4,-0.5325,0.5353,-0.6557,7.627,21,7.627,21,7.687,18,35.77,0,2.791,12.36,4.433,0.3732,2.357,False,sheet,True,False,7.018,3.11,1,1,71,3067,1.158,4.778
+8,30.89,219.7,-500.2,-0.3986,0.5483,-0.7351,4.663,16,4.663,16,11.51,20,36.93,4,6.164,-8.156,-16.11,2.357,6.112,False,edge,True,False,6.748,2.961,1,1,88,3070,2.946,3.485
+11,39.49,218.1,-525.8,-0.2527,0.8528,-0.4571,5.938,3,8.998,21,5.938,3,10.19,3,3.095,7.541,-1.374,-3.525,0,True,stacked,True,False,6.478,2.921,1,1,63,3032,0.0541,2.872
+13,33.95,209.2,-500.2,-0.2647,0.8159,-0.514,7.889,30,9.313,16,7.889,30,17.74,5,3.549,-12.81,-6.555,3.891,2.808,False,edge,True,False,6.208,2.899,1,1,89,2913,1.743,4.798
+16,33.29,217.8,-503.7,-0.01226,-0.9094,0.4158,4.663,8,4.663,8,8.697,20,36.93,4,3.403,-10.2,-11.92,2.325,1.93,False,edge,True,False,5.128,3.495,1,1,85,2805,5.407,2.977
+21,40.93,210.2,-521.8,-0.08009,0.8926,-0.4437,7.627,5,7.627,5,8.213,3,35.77,3,1.927,9.799,-10.08,-3.206,0.07852,False,edge,True,False,4.589,3.22,1,1,67,2890,2.184,5.023

@@ -1,0 +1,162 @@
+{
+ "dataset": "PT-CT1mm",
+ "command": "python scripts/leftover_seeds.py \"$GT_DATA_ROOT/<PT-CT1mm>\" --dataset PT-CT1mm --rtstruct \"$GT_DATA_ROOT/<PT-RT RTSTRUCT>\" --n-full 8 --out docs/figures/data",
+ "commit": "afb96ea",
+ "modes": {
+  "auto": {
+   "n_tiles": 6,
+   "n_degraded": 0,
+   "n_tentative": 0,
+   "leftovers": [
+    0,
+    2,
+    5,
+    8,
+    11,
+    13,
+    16,
+    21
+   ]
+  },
+  "count8": {
+   "n_tiles": 7,
+   "n_degraded": 1,
+   "n_tentative": 0,
+   "leftovers": [
+    2,
+    5,
+    11,
+    21
+   ]
+  },
+  "prior8": {
+   "n_tiles": 7,
+   "n_degraded": 1,
+   "n_tentative": 0,
+   "leftovers": [
+    2,
+    5,
+    11,
+    21
+   ]
+  }
+ },
+ "leftovers": [
+  0,
+  2,
+  5,
+  8,
+  11,
+  13,
+  16,
+  21
+ ],
+ "best_quad": {
+  "seeds": [
+   5,
+   13,
+   16,
+   21
+  ],
+  "def_score": -0.01664078348937892,
+  "def_rms_mm": 4.0083203917446895,
+  "bending_energy": 0.010017802093402535,
+  "fold_deg": 91.6732472209317,
+  "def_axis_err_deg": 5.4242093580426625,
+  "chords_mm": [
+   7.62680292743574,
+   9.313094557249093,
+   19.94290574261659,
+   21.05430093021049,
+   21.459563984169424,
+   22.7140342559708
+  ],
+  "standard_pass": false,
+  "loose_pass": false,
+  "cover_pass": false,
+  "completion_pass": false,
+  "rejected_by": {
+   "standard": [
+    "std_link",
+    "std_side_window",
+    "std_diag_window",
+    "std_grid_residual",
+    "std_chord_score_pos"
+   ],
+   "loose": [
+    "loose_chord",
+    "loose_sim_rms",
+    "loose_def_rms",
+    "loose_score_pos"
+   ],
+   "cover": [
+    "cover_chord",
+    "cover_sim_rms",
+    "cover_def_rms",
+    "cover_score_pos"
+   ],
+   "completion": [
+    "completion_chord"
+   ]
+  },
+  "below_penalty": true
+ },
+ "cluster_finding": {
+  "link_mm": 16.5,
+  "clusters": [
+   {
+    "seeds": [
+     0,
+     8,
+     13,
+     16
+    ],
+    "n": 4,
+    "best_quad_seeds": [
+     0,
+     8,
+     13,
+     16
+    ],
+    "best_quad_score": -0.21453307208154015,
+    "best_quad_def_rms_mm": 1.364040296296305,
+    "best_quad_fold_deg": 514.8727928735385,
+    "best_quad_standard": false,
+    "best_quad_loose": false,
+    "best_quad_cover": false
+   },
+   {
+    "seeds": [
+     2,
+     5,
+     11,
+     21
+    ],
+    "n": 4,
+    "best_quad_seeds": [
+     2,
+     5,
+     11,
+     21
+    ],
+    "best_quad_score": -9.35048895951551,
+    "best_quad_def_rms_mm": 5.051194178627439,
+    "best_quad_fold_deg": 572.9577951308231,
+    "best_quad_standard": false,
+    "best_quad_loose": false,
+    "best_quad_cover": false
+   }
+  ],
+  "n_clusters": 2,
+  "n_quads": 70,
+  "n_quads_standard": 0,
+  "n_quads_loose": 0,
+  "n_quads_cover": 0,
+  "n_quads_completion": 1,
+  "n_disjoint_passing": 0,
+  "disjoint_passing": [],
+  "verdict": "no leftover quad passes any tier: the leftovers form no coherent tile"
+ },
+ "n_pairs_pass": 7,
+ "n_triplets_pass": 0
+}

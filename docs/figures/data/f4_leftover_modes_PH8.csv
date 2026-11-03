@@ -1,0 +1,13 @@
+# script: scripts/leftover_seeds.py
+# command: python scripts/leftover_seeds.py "$GT_DATA_ROOT/<PH8>" --dataset PH8 --n-full 8 --out docs/figures/data
+# commit: afb96ea
+# dataset: PH8
+# generated: 2026-11-03 02:05
+# gtcore imported from tree: p2-leftovers
+# strict_mode: True
+# n_seeds: 32; n_full requested: 8
+# one row per fit mode
+mode,label,result_type,n_tiles,n_supported,n_tentative,n_degraded,n_assigned,n_leftover,leftovers,unassigned_in_implant,clutter,summary,seconds
+auto,count-free (auto),AutoFitResult,8,8,0,1,32,0,,,,evidence supports n=8 (no further tile candidate),2.186
+count8,"count-known N=8 (pipeline, chord)",TileFitResult,8,8,0,1,32,0,,,,,0.008933
+prior8,"count-known N=8 (planner, fit_tiles_prior)",AutoFitResult,8,8,0,1,32,0,,,,asked for 8 full tile(s): 8 supported,80.77

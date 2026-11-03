@@ -1,0 +1,900 @@
+{
+ "dataset": "PT-CT1mm",
+ "script": "scripts/leftover_seeds.py",
+ "command": "python scripts/leftover_seeds.py \"$GT_DATA_ROOT/<PT-CT1mm>\" --dataset PT-CT1mm --rtstruct \"$GT_DATA_ROOT/<PT-RT RTSTRUCT>\" --n-full 8 --out docs/figures/data",
+ "commit": "afb96ea",
+ "generated": "2026-11-03 02:05",
+ "gtcore_file": "p2-leftovers\\gtcore\\__init__.py",
+ "n_seeds": 32,
+ "n_full_requested": 8,
+ "primary_mode": "auto",
+ "wall_mesh_source": "gtcore:cavity",
+ "has_cavity_rt": true,
+ "normals_oriented": true,
+ "conventions": {
+  "coordinates": "RAS mm; arrays indexed [k, j, i]; affine maps (i, j, k, 1) -> RAS",
+  "sheets": "deformed_surface_grid(pose, params, n, offset) of the bent-tile fit; offset 0 = seed sheet, -3 mm = tissue face (on the wall), +1 mm = cavity face; offsets taken along the model normal oriented toward the cavity (tile_model_normal_toward_cavity)",
+  "faces": "sheet_faces is shared: vertex r*n + c of the row-major n x n grid",
+  "leftover": "seed_tile_id == -1 / seed_leftover True: no tile of that mode owns the seed",
+  "modes": "auto = count-free pipeline (reconstruct n_full_tiles='auto'); count<N> = count-known pipeline path (reconstruct n_full_tiles=N, chord score, degraded completion); prior<N> = planner path fit_tiles_prior(ImplantPrior(N), mesh)"
+ },
+ "modes": {
+  "auto": {
+   "label": "count-free (auto)",
+   "n_tiles": 6,
+   "n_supported": 6,
+   "n_tentative": 0,
+   "n_degraded": 0,
+   "n_assigned": 24,
+   "n_leftover": 8,
+   "leftovers": [
+    0,
+    2,
+    5,
+    8,
+    11,
+    13,
+    16,
+    21
+   ],
+   "unassigned_in_implant": [
+    0,
+    2,
+    5,
+    8,
+    11,
+    13,
+    16,
+    21
+   ],
+   "clutter": [],
+   "result_type": "AutoFitResult",
+   "score_rule": "deformable",
+   "summary": "evidence supports n=6 (no further tile candidate); 8 seeds unassigned",
+   "seconds": 41.0
+  },
+  "count8": {
+   "label": "count-known N=8 (pipeline, chord)",
+   "n_tiles": 7,
+   "n_supported": 7,
+   "n_tentative": 0,
+   "n_degraded": 1,
+   "n_assigned": 28,
+   "n_leftover": 4,
+   "leftovers": [
+    2,
+    5,
+    11,
+    21
+   ],
+   "unassigned_in_implant": [],
+   "clutter": [],
+   "result_type": "TileFitResult",
+   "score_rule": "chord",
+   "summary": "",
+   "seconds": 0.0
+  },
+  "prior8": {
+   "label": "count-known N=8 (planner, fit_tiles_prior)",
+   "n_tiles": 7,
+   "n_supported": 7,
+   "n_tentative": 0,
+   "n_degraded": 1,
+   "n_assigned": 28,
+   "n_leftover": 4,
+   "leftovers": [
+    2,
+    5,
+    11,
+    21
+   ],
+   "unassigned_in_implant": [
+    2,
+    5,
+    11,
+    21
+   ],
+   "clutter": [],
+   "result_type": "AutoFitResult",
+   "score_rule": "deformable",
+   "summary": "asked for 8 full tile(s): 7 supported (geometry supports only 7); 4 seeds unassigned",
+   "seconds": 46.5
+  }
+ },
+ "arrays": {
+  "seed_centers_ras": {
+   "shape": [
+    32,
+    3
+   ],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "detected seed centres (shape-filtered, vault-filtered candidates), RAS"
+  },
+  "seed_axes_ras": {
+   "shape": [
+    32,
+    3
+   ],
+   "dtype": "float64",
+   "units": "unit",
+   "doc": "per-seed PCA long axis (sign arbitrary), RAS"
+  },
+  "seed_length_mm": {
+   "shape": [],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "capsule length to draw (gtcore.geometry.SEED_LENGTH_MM)"
+  },
+  "seed_diameter_mm": {
+   "shape": [],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "capsule diameter (gtcore.geometry.SEED_DIAMETER_MM)"
+  },
+  "cavity_center_ras": {
+   "shape": [
+    3
+   ],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "centroid of the gtcore cavity mask (nan when none): tile normals point away from it"
+  },
+  "volume_spacing_mm": {
+   "shape": [
+    3
+   ],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "voxel spacing (si, sj, sk) of the CT"
+  },
+  "volume_shape_kji": {
+   "shape": [
+    3
+   ],
+   "dtype": "int64",
+   "units": "voxels",
+   "doc": "CT array shape [k, j, i]"
+  },
+  "sheet_faces": {
+   "shape": [
+    128,
+    3
+   ],
+   "dtype": "int32",
+   "units": "index",
+   "doc": "triangles shared by every *_sheet_*_vertices array (row-major n x n grid, sheet_grid_n)"
+  },
+  "sheet_grid_n": {
+   "shape": [],
+   "dtype": "int64",
+   "units": "-",
+   "doc": "grid points per tile side in the sheets"
+  },
+  "wall_mesh_source": {
+   "shape": [],
+   "dtype": "<U13",
+   "units": "-",
+   "doc": "'gtcore:cavity' | 'gtcore:body' | 'none'"
+  },
+  "seed_volume_mm3": {
+   "shape": [
+    32
+   ],
+   "dtype": "float64",
+   "units": "mm^3",
+   "doc": "thresholded (bloomed) blob volume from detection"
+  },
+  "seed_elongation": {
+   "shape": [
+    32
+   ],
+   "dtype": "float64",
+   "units": "-",
+   "doc": "sqrt(major/minor) PCA eigenvalue ratio of the blob"
+  },
+  "wall_mesh_vertices": {
+   "shape": [
+    12274,
+    3
+   ],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "the mesh the fits conformed to (planner rule: gtcore cavity, else the scanned object's shell), RAS"
+  },
+  "wall_mesh_faces": {
+   "shape": [
+    24736,
+    3
+   ],
+   "dtype": "int32",
+   "units": "index",
+   "doc": "triangles of wall_mesh_vertices"
+  },
+  "cavity_rt_vertices": {
+   "shape": [
+    34652,
+    3
+   ],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "physician's Cav_Post from the RTSTRUCT, rasterised on the CT grid (4x4 supersampled, >= 0.5) and marching-cubed (Taubin-smoothed), RAS"
+  },
+  "cavity_rt_faces": {
+   "shape": [
+    69324,
+    3
+   ],
+   "dtype": "int32",
+   "units": "index",
+   "doc": "triangles of cavity_rt_vertices"
+  },
+  "auto_tile_id": {
+   "shape": [
+    6
+   ],
+   "dtype": "int32",
+   "units": "-",
+   "doc": "[mode auto] tile id within the mode"
+  },
+  "auto_tile_kind": {
+   "shape": [
+    6
+   ],
+   "dtype": "<U4",
+   "units": "-",
+   "doc": "[mode auto] 'full' (4 seeds) or 'half' (2 seeds)"
+  },
+  "auto_tile_confidence": {
+   "shape": [
+    6
+   ],
+   "dtype": "<U9",
+   "units": "-",
+   "doc": "[mode auto] 'supported' (calibrated gates / model selection) or 'tentative' (cover pass)"
+  },
+  "auto_tile_degraded": {
+   "shape": [
+    6
+   ],
+   "dtype": "bool",
+   "units": "bool",
+   "doc": "[mode auto] recovered outside the standard gates (crumpled / folded; loose tier or count completion)"
+  },
+  "auto_tile_seed_indices": {
+   "shape": [
+    6,
+    4
+   ],
+   "dtype": "int32",
+   "units": "index",
+   "doc": "[mode auto] member seeds (into seed_centers_ras), -1 padded; a triplet-completed tile has 3"
+  },
+  "auto_tile_inferred_seed_ras": {
+   "shape": [
+    6,
+    3
+   ],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "[mode auto] the inferred 4th seed of a triplet-completed tile, nan otherwise"
+  },
+  "auto_tile_center_ras": {
+   "shape": [
+    6,
+    3
+   ],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "[mode auto] mean of the member seeds"
+  },
+  "auto_tile_normal_ras": {
+   "shape": [
+    6,
+    3
+   ],
+   "dtype": "float64",
+   "units": "unit",
+   "doc": "[mode auto] fit.py pose normal: away from the cavity centre when one was given"
+  },
+  "auto_tile_axis_ras": {
+   "shape": [
+    6,
+    3
+   ],
+   "dtype": "float64",
+   "units": "unit",
+   "doc": "[mode auto] in-plane tile axis t1 (along the seed axes)"
+  },
+  "auto_tile_chord_residual_mm": {
+   "shape": [
+    6
+   ],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "[mode auto] RMS chord deviation from the ideal grid (chord score path)"
+  },
+  "auto_tile_bent_rms_mm": {
+   "shape": [
+    6
+   ],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "[mode auto] seed-position RMS of the bent-tile fit (gtcore.tiles.deform.fit_deformable)"
+  },
+  "auto_tile_bending_energy": {
+   "shape": [
+    6
+   ],
+   "dtype": "float64",
+   "units": "1/mm^2",
+   "doc": "[mode auto] kappa1^2 + kappa2^2 of the bent-tile fit"
+  },
+  "auto_tile_fold_deg": {
+   "shape": [
+    6
+   ],
+   "dtype": "float64",
+   "units": "deg",
+   "doc": "[mode auto] total bend angle across the 20 mm tile in the stiffer direction"
+  },
+  "auto_tile_axis_err_deg": {
+   "shape": [
+    6
+   ],
+   "dtype": "float64",
+   "units": "deg",
+   "doc": "[mode auto] mean angle between observed seed axes and the fitted sheet tangent"
+  },
+  "auto_tile_model_normal_toward_cavity": {
+   "shape": [
+    6,
+    3
+   ],
+   "dtype": "float64",
+   "units": "unit",
+   "doc": "[mode auto] bent-tile model normal, sign fixed to point toward the cavity (to_placed_tiles rule)"
+  },
+  "auto_sheet_seed_vertices": {
+   "shape": [
+    6,
+    81,
+    3
+   ],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "[mode auto] deformed quad surface through the seeds (bent-tile model, offset 0), row-major n x n, RAS"
+  },
+  "auto_sheet_tissue_vertices": {
+   "shape": [
+    6,
+    81,
+    3
+   ],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "[mode auto] the same sheet 3 mm toward the wall (tissue face of the tile)"
+  },
+  "auto_sheet_cavity_vertices": {
+   "shape": [
+    6,
+    81,
+    3
+   ],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "[mode auto] the same sheet 1 mm toward the cavity (cavity face of the 4 mm tile)"
+  },
+  "auto_sheet_corners_tissue_ras": {
+   "shape": [
+    6,
+    4,
+    3
+   ],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "[mode auto] the 4 collagen corners on the tissue face (loop order)"
+  },
+  "auto_tile_model_seed_ras": {
+   "shape": [
+    6,
+    4,
+    3
+   ],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "[mode auto] the bent-tile model's seed positions (fit order), nan padded for half tiles"
+  },
+  "auto_tile_wall_corners_ras": {
+   "shape": [
+    6,
+    4,
+    3
+   ],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "[mode auto] tile footprint draped on the wall mesh (surface cross-check), nan when no mesh"
+  },
+  "auto_tile_wall_seed_ras": {
+   "shape": [
+    6,
+    4,
+    3
+   ],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "[mode auto] seed centres of the wall-conformed tile, nan when no mesh"
+  },
+  "auto_tile_wall_verdict": {
+   "shape": [
+    6
+   ],
+   "dtype": "<U96",
+   "units": "-",
+   "doc": "[mode auto] surface cross-check verdict text"
+  },
+  "auto_seed_tile_id": {
+   "shape": [
+    32
+   ],
+   "dtype": "int32",
+   "units": "-",
+   "doc": "[mode auto] per seed: owning tile id in this mode, -1 = leftover"
+  },
+  "auto_seed_leftover": {
+   "shape": [
+    32
+   ],
+   "dtype": "bool",
+   "units": "bool",
+   "doc": "[mode auto] per seed: no tile of this mode owns it"
+  },
+  "count8_tile_id": {
+   "shape": [
+    7
+   ],
+   "dtype": "int32",
+   "units": "-",
+   "doc": "[mode count8] tile id within the mode"
+  },
+  "count8_tile_kind": {
+   "shape": [
+    7
+   ],
+   "dtype": "<U4",
+   "units": "-",
+   "doc": "[mode count8] 'full' (4 seeds) or 'half' (2 seeds)"
+  },
+  "count8_tile_confidence": {
+   "shape": [
+    7
+   ],
+   "dtype": "<U9",
+   "units": "-",
+   "doc": "[mode count8] 'supported' (calibrated gates / model selection) or 'tentative' (cover pass)"
+  },
+  "count8_tile_degraded": {
+   "shape": [
+    7
+   ],
+   "dtype": "bool",
+   "units": "bool",
+   "doc": "[mode count8] recovered outside the standard gates (crumpled / folded; loose tier or count completion)"
+  },
+  "count8_tile_seed_indices": {
+   "shape": [
+    7,
+    4
+   ],
+   "dtype": "int32",
+   "units": "index",
+   "doc": "[mode count8] member seeds (into seed_centers_ras), -1 padded; a triplet-completed tile has 3"
+  },
+  "count8_tile_inferred_seed_ras": {
+   "shape": [
+    7,
+    3
+   ],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "[mode count8] the inferred 4th seed of a triplet-completed tile, nan otherwise"
+  },
+  "count8_tile_center_ras": {
+   "shape": [
+    7,
+    3
+   ],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "[mode count8] mean of the member seeds"
+  },
+  "count8_tile_normal_ras": {
+   "shape": [
+    7,
+    3
+   ],
+   "dtype": "float64",
+   "units": "unit",
+   "doc": "[mode count8] fit.py pose normal: away from the cavity centre when one was given"
+  },
+  "count8_tile_axis_ras": {
+   "shape": [
+    7,
+    3
+   ],
+   "dtype": "float64",
+   "units": "unit",
+   "doc": "[mode count8] in-plane tile axis t1 (along the seed axes)"
+  },
+  "count8_tile_chord_residual_mm": {
+   "shape": [
+    7
+   ],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "[mode count8] RMS chord deviation from the ideal grid (chord score path)"
+  },
+  "count8_tile_bent_rms_mm": {
+   "shape": [
+    7
+   ],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "[mode count8] seed-position RMS of the bent-tile fit (gtcore.tiles.deform.fit_deformable)"
+  },
+  "count8_tile_bending_energy": {
+   "shape": [
+    7
+   ],
+   "dtype": "float64",
+   "units": "1/mm^2",
+   "doc": "[mode count8] kappa1^2 + kappa2^2 of the bent-tile fit"
+  },
+  "count8_tile_fold_deg": {
+   "shape": [
+    7
+   ],
+   "dtype": "float64",
+   "units": "deg",
+   "doc": "[mode count8] total bend angle across the 20 mm tile in the stiffer direction"
+  },
+  "count8_tile_axis_err_deg": {
+   "shape": [
+    7
+   ],
+   "dtype": "float64",
+   "units": "deg",
+   "doc": "[mode count8] mean angle between observed seed axes and the fitted sheet tangent"
+  },
+  "count8_tile_model_normal_toward_cavity": {
+   "shape": [
+    7,
+    3
+   ],
+   "dtype": "float64",
+   "units": "unit",
+   "doc": "[mode count8] bent-tile model normal, sign fixed to point toward the cavity (to_placed_tiles rule)"
+  },
+  "count8_sheet_seed_vertices": {
+   "shape": [
+    7,
+    81,
+    3
+   ],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "[mode count8] deformed quad surface through the seeds (bent-tile model, offset 0), row-major n x n, RAS"
+  },
+  "count8_sheet_tissue_vertices": {
+   "shape": [
+    7,
+    81,
+    3
+   ],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "[mode count8] the same sheet 3 mm toward the wall (tissue face of the tile)"
+  },
+  "count8_sheet_cavity_vertices": {
+   "shape": [
+    7,
+    81,
+    3
+   ],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "[mode count8] the same sheet 1 mm toward the cavity (cavity face of the 4 mm tile)"
+  },
+  "count8_sheet_corners_tissue_ras": {
+   "shape": [
+    7,
+    4,
+    3
+   ],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "[mode count8] the 4 collagen corners on the tissue face (loop order)"
+  },
+  "count8_tile_model_seed_ras": {
+   "shape": [
+    7,
+    4,
+    3
+   ],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "[mode count8] the bent-tile model's seed positions (fit order), nan padded for half tiles"
+  },
+  "count8_tile_wall_corners_ras": {
+   "shape": [
+    7,
+    4,
+    3
+   ],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "[mode count8] tile footprint draped on the wall mesh (surface cross-check), nan when no mesh"
+  },
+  "count8_tile_wall_seed_ras": {
+   "shape": [
+    7,
+    4,
+    3
+   ],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "[mode count8] seed centres of the wall-conformed tile, nan when no mesh"
+  },
+  "count8_tile_wall_verdict": {
+   "shape": [
+    7
+   ],
+   "dtype": "<U96",
+   "units": "-",
+   "doc": "[mode count8] surface cross-check verdict text"
+  },
+  "count8_seed_tile_id": {
+   "shape": [
+    32
+   ],
+   "dtype": "int32",
+   "units": "-",
+   "doc": "[mode count8] per seed: owning tile id in this mode, -1 = leftover"
+  },
+  "count8_seed_leftover": {
+   "shape": [
+    32
+   ],
+   "dtype": "bool",
+   "units": "bool",
+   "doc": "[mode count8] per seed: no tile of this mode owns it"
+  },
+  "prior8_tile_id": {
+   "shape": [
+    7
+   ],
+   "dtype": "int32",
+   "units": "-",
+   "doc": "[mode prior8] tile id within the mode"
+  },
+  "prior8_tile_kind": {
+   "shape": [
+    7
+   ],
+   "dtype": "<U4",
+   "units": "-",
+   "doc": "[mode prior8] 'full' (4 seeds) or 'half' (2 seeds)"
+  },
+  "prior8_tile_confidence": {
+   "shape": [
+    7
+   ],
+   "dtype": "<U9",
+   "units": "-",
+   "doc": "[mode prior8] 'supported' (calibrated gates / model selection) or 'tentative' (cover pass)"
+  },
+  "prior8_tile_degraded": {
+   "shape": [
+    7
+   ],
+   "dtype": "bool",
+   "units": "bool",
+   "doc": "[mode prior8] recovered outside the standard gates (crumpled / folded; loose tier or count completion)"
+  },
+  "prior8_tile_seed_indices": {
+   "shape": [
+    7,
+    4
+   ],
+   "dtype": "int32",
+   "units": "index",
+   "doc": "[mode prior8] member seeds (into seed_centers_ras), -1 padded; a triplet-completed tile has 3"
+  },
+  "prior8_tile_inferred_seed_ras": {
+   "shape": [
+    7,
+    3
+   ],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "[mode prior8] the inferred 4th seed of a triplet-completed tile, nan otherwise"
+  },
+  "prior8_tile_center_ras": {
+   "shape": [
+    7,
+    3
+   ],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "[mode prior8] mean of the member seeds"
+  },
+  "prior8_tile_normal_ras": {
+   "shape": [
+    7,
+    3
+   ],
+   "dtype": "float64",
+   "units": "unit",
+   "doc": "[mode prior8] fit.py pose normal: away from the cavity centre when one was given"
+  },
+  "prior8_tile_axis_ras": {
+   "shape": [
+    7,
+    3
+   ],
+   "dtype": "float64",
+   "units": "unit",
+   "doc": "[mode prior8] in-plane tile axis t1 (along the seed axes)"
+  },
+  "prior8_tile_chord_residual_mm": {
+   "shape": [
+    7
+   ],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "[mode prior8] RMS chord deviation from the ideal grid (chord score path)"
+  },
+  "prior8_tile_bent_rms_mm": {
+   "shape": [
+    7
+   ],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "[mode prior8] seed-position RMS of the bent-tile fit (gtcore.tiles.deform.fit_deformable)"
+  },
+  "prior8_tile_bending_energy": {
+   "shape": [
+    7
+   ],
+   "dtype": "float64",
+   "units": "1/mm^2",
+   "doc": "[mode prior8] kappa1^2 + kappa2^2 of the bent-tile fit"
+  },
+  "prior8_tile_fold_deg": {
+   "shape": [
+    7
+   ],
+   "dtype": "float64",
+   "units": "deg",
+   "doc": "[mode prior8] total bend angle across the 20 mm tile in the stiffer direction"
+  },
+  "prior8_tile_axis_err_deg": {
+   "shape": [
+    7
+   ],
+   "dtype": "float64",
+   "units": "deg",
+   "doc": "[mode prior8] mean angle between observed seed axes and the fitted sheet tangent"
+  },
+  "prior8_tile_model_normal_toward_cavity": {
+   "shape": [
+    7,
+    3
+   ],
+   "dtype": "float64",
+   "units": "unit",
+   "doc": "[mode prior8] bent-tile model normal, sign fixed to point toward the cavity (to_placed_tiles rule)"
+  },
+  "prior8_sheet_seed_vertices": {
+   "shape": [
+    7,
+    81,
+    3
+   ],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "[mode prior8] deformed quad surface through the seeds (bent-tile model, offset 0), row-major n x n, RAS"
+  },
+  "prior8_sheet_tissue_vertices": {
+   "shape": [
+    7,
+    81,
+    3
+   ],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "[mode prior8] the same sheet 3 mm toward the wall (tissue face of the tile)"
+  },
+  "prior8_sheet_cavity_vertices": {
+   "shape": [
+    7,
+    81,
+    3
+   ],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "[mode prior8] the same sheet 1 mm toward the cavity (cavity face of the 4 mm tile)"
+  },
+  "prior8_sheet_corners_tissue_ras": {
+   "shape": [
+    7,
+    4,
+    3
+   ],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "[mode prior8] the 4 collagen corners on the tissue face (loop order)"
+  },
+  "prior8_tile_model_seed_ras": {
+   "shape": [
+    7,
+    4,
+    3
+   ],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "[mode prior8] the bent-tile model's seed positions (fit order), nan padded for half tiles"
+  },
+  "prior8_tile_wall_corners_ras": {
+   "shape": [
+    7,
+    4,
+    3
+   ],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "[mode prior8] tile footprint draped on the wall mesh (surface cross-check), nan when no mesh"
+  },
+  "prior8_tile_wall_seed_ras": {
+   "shape": [
+    7,
+    4,
+    3
+   ],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "[mode prior8] seed centres of the wall-conformed tile, nan when no mesh"
+  },
+  "prior8_tile_wall_verdict": {
+   "shape": [
+    7
+   ],
+   "dtype": "<U96",
+   "units": "-",
+   "doc": "[mode prior8] surface cross-check verdict text"
+  },
+  "prior8_seed_tile_id": {
+   "shape": [
+    32
+   ],
+   "dtype": "int32",
+   "units": "-",
+   "doc": "[mode prior8] per seed: owning tile id in this mode, -1 = leftover"
+  },
+  "prior8_seed_leftover": {
+   "shape": [
+    32
+   ],
+   "dtype": "bool",
+   "units": "bool",
+   "doc": "[mode prior8] per seed: no tile of this mode owns it"
+  },
+  "readme": {
+   "shape": [],
+   "dtype": "<U261",
+   "units": "-",
+   "doc": "this description"
+  }
+ },
+ "notes": "count-free auto is the F4(b)/F4(c) primary (figure plan v6/v7); count-known modes are exported alongside for Table 3 / S-figures."
+}

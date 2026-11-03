@@ -2901,3 +2901,316 @@ GTCORE_STRICT=1 python -m pytest -q                          # 953 passed, 14 sk
   it is the 50–60 s step) or read `docs/figures/data/gamma_pass_rates.csv`.
 - Nothing installed; no parameter changed; no data missing for this task
   (the RTPLAN would add the authoritative TPS source set).
+
+## 2026-11-03 — Phase 3 — leftover-seed diagnostic, count-known N = 8, marginal-score curves on real scans (task `leftovers`, branch `p2/leftovers`)
+
+Base `paper2/integration` e13a4af. Commits: `788df9d` (`scripts/leftover_seeds.py`,
+`scripts/validation_autogen.py` real-scan curves, `tests/test_leftover_seeds.py`),
+`e977540` (autogen `--no-synthetic` summary guard; `marginal_score_real.csv` was
+regenerated at this commit), `afb96ea` (leftover × tile layer table, nearest tile
+by sheet distance, patches clamped to the crop; every `f4_*` CSV, both NPZ files
+and the patches were regenerated at this commit), then the data commit and this
+section. Requirements rev 3 §3 F4 (diagnostic, count-known row, real-scan
+curves), §4 items 13 and 18, §6 Phase 3 sixth checkbox. Everything ran with
+`GTCORE_STRICT=1` and `PYTHONPATH` = the worktree (the driver prints the tree it
+imported: `p2-leftovers`). Hardware: Ryzen 5 7600X, 31 GB; three or four jobs
+ran concurrently, so every wall time below is an upper bound. **No parameter
+was changed and no model was extended.**
+
+### Commands
+
+```
+GTCORE_STRICT=1 python scripts/leftover_seeds.py "$GT_DATA_ROOT/<PT-CT1mm>" --dataset PT-CT1mm \
+    --rtstruct "$GT_DATA_ROOT/<PT-RT RTSTRUCT>" --n-full 8 --out docs/figures/data
+GTCORE_STRICT=1 python scripts/leftover_seeds.py "$GT_DATA_ROOT/<PH8>" --dataset PH8 --n-full 8 --out docs/figures/data
+GTCORE_STRICT=1 python scripts/validation_autogen.py --no-synthetic \
+    --phantom8 "$GT_DATA_ROOT/<PH8>" --ct1mm "$GT_DATA_ROOT/<PT-CT1mm>"      # -> docs/figures/data/marginal_score_real.csv
+python -m pytest -q tests/test_leftover_seeds.py
+```
+
+Outputs (all `git add -f`, every CSV with a `#` header naming script, command,
+commit, dataset): `docs/figures/data/f4_leftover_{modes,tiles,seeds,layers,
+pairwise_mm,pairwise_axis_deg,quads,pairs,triplets}_<dataset>.csv`,
+`f4_leftover_finding_<dataset>.json`, `leftover_patches/PT-CT1mm_seed##.png`
+(8 files, 300 dpi), `f4b_patient_implant.npz` + `.json`, `f4c_phantom_implant.npz`
++ `.json`, `marginal_score_real.csv`.
+
+### What the script does
+
+Three fits on the SAME 32 shape-filtered, vault-filtered seeds of
+`reconstruct` (seed order identical between the two pipeline passes, asserted):
+`auto` = `reconstruct(vol, n_full_tiles="auto")` (count-free, bent-tile score,
+cover pass, surface cross-check on the gtcore cavity mesh); `count8` =
+`reconstruct(vol, n_full_tiles=8)` (the pipeline's count path: exact chord-scored
+selector + degraded completion, no mesh); `prior8` =
+`fit_tiles_prior(ImplantPrior(8), mesh=cavity, spacing)` (the planner's
+count-known fit, as `scripts/strict_pipeline_check.py` pass 3). For each tile
+the chord residual, the bent-tile RMS (`fit_deformable`, attached by the fit or
+computed here for chord-path tiles), bending energy, fold angle, axis error,
+degraded / tentative flags and the surface verdict; for the leftovers of the
+primary (`auto`) mode the pairwise distance and axis-angle matrices, a per-seed
+row (PCA axis, nearest-neighbour distances, detection blob volume / elongation /
+split count / fragment count, peak HU within 1 mm on the raw volume, unsigned
+distance to the wall mesh and to `Cav_Post`, nearest fitted tile and the seed's
+`(u, v, h)` in that tile's bent-tile frame with a layer class), every
+4-combination against each gate of the standard tier (`tiles/fit.py`), the loose
+and cover tiers (`tiles/auto.py`) and the count-completion rule, with the
+bent-tile fit and `deformable_score` computed for all of them, every pair against
+the half-tile gates, every triplet against the cover pass's L-shape windows,
+single-linkage clusters at the loose chord ceiling (16.5 mm), and a 20 mm
+axial / coronal / sagittal patch per leftover seed (nearest voxel on a 0.25 mm RAS
+grid, soft tissue W 400 / L 40 and metal W 3000 / L 1500, other seeds within
+1.5 mm of the plane circled, red = leftover).
+
+### PT-CT1mm — the three modes (commit `afb96ea`; 204 × 512 × 512, 0.52 × 0.52 × 1.0 mm; 32 seeds from 57 raw blobs, vault filter applied, 21 dropped)
+
+| Mode | Tiles | Degraded | Tentative | Seeds assigned | Leftovers | Summary | Wall (upper bound) |
+|---|---|---|---|---|---|---|---|
+| `auto` (count-free) | 6 | 0 | 0 | 24 / 32 | 8: {0, 2, 5, 8, 11, 13, 16, 21}, all inside the implant region, 0 clutter | "evidence supports n = 6 (no further tile candidate); 8 seeds unassigned" | tile fitting 41.0 s (pipeline 62.9 s) |
+| `count8` (pipeline, chord) | 7 | 1 ({0, 8, 13, 16}, completion) | 0 | 28 / 32 | 4: {2, 5, 11, 21} | — | fit 0.01 s (pipeline 26.8 s) |
+| `prior8` (planner, deformable, mesh = gtcore cavity 24,736 faces) | 7 | 1 (same group) | 0 | 28 / 32 | 4: same | "asked for 8 full tile(s): 7 supported (geometry supports only 7); 4 seeds unassigned" | 46.5 s |
+
+This makes the Phase 1 numbers (7 tiles, 1 degraded completion, 3 unassigned
+at 31 seeds) definitive at 32 seeds: **count-free 6/8 with 8 leftovers;
+count-known 7/8 (one degraded completion) with 4 leftovers.** The six
+supported tiles are the same seed groups in every mode:
+
+| Tile (auto id) | Seeds | Chord residual (auto / count8) mm | Bent-tile RMS mm | Bending energy mm⁻² | Fold ° | Axis err ° | Surface cross-check (free vs wall-conformed fit, detachment) |
+|---|---|---|---|---|---|---|---|
+| 0 | 14, 15, 18, 19 | 0.18 / 0.46 | 0.18 | 0.0003 | 18 | 8.1 | inconsistent 4.36 mm, detachment 0.54 mm |
+| 1 | 6, 7, 9, 12 | 0.21 / 0.27 | 0.21 | 0.0006 | 27 | 2.6 | inconsistent 5.76, 0.10 |
+| 2 | 17, 22, 24, 30 | 0.29 / 0.19 | 0.29 | 0.0029 | 53 | 7.5 | inconsistent 3.40, 0.81 |
+| 3 | 1, 3, 4, 10 | 0.47 / 0.70 | 0.47 | 0.0009 | 25 | 4.2 | inconsistent 6.14, 0.69 |
+| 4 | 20, 25, 28, 31 | 0.51 / 0.60 | 0.51 | 0.0026 | 52 | 10.3 | inconsistent 3.70, 0.17 |
+| 5 | 23, 26, 27, 29 | 0.67 / 1.15 | 0.67 | 0.0104 | 116 | 6.6 | inconsistent 5.83, 0.10 |
+| count8 / prior8 tile 6 (degraded completion) | 0, 8, 13, 16 | 3.13 | 1.36 | 0.203 | 515 (κ at its bound) | 13.6 | inconsistent 4.28, 0.95 |
+
+(Every patient tile reads "inconsistent": the seeds sit at the 3 mm wall offset
+— detachment 0.1–0.8 mm — but the Nelder–Mead wall-conformed tile lands 3.4–6.1 mm
+from the free fit. Pre-existing behaviour, not touched; see the coordinator
+notes below.)
+
+### PT-CT1mm — the 8 leftover seeds (count-free mode)
+
+All eight are **TPS-contoured seeds**: Hungarian match of the 32 detections to the
+30 `Seeds` contour centroids (2 mm gate) gives 30/30, the leftovers at 0.03–0.59 mm
+from their contour; the two uncontoured plan sources are seeds 10 and 17, both
+inside fitted tiles (3 and 2). None is a merged blob or a fragment
+(`split_k` = 1, `n_fragments` = 1 for all 32); none is a detection miss (32
+detections = 32 plan sources, Phase 1). They are, if anything, the brighter
+capsules: peak HU 2805–3070 (median 3049; assigned seeds 2115–3071, median
+2918), blob volume 4.6–8.1 mm³ (assigned 2.4–7.6), elongation 2.7–3.5 (assigned
+2.2–5.0). The patches show one capsule-shaped blob per seed; seeds 8 and 16
+are two distinct capsules 4.7 mm apart (patch `PT-CT1mm_seed16.png`, sagittal).
+
+| Seed | RAS (mm) | PCA axis | NN any (seed) | NN leftover (seed, axis angle) | NN assigned (seed) | Nearest tile: sheet dist, (u, v, h) mm, class | to `Cav_Post` / gtcore wall (mm, unsigned) | peak HU | blob mm³ |
+|---|---|---|---|---|---|---|---|---|---|
+| 0 | (29.9, 224.8, −508.0) | (−0.20, −0.55, 0.81) | 8.9 (16) | 8.9 (16, 33°) | 9.3 (4) | tile 3: 4.6, (−12.9, −7.1, −2.7), edge (2.9 mm beyond) | 1.3 / 3.1 | 3067 | 8.1 |
+| 2 | (47.8, 199.3, −510.8) | (−0.52, 0.47, −0.71) | 9.6 (5) | 9.6 (5, 5°) | 10.2 (22) | tile 2: 5.0, (12.9, 9.9, +1.1), sheet (2.9 beyond); tile 0: 5.0, h −2.0 | 3.2 / 0.2 | 3066 | 7.6 |
+| 5 | (42.8, 204.3, −517.4) | (−0.53, 0.54, −0.66) | 7.6 (21) | 7.6 (21, 36°) | 7.7 (18) | tile 0: 2.8, (12.4, 4.4, +0.4), sheet (2.4 beyond) | 4.8 / 1.2 | 3067 | 7.0 |
+| 8 | (30.9, 219.7, −500.2) | (−0.40, 0.55, −0.74) | 4.7 (16) | 4.7 (16, 37°) | 11.5 (20) | tile 4: 6.2, (−8.2, −16.1, +2.4), edge (6.1 beyond) | 3.5 / 2.9 | 3070 | 6.7 |
+| 11 | (39.5, 218.1, −525.8) | (−0.25, 0.85, −0.46) | 5.9 (3) | 9.0 (21, 10°) | 5.9 (3) | **tile 3: 3.1, (7.5, −1.4, −3.5), inside the footprint: stacked** | 2.9 / 0.05 | 3032 | 6.5 |
+| 13 | (34.0, 209.2, −500.2) | (−0.26, 0.82, −0.51) | 7.9 (30) | 9.3 (16, 18°) | 7.9 (30) | tile 5: 3.5, (−12.8, −6.6, +3.9), edge (2.8 beyond) | 4.8 / 1.7 | 2913 | 6.2 |
+| 16 | (33.3, 217.8, −503.7) | (−0.01, −0.91, 0.42) | 4.7 (8) | 4.7 (8, 37°) | 8.7 (20) | tile 4: 3.4, (−10.2, −11.9, +2.3), edge (1.9 beyond) | 3.0 / 5.4 | 2805 | 5.1 |
+| 21 | (40.9, 210.2, −521.8) | (−0.08, 0.89, −0.44) | 7.6 (5) | 7.6 (5, 36°) | 8.2 (3) | **tile 3: 1.9, (9.8, −10.1, −3.2), at the footprint corner (0.08 mm beyond), beneath the sheet** | 5.0 / 2.2 | 2890 | 4.6 |
+
+`h` is along the tile's bent-tile normal, positive toward the cavity; a tile laid
+on top of a fitted tile would put its seeds inside the footprint at |h| ≈ 4 mm.
+
+Pairwise distances (mm) between the leftovers:
+
+| | 0 | 2 | 5 | 8 | 11 | 13 | 16 | 21 |
+|---|---|---|---|---|---|---|---|---|
+| 0 | — | 31.3 | 26.0 | **9.5** | 21.2 | 18.0 | 8.9 | 22.9 |
+| 2 | | — | **9.6** | 28.6 | 25.4 | 20.1 | 24.6 | 16.9 |
+| 5 | | | — | 26.0 | 16.6 | 19.9 | 21.5 | 7.6 |
+| 8 | | | | — | 27.1 | 10.9 | 4.7 | 25.6 |
+| 11 | | | | | — | 27.7 | 22.9 | **9.0** |
+| 13 | | | | | | — | **9.3** | 22.7 |
+| 16 | | | | | | | — | 21.1 |
+
+Pairwise PCA-axis angles (°): 2–5 5, 11–13 4, 16–21 6, 2–8 8, 5–8 9, 11–21 10,
+13–21 12, 11–16 16, 13–16 18, 8–13 21, 5–13 24, 8–11 25, 2–13 27, 5–11 27,
+2–11 31, 8–21 32, 0–16 33, 0–21 33, 0–8 35, 0–13 36, 5–21 36, 0–11 38, 2–21 39,
+5–16 41, 0–2 43, 0–5 44, 2–16 44 (full matrix in `f4_leftover_pairwise_axis_deg_PT-CT1mm.csv`).
+
+**Gates.** Of the 70 leftover quads, 0 pass the standard tier, 0 the loose
+(crumpled-tile) tier, 0 the cover tier, 1 the count-completion rule
+({0, 8, 13, 16}); 0 of 56 triplets pass the L-shape windows; 7 of 28 pairs pass
+the half-tile gates: 11–21 (9.0 mm, axes 10°, score 3.92), 13–16 (9.3, 18°,
+3.86), 2–5 (9.6, 5°, 3.80), 0–8 (9.5, 35°, 3.38), 5–21 (7.6, 36°, 3.31), 0–16
+(8.9, 33°, 3.06), 8–13 (10.9, 21°, 2.82). The best-scoring quad by the bent-tile
+rule is {5, 13, 16, 21}: score −0.02 (penalty λ = 3.5; a quad needs > 0 to be a
+candidate at all), bent RMS 4.01 mm, E 0.010, fold 92°, axis error 5°; chords
+7.6 / 9.3 / 19.9 / 21.1 / 21.5 / 22.7 mm — rejected by the standard tier on
+`std_link` (chords outside [6.3, 16] mm), `std_side_window` (sides outside
+[6.3, 11.8]), `std_diag_window` (diagonals outside [9.8, 16]),
+`std_grid_residual` (5.0 > 2.0 mm) and `std_chord_score_pos`; by the loose
+tier on `loose_chord` (outside [3.5, 16.5]), `loose_sim_rms` (5.0 > 2.0),
+`loose_def_rms` (4.0 > 0.8) and `loose_score_pos`; by the cover tier on the
+same four; by completion on `completion_chord` (> 18 mm). The only quad any
+rule admits, {0, 8, 13, 16} (chords 4.7 / 8.9 / 9.3 / 9.5 / 10.9 / 18.0 mm), has
+score −0.21, bent RMS 1.36 mm, E 0.203 and fails `loose_def_rms` (1.36 > 0.8),
+`loose_energy` (0.203 > 0.10), `cover_def_rms` (1.36 > 1.2) and `cover_energy`
+(0.203 > 0.20); the count-known modes accept it only through the
+count-constrained completion (`degraded=True`).
+
+**Clusters.** Single linkage at 16.5 mm splits the leftovers into A = {0, 8, 13,
+16} (max separation 18.0 mm, plane RMS 0.64 mm) and B = {2, 5, 11, 21} (max
+separation 25.5 mm, plane RMS 0.10 mm: four seeds almost on one line, 2–5–21–11
+at 9.6 / 7.6 / 9.0 mm), 19.9 mm apart from each other. **Neither cluster can be
+one intact tile, however crumpled:** the collagen bends but does not stretch,
+and the farthest two seeds of a 20 mm tile are its grid diagonal, 14.1 mm
+(every chord window in the code tops out at 16–16.5 mm); 18.0 and 25.5 mm are
+beyond that. What the leftovers do contain is **four 2-seed pairs at the
+manufactured pitch** — 11–21 (9.0 mm), 13–16 (9.3), 0–8 (9.5), 2–5 (9.6), axes
+within 5–35°, each a half-tile geometry — i.e. two tiles' worth of seeds as
+four half tiles, with pair {11, 21} lying 3.2–3.5 mm beneath the seed sheet of
+tile 3 inside its footprint (stacked under it), pair {2, 5} in the plane of
+tiles 0 / 2 just beyond their edges, and pairs {0, 8} and {13, 16} side by side
+(seeds 8 and 16 4.7 mm apart) in the gap between tiles 3, 4 and 5 at the same
+layer as those tiles. Three model-free checks from the committed NPZ (no
+pipeline re-run; `seed_centers_ras` / `seed_axes_ras` / `cavity_center_ras` /
+`volume_spacing_mm`, existing fitter, nothing tuned):
+
+| Call (existing code) | Result |
+|---|---|
+| `fit_tiles(c, a, n_full=7, n_half=2, cavity_center, complete_degraded=True)` | 6 full (the same six) + halves {11, 21} (0.40 mm), {13, 16} (0.71 mm); rejected {0, 2, 5, 8}; the degraded completion no longer fires (its pool is split) |
+| `fit_tiles_prior(c, a, ImplantPrior(n_full=7, n_half=2), cavity_center, spacing)` | same: 6 supported full + 2 half, 4 unassigned |
+| `fit_tiles(c, a, "auto", n_half=1 [= allow half tiles], cavity_center, spacing)` | 6 full + 3 half ({11, 21}, {13, 16}, {2, 5}); unassigned {0, 8}: that pair scores 3.38 < λ = 3.5 because its seed axes differ by 35°; penalised curve marginals n = 7..10: 3.92, 3.86, 3.79, 3.38; the per-count search hit its node cap with halves allowed (`capped`) |
+
+**Draft Results sentence (F4):** *On the clinical thin-cut CT the count-free
+search recovered 6 of the 8 implanted tiles (bent-tile RMS 0.18–0.67 mm) and
+left 8 seeds unassigned; all 8 are TPS-contoured, intact capsules (peak
+2805–3070 HU; no merged blob, no detection miss — 32 detections for 32 plan
+sources) that form four 2-seed pairs at the manufactured pitch (9.0–9.6 mm) whose
+cross-pair separations (16.6–25.5 mm) exceed the 14.1 mm an intact 20 mm tile can
+span, i.e. two tiles were cut into halves at surgery (one half lies 3.2–3.5 mm
+beneath a fitted tile); the count-free search excludes half tiles by design
+without the operative record, and the count-known N = 8 fit reads two abutting
+halves as a crumpled seventh tile.* (Cause named: **half tiles**, not stacked
+full tiles, merged blobs or detection misses.)
+
+**Finding for Jacob (requirements §4 item 18 / the stop list):** the leftovers do
+NOT hold two coherent full tiles' worth of geometry, so a two-layer (stacked
+tile) model extension is not warranted; the geometry says 6 full + 4 half
+tiles (32 seeds). The operative record should be checked: were two tiles cut?
+If so, (i) the F4(b) render shows 6 fitted tiles + 4 leftover pairs (the NPZ
+carries the pairs through `auto_seed_leftover`; the pairings above are in
+`f4_leftover_pairs_PT-CT1mm.csv`); (ii) the count-known Table 3 row is "8 full
+requested: 7 recovered, of which 1 degraded completion that the diagnostic
+shows to be two abutting halves; 4 seeds unassigned", and a
+`fit_tiles_prior(ImplantPrior(n_full=6, n_half=4))` row would be the honest
+count-known line (not run here: it is a new count input, Jacob's call); (iii)
+the Methods statement "half tiles are not selected without the operative
+record" is the reason count-free stops at 6, which is the result and the
+limitation rev 3 §3 F4 anticipated. The dose comparison (F5) is unaffected:
+it uses the 32 seeds, not the tiles.
+
+### PH8 — the three modes (commit `afb96ea`; 157 × 512 × 512, 0.59 × 0.59 × 1.0 mm; 32 seeds = 32 raw blobs, vault filter skipped — no skull)
+
+| Mode | Tiles | Degraded | Seeds assigned | Leftovers | Wall (upper bound) |
+|---|---|---|---|---|---|
+| `auto` | 8 (8 supported) | 1 ({12, 19, 21, 27}: the crumpled tile, bent RMS 0.46 mm, E 0.066, fold 288°) | 32 / 32 | 0 | tile fitting 2.2 s (pipeline 28.9 s) |
+| `count8` (chord) | 8 | 1 (same) | 32 / 32 | 0 | fit 0.01 s (pipeline 30.5 s) |
+| `prior8` (mesh = body shell, 72,396 faces) | 8 | 1 (same) | 32 / 32 | 0 | 80.8 s |
+
+Bent-tile RMS of the seven standard tiles 0.26–0.87 mm (auto / prior8). The
+chord-scored `count8` partition differs from the two deformable-scored modes in
+two tiles: it groups {25, 26, 29, 30} and {8, 16, 24, 31} (chord residuals
+1.18 / 1.37 mm; bent RMS 1.11 / 1.47 mm) where `auto` / `prior8` group
+{26, 29, 30, 31} and {8, 16, 24, 25} (bent RMS 0.87 / 0.78 mm) — seeds 25 and 31
+swap. Both are 8/8; the deformable rule prefers the auto partition by 0.3–0.7 mm
+of RMS on each tile. Reported, not changed (`reconstruct(n_full_tiles=N)` is the
+chord path by design; the planner path agrees with auto). The `prior8` surface
+cross-check against the body shell reads "detached" for 7 of 8 tiles (mean
+|seed-to-mesh distance − 3 mm| of 1.9–2.8 mm) — the shell mesh is the printed
+object's surface, the seed-wall task's territory; pre-existing.
+
+Full suite at `788df9d` (`GTCORE_STRICT=1 python -m pytest -q -p no:cacheprovider`
+from the worktree, four jobs concurrent): **`950 passed, 14 skipped, 15243
+warnings in 865.73s (0:14:25)`**, exit 0 (the 14 skips are the Phase 1 set).
+The later commits (`e977540`, `afb96ea`) touch only `scripts/` and
+`tests/test_leftover_seeds.py` (10 passed at `afb96ea`, 5.3 s); the final-tree
+suite line is appended below when it finishes.
+
+### Marginal score vs n on the real scans (`marginal_score_real.csv`, commit `e977540`)
+
+Count-free fit, bent-tile scores, λ_full = 3.5; `marginal` = score(n) − score(n−1):
+
+| n | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 |
+|---|---|---|---|---|---|---|---|---|---|
+| PH8 (32 seeds, 8 tiles placed) | 7.49 | 7.38 | 7.21 | 7.01 | 6.87 | 6.75 | 5.70 | 5.67 | — (no candidate) |
+| PT-CT1mm (32 seeds, 8 tiles implanted) | 7.63 | 7.59 | 7.43 | 7.07 | 6.98 | 6.66 | — (no candidate) | — | — |
+
+Selected n: PH8 8 (penalised score 26.07), PT-CT1mm 6 (22.35). **In neither
+scan does the marginal ever fall below λ: the curve ends because no further
+disjoint full-tile candidate exists in any tier** (PH8 after its 8th tile,
+PT-CT1mm after its 6th — the leftovers form no quad, see above). For the
+Supplement caption: the plateau is a termination, not a λ crossing; the λ line
+is still drawn (column `lambda_full`) because it is what would have stopped a
+weaker candidate. Synthetic curves are unchanged (`validation_autogen.py`
+without `--no-synthetic`); `PT-CT2mm` is skipped with a message while the folder
+is missing.
+
+### Render data for F4(b) / F4(c) / F8(a) (`f4b_patient_implant.npz`, `f4c_phantom_implant.npz`, each with a JSON index documenting every array: shape, dtype, units, meaning)
+
+Per file: `seed_centers_ras` (32, 3), `seed_axes_ras` (32, 3), seed length /
+diameter, blob volume and elongation, `cavity_center_ras`, grid spacing and
+shape, `wall_mesh_vertices/faces` (the mesh the fits conformed to:
+PT-CT1mm = gtcore cavity, 12,274 vertices / 24,736 faces; PH8 = body shell,
+72,396 faces), for PT-CT1mm `cavity_rt_vertices/faces` (= `Cav_Post`,
+35.1 cc on the CT grid via `gtcore.io.rt.rasterize_roi`, marching cubes at
+step 1 on the mask's bounding box, Taubin-smoothed: 34,652 vertices / 69,324
+faces), `sheet_faces` (shared 9 × 9 grid topology, 128 triangles) and, per mode
+(`auto_`, `count8_`, `prior8_`): `seed_tile_id` (−1 = leftover),
+`seed_leftover`, tile id / kind / confidence / degraded / member seeds /
+inferred seed / centre / normal / axis / chord residual / bent RMS / bending
+energy / fold / axis error, `tile_model_normal_toward_cavity`, the three
+deformed quad sheets `sheet_seed_vertices` (the seed sheet), `sheet_tissue_vertices`
+(−3 mm, on the wall) and `sheet_cavity_vertices` (+1 mm) as (T, 81, 3), the
+tissue-face corners, the model seed positions, and (when a mesh existed) the
+wall-draped footprint corners, conformed seed centres and verdict. The
+renderer needs nothing else and never re-runs the pipeline. Primary mode for
+F4(b)/F4(c)/F8(a): `auto` (6 tiles + 8 leftover seeds in red; PH8 8 tiles with
+`auto_tile_degraded` marking the crumpled one). **Recommendation for the
+renderer:** draw the bent-tile sheets (`*_sheet_*`), not the wall-draped corners,
+until the free-vs-surface disagreement above is understood.
+
+### Tests
+
+`tests/test_leftover_seeds.py` (10 tests, 5.3 s): on the synthetic head phantom
+(0.8 mm, 3 tiles, rng 2; 12 seeds detected) every mode assigns all 12 seeds to the
+true partition with zero leftovers and empty diagnostic tables; with four
+scattered decoys appended (> 18 mm from everything, random axes) every mode
+leaves exactly those four, classed as clutter / `far`, the single leftover quad
+fails `std_link`, `loose_chord`, `cover_chord` and `completion_chord` (its
+bent-tile score is still reported), all 6 pairs fail the chord window, all 4
+triplets fail, the cluster verdict is "no leftover quad passes any tier"; a true
+tile's quad passes every standard gate with score > λ; the layer classes
+(`sheet` for a tile's own seed, `stacked` for a point 4 mm above a fitted sheet);
+the NPZ export documents every array in its JSON with matching shapes, the seed
+sheets pass within 2 mm of the fitted seeds and the tissue sheet is 3.0 mm from
+the seed sheet; the patch PNG is written. Full suite: see the line appended
+below.
+
+### Notes for the coordinator
+
+- Shared files: none. `scripts/validation_autogen.py` lost its two machine-path
+  defaults (`DEFAULT_PHANTOM8` / `DEFAULT_POSTOP`; folders are now given on the
+  command line), its real-case labels became dataset ids (`PH8`, `PT-CT1mm`,
+  `PT-CT2mm`) and it gained `--ct1mm`, `--no-synthetic`, `--marginal-csv`.
+- `scripts/leftover_seeds.py` is importable (the tests load it by path); its
+  functions take seed arrays and a `ModeFit`, so Phase 5 can call them on the NPZ.
+- Pre-existing behaviour reported, not changed: (i) every PT-CT1mm tile's
+  surface cross-check reads "inconsistent" (free vs wall-conformed fit 3.4–6.1 mm
+  apart, seeds attached at 0.1–0.8 mm); (ii) PH8 `count8` (chord) vs `auto` /
+  `prior8` (deformable) differ in two tiles (25 ↔ 31); (iii) with half tiles
+  allowed the count-free per-count search hits its node cap on PT-CT1mm.
+- `docs/clinical-validation-notes.md` §2 still says "the 8 leftover seeds form no
+  square quads (crumpled or stacked tiles the bent-tile model does not explain)";
+  the sentence above supersedes it (Phase 5 wording scrub).
+
+Full suite on the final tree (`b20ae00`, same command, one job): **`951 passed,
+14 skipped, 15243 warnings in 593.86s (0:09:53)`**, exit 0 — 950 of `788df9d` plus
+the layer-class test added at `afb96ea`.

@@ -1,0 +1,66 @@
+# script: scripts/leftover_seeds.py
+# command: python scripts/leftover_seeds.py "$GT_DATA_ROOT/<PT-CT1mm>" --dataset PT-CT1mm --rtstruct "$GT_DATA_ROOT/<PT-RT RTSTRUCT>" --n-full 8 --out docs/figures/data
+# commit: afb96ea
+# dataset: PT-CT1mm
+# generated: 2026-11-03 02:04
+# gtcore imported from tree: p2-leftovers
+# strict_mode: True
+# n_seeds: 32; n_full requested: 8
+# every leftover triplet against the cover pass's L-shape windows
+seeds,corner_seed,arm_a_mm,arm_b_mm,hypotenuse_mm,corner_angle_deg,fourth_x,fourth_y,fourth_z,fourth_gap_to_detection_mm,triplet_arms,triplet_hypotenuse,triplet_corner_angle,triplet_axis,triplet_4th_free,triplet_pass,gates_failed
+0;8;16,16,4.663,8.935,9.455,81.59,27.54,226.7,-504.5,4.663,False,True,True,True,True,False,triplet_arms
+8;13;16,16,4.663,9.313,10.94,97.39,31.55,211.1,-496.7,4.663,False,True,True,True,True,False,triplet_arms
+5;11;21,21,7.627,8.998,16.55,169,41.37,212.2,-521.4,2.095,True,False,False,True,False,False,triplet_hypotenuse;triplet_corner_angle;triplet_4th_free
+2;5;21,5,7.627,9.627,16.93,157.5,45.92,205.2,-515.2,3.9,True,False,False,True,True,False,triplet_hypotenuse;triplet_corner_angle
+0;8;13,8,9.455,10.94,17.97,123.4,33.01,214.3,-508.1,4.984,True,False,False,True,True,False,triplet_hypotenuse;triplet_corner_angle
+0;13;16,16,8.935,9.313,17.97,159.8,30.61,216.2,-504.5,3.223,True,False,False,True,False,False,triplet_hypotenuse;triplet_corner_angle;triplet_4th_free
+2;5;13,5,9.627,19.94,20.06,76.73,38.94,204.2,-493.6,3.908,False,False,True,True,True,False,triplet_arms;triplet_hypotenuse
+5;13;16,13,9.313,19.94,21.46,86.3,42.15,212.9,-520.9,3.076,False,False,True,True,False,False,triplet_arms;triplet_hypotenuse;triplet_4th_free
+5;16;21,21,7.627,21.05,21.46,82.68,35.17,211.9,-499.3,3.076,False,False,True,True,False,False,triplet_arms;triplet_hypotenuse;triplet_4th_free
+2;13;21,2,16.93,20.06,22.71,75.25,27.09,220.1,-511.2,5.789,False,False,True,True,True,False,triplet_arms;triplet_hypotenuse
+5;13;21,5,7.627,19.94,22.71,101.4,32.08,215.1,-504.6,3.076,False,False,True,True,False,False,triplet_arms;triplet_hypotenuse;triplet_4th_free
+13;16;21,16,9.313,21.05,22.71,87.94,41.58,201.6,-518.3,3.076,False,False,True,True,False,False,triplet_arms;triplet_hypotenuse;triplet_4th_free
+0;11;21,11,8.998,21.22,22.88,88.85,31.39,216.9,-504.1,2.137,False,False,True,True,False,False,triplet_arms;triplet_hypotenuse;triplet_4th_free
+0;13;21,13,17.97,22.71,22.88,67.29,36.93,225.8,-529.6,3.771,False,False,True,True,True,False,triplet_arms;triplet_hypotenuse
+0;16;21,16,8.935,21.05,22.88,90.07,37.58,217.2,-526.1,2.137,False,False,True,True,False,False,triplet_arms;triplet_hypotenuse;triplet_4th_free
+0;11;16,0,8.935,21.22,22.94,89.41,42.84,211.1,-521.4,2.137,False,False,True,True,False,False,triplet_arms;triplet_hypotenuse;triplet_4th_free
+5;11;16,5,16.55,21.46,22.94,72.96,29.98,231.7,-512.1,7.93,False,False,True,True,True,False,triplet_arms;triplet_hypotenuse
+11;16;21,21,8.998,21.05,22.94,90.29,31.86,225.7,-507.7,2.137,False,False,True,True,False,False,triplet_arms;triplet_hypotenuse;triplet_4th_free
+2;5;16,5,9.627,21.46,24.56,96.95,38.28,212.8,-497.1,6.425,False,False,True,True,True,False,triplet_arms;triplet_hypotenuse
+2;13;16,13,9.313,20.06,24.56,107.8,47.13,207.9,-514.3,6.425,False,False,True,True,True,False,triplet_arms;triplet_hypotenuse
+2;16;21,21,16.93,21.05,24.56,79.77,40.16,206.9,-492.7,6.009,False,False,True,True,True,False,triplet_arms;triplet_hypotenuse
+2;5;11,5,9.627,16.55,25.45,152,44.48,213.2,-519.2,5.289,False,False,False,True,True,False,triplet_arms;triplet_hypotenuse;triplet_corner_angle
+2;11;16,16,22.94,24.56,25.45,64.7,53.99,199.6,-532.9,19.69,False,False,False,True,True,False,triplet_arms;triplet_hypotenuse;triplet_corner_angle
+2;11;21,21,8.998,16.93,25.45,157,46.35,207.2,-514.8,5.289,False,False,False,True,True,False,triplet_arms;triplet_hypotenuse;triplet_corner_angle
+0;8;21,0,9.455,22.88,25.65,95.94,41.87,205,-513.9,3.668,False,False,True,True,True,False,triplet_arms;triplet_hypotenuse
+8;13;21,13,10.94,22.71,25.65,92.56,37.87,220.7,-521.8,5.028,False,False,True,True,True,False,triplet_arms;triplet_hypotenuse
+8;16;21,16,4.663,21.05,25.65,169,38.52,212.1,-518.3,4.663,False,False,False,True,True,False,triplet_arms;triplet_hypotenuse;triplet_corner_angle
+0;5;11,11,16.55,21.22,25.99,86.02,33.26,211,-499.6,1.991,False,False,True,True,False,False,triplet_arms;triplet_hypotenuse;triplet_4th_free
+0;5;13,13,17.97,19.94,25.99,86.4,38.8,219.9,-525.2,1.991,False,False,True,True,False,False,triplet_arms;triplet_hypotenuse;triplet_4th_free
+0;5;16,16,8.935,21.46,25.99,110.6,39.46,211.3,-521.7,1.847,False,False,True,True,False,False,triplet_arms;triplet_hypotenuse;triplet_4th_free
+0;5;21,21,7.627,22.88,25.99,105.6,31.82,218.9,-503.6,1.847,False,False,True,True,False,False,triplet_arms;triplet_hypotenuse;triplet_4th_free
+0;5;8,0,9.455,25.99,25.99,79.52,43.74,199.1,-509.5,4.259,False,False,True,True,True,False,triplet_arms;triplet_hypotenuse
+5;8;13,13,10.94,19.94,25.99,111.2,39.74,214.8,-517.4,6.473,False,False,True,True,True,False,triplet_arms;triplet_hypotenuse
+5;8;16,16,4.663,21.46,25.99,164.9,40.4,206.2,-513.8,4.663,False,False,False,True,True,False,triplet_arms;triplet_hypotenuse;triplet_corner_angle
+5;8;21,21,7.627,25.65,25.99,84.06,32.76,213.8,-495.8,6.473,False,False,True,True,True,False,triplet_arms;triplet_hypotenuse
+0;8;11,0,9.455,21.22,27.05,118.6,40.43,213,-517.9,4.802,False,False,False,True,True,False,triplet_arms;triplet_hypotenuse;triplet_corner_angle
+5;8;11,5,16.55,25.99,27.05,75.35,27.58,233.6,-508.6,9.048,False,False,True,True,True,False,triplet_arms;triplet_hypotenuse
+8;11;16,16,4.663,22.94,27.05,149.2,37.09,220,-522.3,4.175,False,False,False,True,True,False,triplet_arms;triplet_hypotenuse;triplet_corner_angle
+8;11;21,21,8.998,25.65,27.05,89.13,29.45,227.6,-504.2,4.802,False,False,True,True,True,False,triplet_arms;triplet_hypotenuse
+0;11;13,0,17.97,21.22,27.66,89.41,43.49,202.5,-517.9,1.991,False,False,True,True,False,False,triplet_arms;triplet_hypotenuse;triplet_4th_free
+2;11;13,2,20.06,25.45,27.66,73.8,25.65,228,-515.2,8.738,False,False,True,True,True,False,triplet_arms;triplet_hypotenuse
+5;11;13,5,16.55,19.94,27.66,98.16,30.64,223.1,-508.6,1.991,False,False,True,True,False,False,triplet_arms;triplet_hypotenuse;triplet_4th_free
+8;11;13,8,10.94,27.05,27.66,81.63,42.55,207.6,-525.8,5.028,False,False,True,True,True,False,triplet_arms;triplet_hypotenuse
+11;13;16,16,9.313,22.94,27.66,110.9,40.15,209.5,-522.3,1.138,False,False,True,True,False,False,triplet_arms;triplet_hypotenuse;triplet_4th_free
+11;13;21,21,8.998,22.71,27.66,114.3,32.52,217.1,-504.2,1.138,False,False,True,True,False,False,triplet_arms;triplet_hypotenuse;triplet_4th_free
+2;5;8,5,9.627,25.99,28.55,95.36,35.88,214.7,-493.6,8.801,False,False,True,True,True,False,triplet_arms;triplet_hypotenuse
+2;8;11,11,25.45,27.05,28.55,65.79,39.19,200.9,-485.2,12.55,False,False,True,True,True,False,triplet_arms;triplet_hypotenuse
+2;8;13,13,10.94,20.06,28.55,131.9,44.73,209.8,-510.8,8.801,False,False,False,True,True,False,triplet_arms;triplet_hypotenuse;triplet_corner_angle
+2;8;16,16,4.663,24.56,28.55,146,45.39,201.2,-507.3,4.663,False,False,False,True,True,False,triplet_arms;triplet_hypotenuse;triplet_corner_angle
+2;8;21,21,16.93,25.65,28.55,81.43,37.75,208.8,-489.2,9.85,False,False,True,True,True,False,triplet_arms;triplet_hypotenuse
+0;2;5,5,9.627,25.99,31.29,114.9,34.94,219.9,-501.5,3.441,False,False,True,True,False,False,triplet_arms;triplet_hypotenuse;triplet_4th_free
+0;2;8,8,9.455,28.55,31.29,97.93,46.85,204.4,-518.7,4.259,False,False,True,True,True,False,triplet_arms;triplet_hypotenuse
+0;2;11,11,21.22,25.45,31.29,83.66,38.25,206,-493.1,5.061,False,False,True,True,True,False,triplet_arms;triplet_hypotenuse
+0;2;13,13,17.97,20.06,31.29,110.6,43.79,214.9,-518.7,6.356,False,False,True,True,True,False,triplet_arms;triplet_hypotenuse
+0;2;16,16,8.935,24.56,31.29,132.4,44.45,206.3,-515.2,3.441,False,False,False,True,False,False,triplet_arms;triplet_hypotenuse;triplet_corner_angle;triplet_4th_free
+0;2;21,21,16.93,22.88,31.29,102.6,36.81,213.9,-497.1,6.356,False,False,True,True,True,False,triplet_arms;triplet_hypotenuse
