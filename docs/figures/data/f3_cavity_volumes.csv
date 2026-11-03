@@ -1,0 +1,15 @@
+# script: scripts/cavity_change.py
+# command: python scripts/cavity_change.py --ct "$GT_DATA_ROOT/<PT-CT1mm>" --rtstruct "$GT_DATA_ROOT/<PT-RT RTSTRUCT>" --pre "$GT_DATA_ROOT/<PT-preMRI>" --intra "$GT_DATA_ROOT/<PT-intraMRI>" --post "$GT_DATA_ROOT/<PT-postMRI>" --ph8 "$GT_DATA_ROOT/<PH8>" --ph0 "$GT_DATA_ROOT/<PH0>" --out docs/figures/data
+# commit: 0f8e30d
+# date: 2026-11-03
+# datasets: PT-CT1mm, PT-RT, PT-preMRI, PT-intraMRI, PT-postMRI, PH8, PH0
+# flag: calibration-set (one clinical case; the printed cavity is the same patient's intra-operative cavity; no held-out scan)
+# one row per cavity volume quoted in Table 1 / the F3 caption; rule = how the mask was made; grid_mm = the voxel grid it was counted on
+# printed cavity = the phantom at print time = this patient's intra-operative cavity (printed from PT-intraMRI); gtcore's cavity rule on the tile-less twin PH0 registered into PH8 around the carried PH8 seeds (Phase 4 decision: no implant-independent lumen exists for this print, its mouth is as wide as the craniotomy)
+# Cav_Post = the physician's post-operative cavity (RTSTRUCT); gtcore cavity = reconstruct() on PT-CT1mm (Dice 0.665 vs Cav_Post, Phase 3)
+# the MRIs are not segmented (stop list); manual_contour_* rows appear only with --contours
+row,dataset,timepoint,structure,volume_cc,n_voxels,grid_mm,rule,source,flag,commit
+printed_cavity,PH0 (registered into PH8),intra-op (print time),printed cavity,55.277,118290,"(0.6836, 0.6836, 1)","gtcore segment_cavity seed-sheet rule on the tile-less twin (hull reach 14 mm, sheet tol 3 mm; implant-informed, Phase 4 decision)",gtcore.segment.cavity.phantom_wall_and_cavity,calibration-set,0f8e30d
+printed_cavity_ph8_grid,PH8 grid,intra-op (print time),printed cavity (carried),55.2548,157770,"(0.5918, 0.5918, 1)",same mask resampled (nearest) into the PH8 grid,gtcore.segment.cavity.phantom_wall_and_cavity,calibration-set,0f8e30d
+cav_post,PT-CT1mm+PT-RT,post-op (CT),Cav_Post,35.1008,130045,"(0.5195, 0.5195, 1)",RTSTRUCT ROI rasterised on the CT grid (gtcore.io.rt.rasterize_roi),PT-RT,calibration-set,0f8e30d
+gtcore_cavity_ct,PT-CT1mm,post-op (CT),gtcore cavity,41.2545,152844,"(0.5195, 0.5195, 1)",gtcore segment_cavity seed-sheet rule (reconstruct),gtcore.pipeline.reconstruct,calibration-set,0f8e30d
