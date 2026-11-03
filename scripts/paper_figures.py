@@ -664,17 +664,35 @@ def half_tile_sheets(c0: np.ndarray, c1: np.ndarray, cavity_center: np.ndarray, 
     return seed_sheet - seed_offset * toward, seed_sheet + cavity_face * toward
 
 
-def tile_colour_list(n_tiles: int, degraded: Sequence[bool]) -> List[str]:
-    """Fixed palette order (_figstyle.TILE_COLOURS, never cycled, no grey:
-    grey is the cavity); the attention colour vermilion goes to a degraded
-    (crumpled) tile."""
+def tile_colour_list(n_tiles: int, degraded: Sequence[bool], centers: Optional[np.ndarray] = None,
+                     camera: Optional[Dict[str, Sequence[float]]] = None) -> List[str]:
+    """One rule for every 3-D panel: tiles are ordered by the angle of their
+    centre around the implant centroid as seen from the panel's camera (so
+    neighbours on screen take consecutive palette slots, which alternate
+    warm / cool), then take _figstyle.TILE_COLOURS in that order (8 hues, never
+    cycled for <= 8 tiles; no grey = cavity, no vermilion = leftovers / the
+    degraded tile, no black = seeds).  A degraded tile is vermilion."""
     base = list(S.TILE_COLOURS)
-    out, k = [], 0
-    for i in range(n_tiles):
+    order = list(range(n_tiles))
+    if centers is not None and camera is not None and n_tiles > 1:
+        c = np.asarray(centers, float)
+        fp, pos = np.asarray(camera["focal_point"], float), np.asarray(camera["position"], float)
+        v = fp - pos
+        v /= np.linalg.norm(v)
+        up = np.asarray(camera["view_up"], float)
+        up = up - v * np.dot(up, v)
+        up /= np.linalg.norm(up)
+        r = np.cross(v, up)
+        rel_c = c - c.mean(axis=0)
+        ang = np.arctan2(rel_c @ up, rel_c @ r)
+        order = list(np.argsort(-ang))           # clockwise from the top on screen
+    out = [""] * n_tiles
+    k = 0
+    for i in order:
         if degraded[i]:
-            out.append(S.OI["vermilion"])
+            out[i] = S.OI["vermilion"]
         else:
-            out.append(base[k % len(base)])
+            out[i] = base[k % len(base)]
             k += 1
     return out
 
@@ -850,7 +868,8 @@ def _npz(path: str) -> Dict[str, Any]:
         return {k: z[k] for k in z.files}
 
 
-def _implant_tiles(d: Dict[str, Any], mode: str) -> Tuple[List[Dict[str, Any]], np.ndarray, Dict[str, Any]]:
+def _implant_tiles(d: Dict[str, Any], mode: str, camera: Optional[Dict[str, Sequence[float]]] = None
+                   ) -> Tuple[List[Dict[str, Any]], np.ndarray, Dict[str, Any]]:
     """Tile slabs + per-seed leftover flag of one fit mode of an implant NPZ."""
     n = int(d["sheet_grid_n"])
     pre = mode + "_"
@@ -858,7 +877,7 @@ def _implant_tiles(d: Dict[str, Any], mode: str) -> Tuple[List[Dict[str, Any]], 
         raise Skip("mode %r not in the NPZ (modes: %s)" % (mode, sorted({k.split("_sheet_")[0] for k in d if "_sheet_" in k})))
     kinds = [str(k) for k in d[pre + "tile_kind"]]
     degraded = [bool(x) for x in d[pre + "tile_degraded"]]
-    colours = tile_colour_list(len(kinds), degraded)
+    colours = tile_colour_list(len(kinds), degraded, centers=np.asarray(d[pre + "tile_center_ras"], float), camera=camera)
     tiles = []
     info = {"n_tiles": len(kinds), "n_full": kinds.count("full"), "n_half": kinds.count("half"),
             "degraded_tiles": [i for i, x in enumerate(degraded) if x], "half_tiles_from_pair_geometry": []}
@@ -887,7 +906,7 @@ def _seed_groups(d: Dict[str, Any], leftover: np.ndarray) -> List[Dict[str, Any]
 
 def _render_implant(ctx, stem: str, mesh_key: str, camera_key: str, mode: str) -> Dict[str, Any]:
     d = _npz(dpath("f4b_patient_implant.npz"))
-    tiles, leftover, info = _implant_tiles(d, mode)
+    tiles, leftover, info = _implant_tiles(d, mode, camera=S.CAMERA[camera_key])
     mesh = (d[mesh_key + "_vertices"], d[mesh_key + "_faces"])
     img = render_scene(S.CAMERA[camera_key], mesh, tiles, _seed_groups(d, leftover))
     outs = S.save_raster_panel(img, ctx["out"], stem, S.RENDER["panel_in"])
@@ -950,6 +969,23 @@ def smooth_sheet(points: np.ndarray, n: int, n_iter: int = S.RENDER["sheet_smoot
     return g.reshape(-1, 3)
 
 
+def bent_sheets(seed_ras: np.ndarray, seed_axes: np.ndarray, normal_into_cavity: np.ndarray, n: int):
+    """Display sheets of conformed tiles: the bent-tile model
+    (gtcore.tiles.deform.fit_deformable) through each tile's 4 seeds and axes,
+    its tissue face 3 mm toward the wall (the side opposite the tile's
+    into-cavity normal), as n x n grids -- the same sheet construction as the
+    fitted tiles of F4(b)/F8(a).  Returns (sheets, seed-fit rms per tile)."""
+    from gtcore import geometry as G
+    from gtcore.tiles.deform import deformed_surface_grid, fit_deformable
+    sheets, rms = [], []
+    for P, A, nin in zip(np.asarray(seed_ras, float), np.asarray(seed_axes, float), np.asarray(normal_into_cavity, float)):
+        f = fit_deformable(P, A)
+        sign = 1.0 if float(np.dot(f.pose.R[:, 2], nin)) >= 0 else -1.0
+        sheets.append(deformed_surface_grid(f.pose, f.params, n=n, offset_mm=-G.SEED_PLANE_OFFSET_MM * sign))
+        rms.append(f.rms_mm)
+    return sheets, rms
+
+
 F8B_FAMILIES = (("rind5", "opt_rind5_", "optimized_rind5_sa_best"), ("ctvgt", "opt_ctvgt_", "optimized_ctvgt_sa_best"))
 
 
@@ -970,10 +1006,11 @@ def f8b_optimized_3d(ctx) -> Dict[str, Any]:
     for fam, pre, arm in F8B_FAMILIES:
         if pre + "sheet_wall_vertices" not in d:
             raise Skip("%ssheet_wall_vertices not in %s" % (pre, rel(F8B_FILE)))
-        wall = d[pre + "sheet_wall_vertices"]
-        n_t = len(wall)
-        colours = tile_colour_list(n_t, [False] * n_t)
-        tiles = [{"tissue": smooth_sheet(wall[i], n), "n": n, "colour": colours[i]} for i in range(n_t)]
+        sheets, rms = bent_sheets(d[pre + "tile_seed_ras"], d[pre + "tile_seed_axes_ras"], d[pre + "tile_normal_ras"], n)
+        n_t = len(sheets)
+        colours = tile_colour_list(n_t, [False] * n_t, centers=np.asarray(d[pre + "tile_center_ras"], float),
+                                   camera=S.CAMERA["patient"])
+        tiles = [{"tissue": sheets[i], "n": n, "colour": colours[i]} for i in range(n_t)]
         seeds = [{"centers": d[pre + "seed_centers_ras"], "axes": d[pre + "seed_axes_ras"], "colour": S.COL["seed"],
                   "length": float(d["seed_length_mm"]), "diameter": float(d["seed_diameter_mm"])}]
         img = render_scene(S.CAMERA["patient"], mesh, tiles, seeds)
@@ -983,9 +1020,12 @@ def f8b_optimized_3d(ctx) -> Dict[str, Any]:
         if int(nums.get("sa_seed", npz_seed)) != npz_seed:
             raise RuntimeError("best SA seed mismatch for %s: summary %s vs NPZ %s" % (fam, nums.get("sa_seed"), npz_seed))
         nums.update({"n_tiles_rendered": n_t, "npz_sa_seed": npz_seed,
+                     "display_sheet_fit_rms_mm": [round(float(x), 2) for x in rms],
                      "objective_target": str(d.get(pre + "objective_target", ""))})
         kn["families"][fam] = nums
-    return {"outputs": outs, "key_numbers": kn, "note": "tissue face of each optimized tile on the gtcore cavity wall"}
+    return {"outputs": outs, "key_numbers": kn,
+            "note": "each optimized tile drawn as the bent-sheet tile model (gtcore.tiles.deform.fit_deformable through its "
+                    "4 conformed seeds and axes, tissue face 3 mm toward the wall); seeds at their exact optimized positions"}
 
 
 def f4c_phantom_3d(ctx) -> Dict[str, Any]:
@@ -993,7 +1033,7 @@ def f4c_phantom_3d(ctx) -> Dict[str, Any]:
     the crumpled tile highlighted (vermilion, black edge), on the registered
     tile-less twin's printed wall (translucent grey, cropped to the implant)."""
     d = _npz(dpath("f4c_phantom_implant.npz"))
-    tiles, leftover, info = _implant_tiles(d, "auto")
+    tiles, leftover, info = _implant_tiles(d, "auto", camera=S.CAMERA["phantom"])
     wall_p = dpath("f4c_phantom_wall.npz")
     mesh, mesh_note = None, "none (f4c_phantom_wall.npz missing: run scripts/export_phantom_wall.py)"
     if os.path.exists(wall_p):

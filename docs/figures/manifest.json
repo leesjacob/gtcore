@@ -1,8 +1,8 @@
 {
  "script": "scripts/paper_figures.py",
  "style": "scripts/_figstyle.py",
- "script_commit": "a1b9fb4",
- "generated": "2026-11-03 12:19",
+ "script_commit": "17c95f7",
+ "generated": "2026-11-03 12:36",
  "dpi_png": 600,
  "out_dir": "output/figures",
  "tile_mode": "auto",
@@ -137,12 +137,13 @@
   },
   "tile_colours": [
    "#E69F00",
-   "#56B4E9",
-   "#009E73",
-   "#F0E442",
    "#0072B2",
+   "#F0E442",
    "#CC79A7",
-   "#882255"
+   "#332288",
+   "#009E73",
+   "#661100",
+   "#56B4E9"
   ],
   "dvh_axes": {
    "xlim": [
@@ -199,8 +200,8 @@
    "figure": "F2",
    "description": "F2(c): one tile as the bent-sheet model: flat, wall-conformed (kappa = 1/17 mm^-1 on both axes) and folded (kappa1 = 0.35 mm^-1), the collagen sheet (tissue face) as a wireframe with the 2 x 2 seeds.",
    "sources": [],
-   "script_commit": "a1b9fb4",
-   "rendered": "2026-11-03 12:19",
+   "script_commit": "17c95f7",
+   "rendered": "2026-11-03 12:36",
    "status": "ok",
    "outputs": [
     "output/figures/f2c_tile_model.png",
@@ -264,8 +265,8 @@
      "git_commit": "6f6c80b"
     }
    ],
-   "script_commit": "a1b9fb4",
-   "rendered": "2026-11-03 12:19",
+   "script_commit": "17c95f7",
+   "rendered": "2026-11-03 12:36",
    "status": "ok",
    "outputs": [
     "output/figures/f3c_phantom_slice.png",
@@ -304,8 +305,8 @@
      "git_commit": "d36db1d"
     }
    ],
-   "script_commit": "a1b9fb4",
-   "rendered": "2026-11-03 12:19",
+   "script_commit": "17c95f7",
+   "rendered": "2026-11-03 12:36",
    "status": "ok",
    "outputs": [
     "output/figures/f4a_seed_slice.png",
@@ -345,8 +346,8 @@
      "git_commit": "d36db1d"
     }
    ],
-   "script_commit": "a1b9fb4",
-   "rendered": "2026-11-03 12:19",
+   "script_commit": "17c95f7",
+   "rendered": "2026-11-03 12:36",
    "status": "ok",
    "outputs": [
     "output/figures/f4b_patient_implant.png",
@@ -371,12 +372,12 @@
      21
     ],
     "tile_colours": [
-     "#E69F00",
-     "#56B4E9",
-     "#009E73",
+     "#CC79A7",
      "#F0E442",
      "#0072B2",
-     "#CC79A7"
+     "#009E73",
+     "#332288",
+     "#E69F00"
     ],
     "mode": "auto",
     "mesh": "cavity_rt",
@@ -423,8 +424,8 @@
      "git_commit": "ab22718"
     }
    ],
-   "script_commit": "a1b9fb4",
-   "rendered": "2026-11-03 12:19",
+   "script_commit": "17c95f7",
+   "rendered": "2026-11-03 12:36",
    "status": "ok",
    "outputs": [
     "output/figures/f4c_phantom_implant.png",
@@ -442,13 +443,13 @@
     "n_leftover": 0,
     "leftover_seeds": [],
     "tile_colours": [
-     "#E69F00",
-     "#56B4E9",
-     "#009E73",
      "#F0E442",
+     "#009E73",
      "#0072B2",
+     "#E69F00",
+     "#661100",
+     "#332288",
      "#CC79A7",
-     "#882255",
      "#D55E00"
     ],
     "mode": "auto",
@@ -518,8 +519,8 @@
      "git_commit": "8ea0434"
     }
    ],
-   "script_commit": "a1b9fb4",
-   "rendered": "2026-11-03 12:19",
+   "script_commit": "17c95f7",
+   "rendered": "2026-11-03 12:36",
    "status": "ok",
    "outputs": [
     "output/figures/f5a_isodoses.png",
@@ -569,8 +570,8 @@
      "git_commit": "1104fcb"
     }
    ],
-   "script_commit": "a1b9fb4",
-   "rendered": "2026-11-03 12:19",
+   "script_commit": "17c95f7",
+   "rendered": "2026-11-03 12:36",
    "status": "ok",
    "outputs": [
     "output/figures/f5b_dvh.png",
@@ -628,8 +629,8 @@
      "git_commit": "8ea0434"
     }
    ],
-   "script_commit": "a1b9fb4",
-   "rendered": "2026-11-03 12:19",
+   "script_commit": "17c95f7",
+   "rendered": "2026-11-03 12:36",
    "status": "ok",
    "outputs": [
     "output/figures/f6_target_definition.png",
@@ -682,8 +683,8 @@
      "git_commit": "8ea0434"
     }
    ],
-   "script_commit": "a1b9fb4",
-   "rendered": "2026-11-03 12:19",
+   "script_commit": "17c95f7",
+   "rendered": "2026-11-03 12:36",
    "status": "ok",
    "outputs": [
     "output/figures/f8a_patient_implant.png",
@@ -708,12 +709,12 @@
      21
     ],
     "tile_colours": [
-     "#E69F00",
-     "#56B4E9",
-     "#009E73",
+     "#CC79A7",
      "#F0E442",
      "#0072B2",
-     "#CC79A7"
+     "#009E73",
+     "#332288",
+     "#E69F00"
     ],
     "mode": "auto",
     "mesh": "wall_mesh",
@@ -774,8 +775,8 @@
      "git_commit": "40a6bea"
     }
    ],
-   "script_commit": "a1b9fb4",
-   "rendered": "2026-11-03 12:19",
+   "script_commit": "17c95f7",
+   "rendered": "2026-11-03 12:36",
    "status": "ok",
    "outputs": [
     "output/figures/f8b_optimized_rind5.png",
@@ -821,6 +822,16 @@
       "source": "docs/figures/optimize/data/f8_patient_summary.csv @ 085fe60",
       "n_tiles_rendered": 8,
       "npz_sa_seed": 0,
+      "display_sheet_fit_rms_mm": [
+       1.0,
+       0.98,
+       0.72,
+       1.38,
+       1.0,
+       1.38,
+       1.69,
+       1.43
+      ],
       "objective_target": "optimizer default: +5 mm shell of the eligible wall, area weights (S5 surrogate of RIND5)"
      },
      "ctvgt": {
@@ -838,6 +849,16 @@
       "source": "docs/figures/optimize/data/f8_patient_summary.csv @ 085fe60",
       "n_tiles_rendered": 8,
       "npz_sa_seed": 1,
+      "display_sheet_fit_rms_mm": [
+       1.33,
+       1.16,
+       0.67,
+       2.87,
+       0.61,
+       2.12,
+       1.49,
+       1.73
+      ],
       "objective_target": "HRCTV_PHYS: CTV_GT voxel centres from the RTSTRUCT (70438 points, unit weights = volume weights on the CT grid; M_opt 4000 subsample)"
      }
     },
@@ -845,7 +866,7 @@
     "eligible_fraction_area": 0.6725682405406,
     "eligible_wall_shading": "omitted (the union is 67 % of the wall; a tint does not read)"
    },
-   "note": "tissue face of each optimized tile on the gtcore cavity wall"
+   "note": "each optimized tile drawn as the bent-sheet tile model (gtcore.tiles.deform.fit_deformable through its 4 conformed seeds and axes, tissue face 3 mm toward the wall); seeds at their exact optimized positions"
   },
   "s2a": {
    "figure": "S2",
@@ -858,8 +879,8 @@
      "git_commit": "bdaa073"
     }
    ],
-   "script_commit": "a1b9fb4",
-   "rendered": "2026-11-03 12:19",
+   "script_commit": "17c95f7",
+   "rendered": "2026-11-03 12:36",
    "status": "ok",
    "outputs": [
     "output/figures/s2a_recall_error_vs_spacing.png",
@@ -939,8 +960,8 @@
      "git_commit": null
     }
    ],
-   "script_commit": "a1b9fb4",
-   "rendered": "2026-11-03 12:19",
+   "script_commit": "17c95f7",
+   "rendered": "2026-11-03 12:36",
    "status": "pending",
    "outputs": [
     "output/figures/s2b_axis_boxplot.PENDING.md"
@@ -959,8 +980,8 @@
      "git_commit": "40a6bea"
     }
    ],
-   "script_commit": "a1b9fb4",
-   "rendered": "2026-11-03 12:19",
+   "script_commit": "17c95f7",
+   "rendered": "2026-11-03 12:36",
    "status": "ok",
    "outputs": [
     "output/figures/s4_v100_vs_n.png",
@@ -1106,8 +1127,8 @@
      "git_commit": "d36db1d"
     }
    ],
-   "script_commit": "a1b9fb4",
-   "rendered": "2026-11-03 12:19",
+   "script_commit": "17c95f7",
+   "rendered": "2026-11-03 12:36",
    "status": "ok",
    "outputs": [
     "output/figures/s3_gamma_map.png",
@@ -1136,8 +1157,8 @@
      "git_commit": "d36db1d"
     }
    ],
-   "script_commit": "a1b9fb4",
-   "rendered": "2026-11-03 12:19",
+   "script_commit": "17c95f7",
+   "rendered": "2026-11-03 12:36",
    "status": "skipped",
    "note": "only docs/figures/data/clinical_dvh_hrctv.csv is committed; validation_clinical.py exports no per-target DVH for the rind / reach (their D90s are F6 caption numbers)"
   },
@@ -1152,8 +1173,8 @@
      "git_commit": "cacaa68"
     }
    ],
-   "script_commit": "a1b9fb4",
-   "rendered": "2026-11-03 12:19",
+   "script_commit": "17c95f7",
+   "rendered": "2026-11-03 12:36",
    "status": "ok",
    "outputs": [
     "output/figures/f3a_scans.png",
