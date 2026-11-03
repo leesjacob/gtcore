@@ -40,8 +40,19 @@ from .targets import (RIND_DEPTH_MM, Target, coverage, dice, hrctv_phys,
                       implant_reach, rind5, s5, target_doses_exact,
                       target_doses_from_grid, target_stats, volume_cc)
 from .tg43 import DoseInterpolator
+from .uncertainty import (DEGRADED_EXPORT_SD_MM, AxisGaussian, Covariance, ErrorModel,
+                          MCResult, NoError, ResidualResample, dvh_curve, propagate)
 
 __all__ = [
+    "DEGRADED_EXPORT_SD_MM",
+    "ErrorModel",
+    "NoError",
+    "AxisGaussian",
+    "ResidualResample",
+    "Covariance",
+    "MCResult",
+    "propagate",
+    "dvh_curve",
     "DoseInterpolator",
     "HRCTV",
     "HRCTV_DEPTH_MM",
