@@ -35,7 +35,6 @@ from dataclasses import dataclass
 from typing import Dict, Optional
 
 import numpy as np
-from scipy import ndimage
 
 from ..volume import Volume
 from .engine import TG43Engine, dose_at_points
