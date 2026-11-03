@@ -8,6 +8,26 @@ as an area-weighted coverage fraction. Both are pure numpy over the
 ``Volume`` / ``trimesh`` objects the rest of the pipeline already produces.
 
 Conventions: dose in cGy, distances in mm, ``rx_cgy`` the prescription.
+
+One definition of the statistics (Paper 2, requirements §2 "Dose statistics")
+----------------------------------------------------------------------------
+Every D / V number gtcore reports -- planner panel (``dvh.dvh_stats``,
+``hrctv.hrctv_stats``), optimizer (``plan.objective.metrics_from_dose``,
+``plan.report.weighted_stats``) and validation (``dose_metrics`` on a
+``Volume`` + mask) -- is produced by :func:`dose_stats` here.  The rules:
+
+* **Dxx** (dose to at least xx % of the structure) is the *weighted inverted
+  CDF*, Hyndman & Fan type 1: sort the doses ascending with their weights,
+  form the cumulative weight fraction ``F``, and take the smallest ``d_i``
+  with ``F(d_i) >= 1 - xx / 100``.  No interpolation -- Dxx is always a dose
+  that occurs in the structure -- and at least xx % of the weight receives
+  ``>= Dxx``.  ``D100 = Dmin``.  With unit weights this is numpy's
+  ``method="inverted_cdf"``; it is *not* numpy's default linear percentile.
+* **Vyyy** (fraction of the structure at or above yyy % of the prescription)
+  is ``sum(w[d >= yyy/100 * rx]) / sum(w)`` -- a ``>=`` rule.
+* **Empty** structures (no samples, or zero total weight) report ``nan`` for
+  every dose and fraction, ``n = 0``, ``total_weight = 0`` and
+  ``volume_cc = 0``; callers test ``np.isnan`` rather than ``== 0``.
 """
 from __future__ import annotations
 
@@ -20,8 +40,151 @@ from scipy import ndimage
 from ..volume import Volume
 from .engine import TG43Engine, dose_at_points
 
-__all__ = ["DVH", "dvh", "dose_metrics", "resample_mask_to", "rind_mask",
-           "wall_dose", "surface_coverage"]
+__all__ = ["DVH", "dvh", "dose_stats", "weighted_quantile", "dose_metrics",
+           "resample_mask_to", "rind_mask", "wall_dose", "surface_coverage",
+           "DOSE_STAT_KEYS"]
+
+DOSE_STAT_KEYS = ("D90", "D50", "D100", "Dmin", "Dmax", "Dmean",
+                  "V100", "V150", "V200", "n", "total_weight", "volume_cc",
+                  "rx_cgy")
+# The fixed key set of ``dose_stats``; the first nine are nan on an empty
+# structure.
+
+_QUANTILE_SLACK = 4.0 * np.finfo(float).eps
+# Relative slack on the cumulative-weight threshold: cumulative unit weights
+# are exact integers, so the slack never changes an integer case; for
+# non-integer (area) weights it absorbs the rounding of the running sum so
+# that ``q * W`` landing exactly on a cumulative weight picks that sample.
+
+
+# ---------------------------------------------------------------- quantile
+def _quantiles_sorted(values_sorted: np.ndarray, cum_weights: np.ndarray,
+                      q) -> np.ndarray:
+    """Type-1 (inverted CDF) quantiles at fractions ``q`` of the total weight.
+
+    ``values_sorted`` ascending, ``cum_weights`` their cumulative weights
+    (all positive, so strictly increasing); returns, for each ``q``, the
+    smallest value whose cumulative weight reaches ``q * total``.
+    """
+    total = float(cum_weights[-1])
+    thresh = np.asarray(q, dtype=float) * total - _QUANTILE_SLACK * total
+    idx = np.searchsorted(cum_weights, thresh, side="left")
+    idx = np.minimum(idx, values_sorted.size - 1)
+    return values_sorted[idx]
+
+
+def weighted_quantile(values, weights, q: float) -> float:
+    """Weighted inverted-CDF quantile of ``values`` at ``q`` in [0, 1].
+
+    Smallest sorted value whose cumulative weight reaches ``q * sum(weights)``
+    (Hyndman-Fan type 1); equals ``numpy.percentile(values, 100 * q,
+    method="inverted_cdf")`` for unit weights, ``q = 0`` is the minimum and
+    ``q = 1`` the maximum.  Zero-weight entries are ignored; raises
+    ``ValueError`` on empty input, all-zero weights, negative weights or
+    ``q`` outside [0, 1].  This is the one quantile every Dxx in gtcore
+    uses (``plan.objective.weighted_quantile`` is this function).
+    """
+    v = np.asarray(values, dtype=float).reshape(-1)
+    w = np.asarray(weights, dtype=float).reshape(-1)
+    if v.shape != w.shape:
+        raise ValueError("values and weights must have the same length")
+    q = float(q)
+    if not (0.0 <= q <= 1.0):
+        raise ValueError("q must lie in [0, 1]")
+    if (w < 0).any():
+        raise ValueError("weights must be non-negative")
+    keep = w > 0
+    v, w = v[keep], w[keep]
+    if v.size == 0:
+        raise ValueError("weighted_quantile of an empty / zero-weight set")
+    order = np.argsort(v, kind="stable")
+    return float(_quantiles_sorted(v[order], np.cumsum(w[order]), q))
+
+
+# -------------------------------------------------------------- dose_stats
+def _empty_stats(rx: float) -> Dict[str, float]:
+    nan = float("nan")
+    out = {k: nan for k in DOSE_STAT_KEYS}
+    out.update({"n": 0, "total_weight": 0.0, "volume_cc": 0.0, "rx_cgy": rx})
+    return out
+
+
+def dose_stats(doses, rx_cgy: float, weights=None,
+               voxel_volume_mm3: Optional[float] = None) -> Dict[str, float]:
+    """The one set of dose statistics for a structure (see the module notes).
+
+    Parameters
+    ----------
+    doses : 1-D array-like, cGy
+        One sample per voxel / surface point.
+    rx_cgy : float
+        Prescription dose; the V-levels are 100 / 150 / 200 % of it.
+    weights : 1-D array-like, optional
+        Non-negative weight per sample (area weights for a shell, voxel
+        volumes for a mixed-grid structure).  ``None`` = every sample counts
+        equally.  Samples with zero weight are not part of the structure.
+    voxel_volume_mm3 : float, optional
+        Volume represented by one unit of weight: with ``weights=None`` the
+        voxel volume (``volume_cc = n * voxel_volume_mm3 / 1000``); with
+        weights that are volumes in mm^3 pass ``1.0``.  ``None`` ->
+        ``volume_cc`` is ``nan`` (a shell has no volume).
+
+    Returns
+    -------
+    dict with exactly the keys ``DOSE_STAT_KEYS``: ``D90, D50, D100, Dmin,
+    Dmax, Dmean`` [cGy], ``V100, V150, V200`` [fraction of the weight],
+    ``n`` (samples with positive weight, int), ``total_weight``,
+    ``volume_cc``, ``rx_cgy``.  Dxx is the weighted inverted-CDF (type 1)
+    quantile, Vyyy the ``>=`` fraction, ``Dmean`` weighted.  An empty
+    structure (no samples or zero total weight) gives ``nan`` for every
+    dose / fraction, ``n = 0``, ``total_weight = 0``, ``volume_cc = 0``.
+
+    Cost: one ``argsort`` (O(n log n)) plus a few O(n) passes, numpy only.
+    """
+    d = np.asarray(doses, dtype=float).reshape(-1)
+    rx = float(rx_cgy)
+    if weights is None:
+        if d.size == 0:
+            return _empty_stats(rx)
+        w = np.ones(d.size, dtype=float)
+    else:
+        w = np.asarray(weights, dtype=float).reshape(-1)
+        if w.shape != d.shape:
+            raise ValueError("weights must have one entry per dose (%d != %d)"
+                             % (w.size, d.size))
+        if (w < 0).any():
+            raise ValueError("weights must be non-negative")
+        keep = w > 0
+        if not keep.all():
+            d, w = d[keep], w[keep]
+        if d.size == 0:
+            return _empty_stats(rx)
+    total = float(w.sum())
+    if not (total > 0.0):
+        return _empty_stats(rx)
+
+    order = np.argsort(d, kind="stable")
+    d_sorted = d[order]
+    cw = np.cumsum(w[order])
+    d90, d50 = _quantiles_sorted(d_sorted, cw, (0.10, 0.50))
+    dmin = float(d_sorted[0])
+    out = {
+        "D90": float(d90),
+        "D50": float(d50),
+        "D100": dmin,
+        "Dmin": dmin,
+        "Dmax": float(d_sorted[-1]),
+        "Dmean": float(w @ d) / total,
+        "V100": float(w @ (d >= rx)) / total,
+        "V150": float(w @ (d >= 1.5 * rx)) / total,
+        "V200": float(w @ (d >= 2.0 * rx)) / total,
+        "n": int(d.size),
+        "total_weight": total,
+        "volume_cc": (total * float(voxel_volume_mm3) / 1000.0
+                      if voxel_volume_mm3 is not None else float("nan")),
+        "rx_cgy": rx,
+    }
+    return out
 
 
 # ------------------------------------------------------------------------ DVH
@@ -31,7 +194,8 @@ class DVH:
 
     Stores the sorted voxel doses rather than a binned curve, so ``D`` and
     ``V`` are exact order statistics and the binned ``curve`` is derived
-    on demand at whatever resolution the caller wants.
+    on demand at whatever resolution the caller wants.  ``D`` and ``V``
+    follow the :func:`dose_stats` rules (type-1 quantile, ``>=``).
     """
 
     doses_sorted: np.ndarray        # ascending, cGy, one entry per voxel
@@ -48,6 +212,9 @@ class DVH:
     def D(self, percent):
         """Dose [cGy] received by at least ``percent`` % of the volume.
 
+        Weighted inverted-CDF (type 1) quantile with unit weights: the
+        smallest voxel dose ``d`` such that at least ``percent`` % of the
+        voxels receive ``>= d`` -- the same rule as :func:`dose_stats`.
         D90 is the classic coverage statistic; D100 is the minimum dose.
         """
         if self.n_voxels == 0:
@@ -55,12 +222,12 @@ class DVH:
         p = np.asarray(percent, dtype=float)
         if np.any(p < 0.0) or np.any(p > 100.0):
             raise ValueError("percent must be within [0, 100]")
-        out = np.quantile(self.doses_sorted, 1.0 - p / 100.0,
-                          method="inverted_cdf")
+        cw = np.arange(1, self.n_voxels + 1, dtype=float)
+        out = _quantiles_sorted(self.doses_sorted, cw, 1.0 - p / 100.0)
         return float(out) if out.ndim == 0 else out
 
     def V(self, dose_cgy, relative=True):
-        """Volume receiving at least ``dose_cgy``: fraction (or cc)."""
+        """Volume receiving at least ``dose_cgy`` (``>=``): fraction (or cc)."""
         d = np.asarray(dose_cgy, dtype=float)
         n_ge = self.n_voxels - np.searchsorted(self.doses_sorted, d,
                                                side="left")
@@ -70,6 +237,11 @@ class DVH:
         else:
             out = n_ge * self.voxel_volume_mm3 / 1000.0
         return float(out) if np.ndim(out) == 0 else out
+
+    def stats(self, rx_cgy: float) -> Dict[str, float]:
+        """:func:`dose_stats` of this structure (equal-volume voxels)."""
+        return dose_stats(self.doses_sorted, rx_cgy,
+                          voxel_volume_mm3=self.voxel_volume_mm3)
 
     def curve(self, n_bins=256, max_dose_cgy=None):
         """Binned cumulative curve: ``(dose_axis, fraction >= dose)``."""
@@ -95,30 +267,15 @@ def dvh(dose_volume: Volume, mask=None) -> DVH:
 
 
 def dose_metrics(dose_volume: Volume, mask, rx_cgy: float) -> Dict[str, float]:
-    """Standard permanent-implant statistics for one structure.
+    """Standard permanent-implant statistics for one voxel structure: the
+    validation-path wrapper of :func:`dose_stats`.
 
-    Returns D90/D100/D50/Dmean/Dmax [cGy], V100/V150/V200 (fractions of the
-    structure at >= 100/150/200 % of ``rx_cgy``) and the structure volume.
+    Returns the full ``DOSE_STAT_KEYS`` set (D90/D100/D50/Dmin/Dmean/Dmax
+    [cGy], V100/V150/V200 as fractions of the structure at >= 100/150/200 %
+    of ``rx_cgy``, ``volume_cc`` from the voxel count x voxel volume, ``n``);
+    an empty mask gives nan doses and ``volume_cc = 0``.
     """
-    h = dvh(dose_volume, mask)
-    rx = float(rx_cgy)
-    if h.n_voxels == 0:
-        nan = float("nan")
-        return {"volume_cc": 0.0, "D90": nan, "D100": nan, "D50": nan,
-                "Dmean": nan, "Dmax": nan, "V100": nan, "V150": nan,
-                "V200": nan, "rx_cgy": rx}
-    return {
-        "volume_cc": h.volume_cc,
-        "D90": h.D(90.0),
-        "D100": h.D(100.0),
-        "D50": h.D(50.0),
-        "Dmean": float(h.doses_sorted.mean()),
-        "Dmax": float(h.doses_sorted[-1]),
-        "V100": h.V(rx),
-        "V150": h.V(1.5 * rx),
-        "V200": h.V(2.0 * rx),
-        "rx_cgy": rx,
-    }
+    return dvh(dose_volume, mask).stats(rx_cgy)
 
 
 # ------------------------------------------------------------- structures

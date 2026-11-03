@@ -78,15 +78,22 @@ def test_dvh_curve_and_stats_closed_form():
 
     s = dvh_stats(doses, rx_cgy=2.0)
     assert s["Dmin"] == 1.0 and s["Dmax"] == 4.0 and s["Dmean"] == 2.5
-    assert s["D50"] == pytest.approx(np.percentile(doses, 50))
-    assert s["D90"] == pytest.approx(np.percentile(doses, 10))
+    # type-1 inverted CDF (Paper 2 §2 convention), not numpy's linear
+    # percentile: the smallest sample whose cumulative fraction reaches
+    # 50 % / 10 % (previously 2.5 / 1.3 by linear interpolation)
+    assert s["D50"] == 2.0
+    assert s["D90"] == 1.0
+    assert s["D50"] == np.quantile(doses, 0.5, method="inverted_cdf")
+    assert s["D90"] == np.quantile(doses, 0.1, method="inverted_cdf")
     assert s["V100"] == 0.75   # >= 2
     assert s["V150"] == 0.5    # >= 3
     assert s["V200"] == 0.25   # >= 4
     assert s["n"] == 4
 
-    empty = dvh_stats([], rx_cgy=2.0)
-    assert all(v == 0.0 for v in empty.values())
+    empty = dvh_stats([], rx_cgy=2.0)       # nan on empty, never 0
+    for k in ("D90", "D50", "Dmin", "Dmax", "Dmean", "V100", "V150", "V200"):
+        assert np.isnan(empty[k]), k
+    assert empty["n"] == 0 and empty["total_weight"] == 0.0
 
 
 def test_shell_report_orders_shells_and_tracks_falloff(sphere, radial_dose):

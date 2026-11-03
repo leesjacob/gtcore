@@ -1270,3 +1270,213 @@ The script stays on the new rasteriser (the intended fix); Phase 3 rebuilds it.
   for the formalism hunt, and `check_references(rs, ct=ct, rtdose=dv, rtplan=plan)`.
 - `_dose_stats` → `metrics.dose_stats` once agent `dose-stats` merges (one
   line).
+
+## 2026-11-03 — Phase 2 — one `dose_stats` (task `dose-stats`, branch `p2/dose-stats`)
+
+Requirements rev 3 §2 "Dose statistics", §6 Phase 2 first checkbox; Phase 2
+contract section A. Branched from `paper2/integration` (d063c23, then
+fast-forwarded to d1de921 before the full run). Code commit `00ac0a5`;
+notes + benchmark driver in the follow-up commit (hash in the final line
+of this section).
+
+### The convention (for the Methods)
+
+All dose–volume statistics in gtcore are computed by one function,
+`gtcore.dose.metrics.dose_stats(doses, rx_cgy, weights=None,
+voxel_volume_mm3=None)`. Dxx is the weighted inverted-CDF quantile
+(Hyndman–Fan type 1): the doses of a structure are sorted ascending together
+with their weights (equal weights for voxel structures such as the HR-CTV
+rind or an RTSTRUCT mask; vertex-area weights for the +5 mm surface shell),
+F is the cumulative weight fraction, and Dxx is the smallest dose d_i with
+F(d_i) ≥ 1 − xx/100. Hence at least xx % of the structure receives ≥ Dxx,
+and Dxx is always a dose that occurs in the structure — no interpolation
+between samples (with equal weights this is numpy's `method="inverted_cdf"`,
+not its default linear percentile); D100 = Dmin. Vyyy is the fraction of the
+structure's weight receiving ≥ yyy % of the prescription (a ≥ rule, so a
+voxel exactly at the prescription dose counts as covered). An empty
+structure (no samples, or zero total weight) reports NaN for every dose and
+fraction, never 0. The same function serves the planner's dose panel, the
+optimizer's reported metrics and the clinical validation, so one dose vector
+yields bit-identical D90 / V100 / V150 on every path.
+
+### What changed
+
+- `gtcore/dose/metrics.py` (new core): `weighted_quantile` (moved here from
+  `plan.objective`, unchanged algorithm: zero-weight entries dropped, stable
+  argsort, `searchsorted(cumsum, q·W − 4ε·W, side="left")`), `dose_stats`
+  (one argsort, three O(n) passes; fixed 13-key set `DOSE_STAT_KEYS` =
+  `D90 D50 D100 Dmin Dmax Dmean V100 V150 V200 n total_weight volume_cc
+  rx_cgy`; `n` is an `int` and counts the samples with positive weight;
+  `volume_cc = total_weight × voxel_volume_mm3 / 1000` when a voxel volume
+  is given, else NaN — a shell has no volume; empty → NaN doses, `n = 0`,
+  `total_weight = 0`, `volume_cc = 0`), `DVH.D` (type-1 on the unit-weight
+  cumulative count, replacing `np.quantile(..., "inverted_cdf")`, which
+  differs only where `n·q` overshoots an integer in floating point),
+  `DVH.V` (≥, unchanged) and a new `DVH.stats(rx)`.
+  `rind_mask` / `resample_mask_to` untouched (agent `targets`).
+- Thin wrappers (names, signatures and old keys kept; every number from
+  `dose_stats`): `dose.dvh.dvh_stats` (was `np.percentile` linear, 0 on
+  empty), `dose.hrctv.hrctv_stats` (was `DVH.D/V`, already type-1),
+  `dose.metrics.dose_metrics` (idem), `plan.report.weighted_stats` (was
+  `objective.weighted_quantile` with a midpoint-linear
+  `weighted_quantile_fallback` behind a `getattr`; the fallback is deleted;
+  0 on empty → NaN; `Dmin`/`Dmax` now over positive-weight samples only, as
+  the quantiles always were), `plan.objective.metrics_from_dose` (returns the
+  `METRIC_KEYS` subset `V100 V150 V200 D90 Dmean`, as the solver tests pin
+  that exact key set; 0 on empty → NaN), `plan.api.target_metrics` and
+  `plan.api.weighted_quantile` (0 on empty → NaN, `hard` included),
+  `plan.milp._metrics_local` (own `_weighted_quantile` deleted),
+  `plan.solvers._HardEval.metrics_from_dose`, `_ContinuousCore.metrics` and
+  `_weighted_quantile` (delegates; NaN on empty as before). Nine
+  implementations of D90 became one.
+- `dose.dvh.format_report` prints `n/a` for a shell with no samples (the
+  planner's HR-CTV row already tested `np.isfinite`). `gtcore.dose` exports
+  `dose_stats`, `weighted_quantile`, `DOSE_STAT_KEYS`.
+- Not changed: `OptimizeReport.summary()` and `gt optimize` print `nan` with
+  `%.3f` for an empty target (honest; no `n/a` wording added there);
+  `plan.sweep._row` compares `D90 >= rx`, which is `False` for NaN as
+  intended; `tests/review_reference.py::weighted_quantile` (the test
+  oracle, 0.0 on empty) and `test_plan_objective.brute_metrics` stay as
+  independent references on purpose.
+
+### Hot loop (performance criterion) — which path calls what
+
+`dose_stats` sorts, so it is kept out of every per-move evaluation:
+`plan.objective.hard / soft / gain / gains_all / soft_gains_all` use
+`_coverage_terms` (O(M) matmuls) and `tail_rows`, unchanged byte for byte;
+`plan.solvers._HardEval.hard_from_dose / soft_from_dose / hard_all /
+soft_all / coverage` and `_ContinuousCore.hard / soft / v100` likewise.
+`dose_stats` is reached only through the *reported* metrics:
+`Objective.metrics` → `metrics_from_dose` (once per `solve_*` call in
+`_result`, in `evaluate`, per `sweep_n` row, per MILP result),
+`_HardEval.metrics_from_dose` (only when `Objective.metrics` is a stub —
+never in the merged tree — and in tests), `_ContinuousCore.metrics` (once
+per `refine_continuous`), `plan.api.target_metrics` (once per
+`suggest_next` for the base `hard`), and in `final_report` the three shell
+rows, the weighted `target` row and the `rind` row. The SA with 40 091
+evaluations therefore calls it once.
+
+### Timings
+
+Hardware AMD Ryzen 5 7600X / 31 GB / Windows 11; other agents ran test
+suites concurrently, so every number is an upper bound and the interleaved
+comparison is the one that counts. Driver: `scripts/bench_dose_stats.py`
+(committed with these notes); "before" = detached worktree at `d063c23`
+(untouched Phase 1 tree, `gtcore.__file__` printed and asserted), "after"
+= this branch at `00ac0a5`. Toy instance `tests/plan_fixtures.toy_instance`
+(C = 100, M = 4000), N = 8, `SA_N_RESTARTS × SA_N_SWEEPS = 3 × 40` (the
+current defaults; Phase 4 raises them).
+
+```
+PYTHONPATH=<tree> GTCORE_STRICT=1 python scripts/bench_dose_stats.py <tree> <label>        # full
+PYTHONPATH=<tree> GTCORE_STRICT=1 python scripts/bench_dose_stats.py <tree> <label> quick  # A/B
+```
+
+Interleaved A/B (before, after, before, after; **minimum of the two runs per
+tree**; micro-benchmarks are best-of-7 over 200 random 8-tile selections,
+solvers best-of-3):
+
+| quantity | before `d063c23` | after `00ac0a5` | change |
+|---|---|---|---|
+| `metrics_from_dose` (M = 4000) | 93.8 µs | 93.8 µs | 0.0 % |
+| `Objective.metrics` | 224.6 µs | 225.2 µs | +0.3 % |
+| `Objective.evaluate` | 658.2 µs | 666.2 µs | +1.2 % |
+| `Objective.hard` (code unchanged) | 149.9 µs | 157.0 µs | +4.7 % — load noise band |
+| `gains_all` (code unchanged) | 15.84 ms | 16.27 ms | +2.7 % — load noise band |
+| `solve_greedy`, N = 8 | 0.369 s | 0.368 s | −0.3 % |
+| **`solve_sa` 3 × 40, N = 8** (40 091 evals) | **9.417 s** | **9.435 s** | **+0.2 %** |
+| `final_report` 1 mm: shells / target / rind | 0.008 / 0.003 / 0.233 s | 0.008 / 0.003 / 0.250 s | statistics ≪ dose grid (9.6 s) |
+
+The two quantities whose code did not change moved by +4.7 % and +2.7 %
+between trees, so that is the noise floor of this machine today; the SA
+(the criterion) and the only changed call (`metrics`) moved by ≤ 0.3 %.
+Optimizer not measurably slower: **met (< 5 %)**.
+
+Single full runs (one each, noisier): before — `solve_sa` 10.786 s,
+`plan.optimize(sa, 8)` on the 1 mm synthetic cavity 304.6 s total
+(candidates 31.6, influence 2.6, conflicts 230.2, solver 19.3, report 20.8),
+`final_report(1 mm, rind)` 18.9 s; after — 11.829 s, 298.2 s (32.5 / 2.6 /
+231.0 / 15.8 / 16.5), 15.3 s. Same selections and objective values on both
+trees (`solve_sa` objective 1.89862, V100 0.9820, D90 6610.5 cGy).
+
+Effect on reported numbers: only the planner's unweighted shell rows
+(`dvh_stats`: wall / +5 / +10 mm vertex samples) change, by at most one
+sample spacing in the lower tail — on the benchmark cavity the +5 mm shell
+D90 went 6882.5 → 6882.4 cGy (full run) and 3166.0 → 3165.8 cGy (quick run);
+the area-weighted `target` row (6795.3 / 3093.4 cGy), the `rind` row
+(7860.3 / 3718.1 cGy), every V-value, the HR-CTV row and all optimizer
+metrics were already type-1 / ≥ and are unchanged.
+
+### Test pins that changed (linear percentile → type-1; 0 on empty → NaN)
+
+| test | old | new |
+|---|---|---|
+| `tests/test_dvh.py::test_dvh_curve_and_stats_closed_form`, doses `[1, 2, 3, 4]` | `D50 == np.percentile(d, 50)` = 2.5; `D90 == np.percentile(d, 10)` = 1.3 | `D50 == 2.0`; `D90 == 1.0` (= `np.quantile(..., method="inverted_cdf")`) |
+| same test, `dvh_stats([], 2.0)` | every value `== 0.0` | all eight doses / fractions NaN, `n == 0`, `total_weight == 0.0` |
+| `tests/test_plan_report.py::test_weighted_quantile_matches_numpy_for_unit_weights` | `weighted_quantile_fallback` within 0.01 of the linear `np.percentile` | `metrics.weighted_quantile == np.percentile(..., method="inverted_cdf")` exactly |
+| `tests/test_plan_report.py::test_weighted_quantile_respects_weights` | fallback `≈ 3.0 (abs 0.05)`; `fallback([], [], .5) == 0.0` | `weighted_quantile == 3.0`; empty raises `ValueError`; `weighted_stats([], [], rx)` → NaN, `n == 0` |
+| `tests/test_plan_api.py::test_weighted_quantile_and_target_metrics` | `target_metrics([], [], RX)`: `V100 == 0.0 and hard == 0.0` | both NaN |
+
+Pins that did not need to move (already the type-1 / ≥ convention or
+tolerance-based): `test_dose_metrics` (ramp D90 100 → within 1 of 101, same
+value before and after since `DVH.D` already used `inverted_cdf`),
+`test_hrctv` (abs 100 cGy), `test_plan_objective` (brute-force type-1
+reference, exact key set `{V100, V150, V200, D90, Dmean}` kept),
+`test_plan_solvers::test_weighted_quantile_matches_numpy_for_unit_weights`
+(vs `inverted_cdf`), `test_plan_milp` (D90 coverage property), and
+`test_plan_review` (1 % of rx). My own new test file had three wrong
+assertions on first run (a copied zero-weight case, a `nan == nan`, and an
+exact float equality `190·8/1000 == (190/333)·(333·8/1000)`), all test-side.
+
+### Grep of the tree
+
+- `np.percentile(` on a dose vector: only `scripts/scout_objective.py:264`
+  (`obj_d90`, linear percentile along the rows of a dose matrix) and that
+  script's own `weighted_quantile` (type-1 without the zero-weight filter).
+  It is the section 7.1 objective scout whose results are historical in
+  `docs/optimize-notes.md`; left unchanged so the scout reproduces. All
+  other `np.percentile` calls in `gtcore/` and `scripts/` are on error
+  distributions (p95 of localization errors, interference ratios), not dose
+  statistics.
+- Callers comparing D90 / V100 with 0 to mean "empty": none in `gtcore/` or
+  `scripts/`. `plan.sweep._row` (`D90 >= rx`) is NaN-safe; `planner.py`
+  `_dose_panel_lines` already used `np.isfinite`; `plan.__init__._jsonable`
+  writes NaN as `null`.
+
+### Tests
+
+New `tests/test_dose_stats.py` (25 tests): analytic weighted / unweighted
+cases by hand (ties, single element, the ≥ rule at exactly rx, equal-weight
+repetition), Dxx is a sample value covering ≥ xx % and the smallest such,
+unweighted Dxx equals numpy `inverted_cdf` for n ∈ {1, 2, 3, 7, 10, 25, 64,
+200, 1001}, the quantile primitive (zero weights ignored, errors, one
+function behind `plan.objective`, `plan.api`, `plan.solvers`), empty /
+zero-weight → NaN through every wrapper, bad weights raise, zero-weight
+samples excluded, equal weights = unweighted (unit weights bit-identical
+including `Dmean`), the contract's identical-output test (one dose vector
+through `hrctv_stats`, `weighted_stats`, `metrics_from_dose`, `dose_metrics`
+on a `Volume` + mask, `dvh_stats`, `target_metrics`: bit-identical D90 /
+V100 / V150), `DVH.D/V/stats` agree with `dose_stats`, `format_report`
+`n/a`, and a loose speed bound (two `dose_stats` on 10⁶ samples < 5 s;
+measured ≈ 0.3 s).
+
+Affected files first: `GTCORE_STRICT=1 python -m pytest -q
+tests/test_dose_stats.py tests/test_dvh.py tests/test_dose_metrics.py
+tests/test_hrctv.py tests/test_plan_objective.py tests/test_plan_report.py
+tests/test_plan_api.py tests/test_plan_solvers.py tests/test_plan_milp.py
+tests/test_plan_influence.py tests/test_plan_review.py
+tests/test_planner_interaction.py` → `221 passed in 160.00s` (after the
+test-side fixes; the planner drag test from d1de921 passed).
+
+Full suite (`GTCORE_STRICT=1 python -m pytest -q -p no:cacheprovider` from
+the worktree, conftest sets the flag): see the line appended below.
+
+Full-suite result at `00ac0a5` + these notes (tree = `paper2/integration`
+d1de921 + this branch; `GTCORE_STRICT=1`, other agents running concurrently,
+so the wall time is an upper bound):
+`901 passed, 14 skipped, 15240 warnings in 476.78s (0:07:56)` — the 14 skips
+are the Phase 1 set (13 interface placeholders + the `GT_E2E`-gated run);
+876 → 901 = the 25 new `test_dose_stats.py` tests. Integration moved to
+66dc856 (targets + rt-io) during this run; not merged here by the
+coordinator's instruction (conflicts in `metrics.py` / `hrctv.py` resolved
+at merge).

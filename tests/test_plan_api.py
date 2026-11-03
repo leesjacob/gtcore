@@ -170,8 +170,8 @@ def test_weighted_quantile_and_target_metrics():
     assert m["V150"] == pytest.approx(0.5)
     assert m["V200"] == pytest.approx(0.25)
     assert m["hard"] == pytest.approx(0.75 - plan.LAMBDA_HOT * (0.25 - plan.V200_TOL))
-    empty = api.target_metrics([], [], RX)
-    assert empty["V100"] == 0.0 and empty["hard"] == 0.0
+    empty = api.target_metrics([], [], RX)      # nan on an empty target (dose_stats rule)
+    assert np.isnan(empty["V100"]) and np.isnan(empty["hard"])
 
 
 def test_evaluate_tiles_on_the_flat_wall(toy):

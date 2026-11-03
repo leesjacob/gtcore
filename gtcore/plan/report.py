@@ -22,10 +22,12 @@ random):
 All reported metrics come from the dose grid, never from the influence
 matrix.  Nothing here touches solver internals.
 
-Weighted statistics: ``weighted_quantile`` is taken from
-``gtcore.plan.objective`` (A2) when that module provides it, otherwise the
-local fallback below (same convention: cumulative-weight midpoints,
-linear interpolation).
+Weighted statistics: ``weighted_stats`` is a thin wrapper of
+``gtcore.dose.metrics.dose_stats`` (Paper 2 Phase 2, "one dose_stats"):
+weighted inverted-CDF (type 1) quantiles for Dxx, the ``>=`` rule for Vyyy,
+nan on an empty target.  The shell entries (``metrics_grid[offset]``) come
+from ``dvh.dvh_stats`` and the rind entry from ``metrics.dose_metrics``,
+both wrappers of the same function.
 
 Optional parameters read from ``parameters``:
 
@@ -54,9 +56,10 @@ import numpy as np
 
 from . import DEFAULT_RX_CGY, OptimizeReport, SolverResult, TargetSet, \
     TARGET_SHELL_OFFSET_MM
+from ..dose.metrics import dose_stats
 from ..interact import PlacedTile, find_overlapping_tiles, tiles_to_seed_arrays
 
-__all__ = ["final_report", "weighted_stats", "weighted_quantile_fallback",
+__all__ = ["final_report", "weighted_stats",
            "weighted_dvh_curve", "grid_bounds", "MAX_GRID_VOXELS", "DEFAULT_SHELL_OFFSETS_MM"]
 
 MAX_GRID_VOXELS = 30_000_000
@@ -69,60 +72,17 @@ RIND_DEPTH_MM = 5.0
 
 
 # ------------------------------------------------------------ small helpers
-def weighted_quantile_fallback(values, weights, q) -> float:
-    """Weighted ``q``-quantile (q in [0, 1]) by cumulative-weight midpoints.
-
-    Sorts ``values``, places each at the midpoint of its cumulative weight
-    interval (normalized to [0, 1]) and interpolates linearly; with unit
-    weights this is within one sample of ``numpy.percentile``.  Empty input
-    -> 0.0.
-    """
-    v = np.asarray(values, dtype=float).reshape(-1)
-    w = np.asarray(weights, dtype=float).reshape(-1)
-    if v.size == 0 or w.sum() <= 0:
-        return 0.0
-    order = np.argsort(v, kind="stable")
-    v = v[order]
-    w = w[order]
-    cum = np.cumsum(w) - 0.5 * w
-    cum /= w.sum()
-    return float(np.interp(float(q), cum, v))
-
-
-def _weighted_quantile():
-    """A2's ``weighted_quantile`` when present, else the local fallback."""
-    try:
-        from . import objective as _obj
-        fn = getattr(_obj, "weighted_quantile", None)
-    except Exception:                                   # pragma: no cover
-        fn = None
-    return fn if callable(fn) else weighted_quantile_fallback
-
-
 def weighted_stats(doses, weights, rx_cgy: float) -> Dict[str, float]:
-    """Weighted V100 / V150 / V200 (fractions of total weight), D90 / D50
-    (weighted 10th / 50th percentile, cGy), Dmin / Dmax / Dmean (weighted),
-    ``n`` and ``total_weight``.  Empty input -> zeros."""
-    d = np.asarray(doses, dtype=float).reshape(-1)
-    w = np.asarray(weights, dtype=float).reshape(-1)
-    rx = float(rx_cgy)
-    if d.size == 0 or w.sum() <= 0:
-        return {k: 0.0 for k in ("V100", "V150", "V200", "D90", "D50", "Dmin",
-                                 "Dmax", "Dmean", "n", "total_weight")}
-    tot = float(w.sum())
-    wq = _weighted_quantile()
-    return {
-        "V100": float(w[d >= rx].sum() / tot),
-        "V150": float(w[d >= 1.5 * rx].sum() / tot),
-        "V200": float(w[d >= 2.0 * rx].sum() / tot),
-        "D90": float(wq(d, w, 0.10)),
-        "D50": float(wq(d, w, 0.50)),
-        "Dmin": float(d.min()),
-        "Dmax": float(d.max()),
-        "Dmean": float((d * w).sum() / tot),
-        "n": float(d.size),
-        "total_weight": tot,
-    }
+    """Weighted statistics of a dose vector on a weighted target: the
+    report-path wrapper of :func:`gtcore.dose.metrics.dose_stats`.
+
+    Returns the full ``DOSE_STAT_KEYS`` set -- V100 / V150 / V200 (fractions
+    of the total weight at >= the level), D90 / D50 / D100 (weighted
+    inverted-CDF quantiles, cGy), Dmin / Dmax / Dmean (over the samples with
+    positive weight), ``n``, ``total_weight``, ``volume_cc`` (nan: a shell
+    has no volume) and ``rx_cgy``.  Empty input or zero total weight -> nan
+    doses and fractions, ``n = 0``, ``total_weight = 0``."""
+    return dose_stats(doses, rx_cgy, weights=weights)
 
 
 def grid_bounds(mesh_bounds, margin_mm: float, grid_mm: float,

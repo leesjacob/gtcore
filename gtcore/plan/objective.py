@@ -36,7 +36,14 @@ value ``v_(i)`` (values sorted ascending) whose cumulative weight
 ``numpy.percentile(v, 100 q, method="inverted_cdf")`` (``q = 0`` -> min,
 ``q = 1`` -> max), and it is a value that actually occurs in ``v`` -- the
 natural reading of "D90 = the dose received by 90 % of the target area".
-Zero-weight entries are ignored.
+Zero-weight entries are ignored.  Since Paper 2 Phase 2 the function lives
+in :mod:`gtcore.dose.metrics` (re-exported here) and ``metrics_from_dose``
+is a thin wrapper of :func:`gtcore.dose.metrics.dose_stats`, so the
+optimizer, the planner panel and the validation scripts report the same
+numbers for the same dose vector.  Only the *reported* metrics go through
+``dose_stats``; the hot loop (``hard``, ``soft``, ``gain``, ``gains_all``,
+``soft_gains_all``) keeps its O(M) coverage primitives (``_coverage_terms``)
+and never sorts.
 
 Performance (measured in ``tests/test_plan_objective.py``): ``hard`` is a
 few tens of microseconds at M = 4000, N = 8; ``gains_all`` evaluates all
@@ -51,6 +58,7 @@ import numpy as np
 from scipy.special import expit
 
 from . import InfluenceMatrix, ConflictGraph, Objective, _as_ids
+from ..dose.metrics import dose_stats, weighted_quantile  # noqa: F401  (re-export)
 
 GAINS_CHUNK_ROWS = 256
 # Rows of the (C, M) temporaries evaluated at once in gains_all: 256 x 4000
@@ -61,39 +69,11 @@ _OBJECTIVE_WEIGHT_KEYS = ("lambda_hot", "v200_tol", "lambda_oar", "tau_cgy", "rx
 
 
 # ------------------------------------------------------------- quantiles
-def weighted_quantile(values, weights, q: float) -> float:
-    """Weighted inverted-CDF quantile of ``values`` at ``q`` in [0, 1].
+# ``weighted_quantile`` is ``gtcore.dose.metrics.weighted_quantile`` (imported
+# above and kept in ``__all__`` so existing importers keep working).
 
-    Smallest sorted value whose cumulative weight reaches ``q * sum(weights)``;
-    equals ``numpy.percentile(values, 100 * q, method="inverted_cdf")`` for
-    unit weights.  Zero-weight entries are ignored; raises ``ValueError``
-    on empty input, all-zero weights or ``q`` outside [0, 1].
-    """
-    v = np.asarray(values, dtype=float).reshape(-1)
-    w = np.asarray(weights, dtype=float).reshape(-1)
-    if v.shape != w.shape:
-        raise ValueError("values and weights must have the same length")
-    q = float(q)
-    if not (0.0 <= q <= 1.0):
-        raise ValueError("q must lie in [0, 1]")
-    if (w < 0).any():
-        raise ValueError("weights must be non-negative")
-    keep = w > 0
-    v, w = v[keep], w[keep]
-    if v.size == 0:
-        raise ValueError("weighted_quantile of an empty / zero-weight set")
-    order = np.argsort(v, kind="stable")
-    v, w = v[order], w[order]
-    cw = np.cumsum(w)
-    total = float(cw[-1])
-    # numpy's inverted_cdf virtual index is n * q computed in floating point;
-    # cumulative unit weights are exact integers, so searchsorted on q * W
-    # reproduces it exactly (the tiny relative slack absorbs the summation
-    # rounding of non-integer weights without changing integer cases).
-    thresh = q * total
-    thresh -= 4.0 * np.finfo(float).eps * total
-    i = int(np.searchsorted(cw, thresh, side="left"))
-    return float(v[min(i, v.size - 1)])
+METRIC_KEYS = ("V100", "V150", "V200", "D90", "Dmean")
+# The subset of ``dose_stats`` keys a ``SolverResult.metrics`` carries.
 
 
 def tail_rows(block, weights, rx_cgy: float, q: float) -> np.ndarray:
@@ -141,20 +121,12 @@ def _tail_term(objective: Objective, d) -> np.ndarray:
 
 # --------------------------------------------------------------- metrics
 def metrics_from_dose(dose, weights, rx_cgy: float) -> Dict[str, float]:
-    """``V100, V150, V200, D90, Dmean`` of a dose vector with weights."""
-    d = np.asarray(dose, dtype=float).reshape(-1)
-    w = np.asarray(weights, dtype=float).reshape(-1)
-    rx = float(rx_cgy)
-    total = float(w.sum())
-    if d.size == 0 or total <= 0.0:
-        return {"V100": 0.0, "V150": 0.0, "V200": 0.0, "D90": 0.0, "Dmean": 0.0}
-    return {
-        "V100": float(w @ (d >= rx)) / total,
-        "V150": float(w @ (d >= 1.5 * rx)) / total,
-        "V200": float(w @ (d >= 2.0 * rx)) / total,
-        "D90": weighted_quantile(d, w, 0.10),
-        "Dmean": float(w @ d) / total,
-    }
+    """``V100, V150, V200, D90, Dmean`` of a dose vector with weights: the
+    optimizer-path wrapper of :func:`gtcore.dose.metrics.dose_stats`
+    (``METRIC_KEYS`` subset).  An empty target or zero total weight gives
+    ``nan`` for every key (test with ``np.isnan``, not ``== 0``)."""
+    s = dose_stats(dose, rx_cgy, weights=weights)
+    return {k: s[k] for k in METRIC_KEYS}
 
 
 def _oar_penalty(objective: Objective, dmax: Dict[str, float]) -> float:
@@ -412,5 +384,5 @@ def evaluate(objective: Objective, selection) -> Dict[str, Any]:
 __all__ = [
     "weighted_quantile", "tail_rows", "tail_mean", "metrics_from_dose", "dose_of", "metrics", "hard",
     "soft", "soft_coverage", "gain", "gains_all", "soft_gains_all",
-    "make_objective", "evaluate", "GAINS_CHUNK_ROWS",
+    "make_objective", "evaluate", "GAINS_CHUNK_ROWS", "METRIC_KEYS",
 ]

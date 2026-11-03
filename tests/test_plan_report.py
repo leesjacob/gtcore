@@ -11,7 +11,8 @@ import plan_fixtures as pf
 from gtcore.dose.engine import dose_at_points
 from gtcore.interact import conform_tile, snap_to_wall
 from gtcore.plan import DEFAULT_RX_CGY, OptimizeReport, TargetSet, final_report
-from gtcore.plan.report import grid_bounds, weighted_quantile_fallback, weighted_stats
+from gtcore.dose.metrics import weighted_quantile
+from gtcore.plan.report import grid_bounds, weighted_stats
 
 GRID_MM = 2.0
 RX = 3000.0   # two tiles 24 mm apart do not reach 6000 cGy at +5 mm; halve rx so V100 > 0
@@ -37,18 +38,24 @@ def report(flat_two_tiles):
 
 # ------------------------------------------------------------------ helpers
 def test_weighted_quantile_matches_numpy_for_unit_weights():
+    """The report uses the one type-1 (inverted CDF) quantile of
+    ``gtcore.dose.metrics``; the former midpoint-interpolating fallback is
+    gone (Paper 2 Phase 2, one ``dose_stats``)."""
     rng = np.random.default_rng(0)
     v = rng.normal(size=2001)
     for q in (0.1, 0.5, 0.9):
-        assert abs(weighted_quantile_fallback(v, np.ones_like(v), q)
-                   - np.percentile(v, 100 * q)) < 0.01
+        assert weighted_quantile(v, np.ones_like(v), q) == \
+            np.percentile(v, 100 * q, method="inverted_cdf")
 
 
 def test_weighted_quantile_respects_weights():
     v = np.array([1.0, 2.0, 3.0])
     w = np.array([1.0, 1.0, 100.0])
-    assert weighted_quantile_fallback(v, w, 0.5) == pytest.approx(3.0, abs=0.05)
-    assert weighted_quantile_fallback([], [], 0.5) == 0.0
+    assert weighted_quantile(v, w, 0.5) == 3.0
+    with pytest.raises(ValueError):
+        weighted_quantile([], [], 0.5)
+    st = weighted_stats([], [], 6000.0)
+    assert np.isnan(st["D90"]) and np.isnan(st["V100"]) and st["n"] == 0
 
 
 def test_weighted_stats_fractions():

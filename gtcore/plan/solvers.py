@@ -66,19 +66,23 @@ _CHUNK_ELEMS = 8_000_000      # rows per chunk of (C, M) temporaries ~ 64 MB flo
 
 # ------------------------------------------------------------------ metrics
 def _weighted_quantile(values, weights, q: float) -> float:
-    """Weighted lower quantile: smallest ``v`` with ``cumweight(v) >= q * total``."""
+    """Weighted lower quantile: smallest ``v`` with ``cumweight(v) >= q * total``
+    (``gtcore.dose.metrics.weighted_quantile``); nan on empty / zero weight."""
+    from ..dose.metrics import weighted_quantile
     v = np.asarray(values, dtype=float).reshape(-1)
     w = np.asarray(weights, dtype=float).reshape(-1)
-    if v.size == 0:
+    if v.size == 0 or not (w.sum() > 0):
         return float("nan")
-    order = np.argsort(v, kind="stable")
-    v = v[order]
-    cum = np.cumsum(w[order])
-    total = cum[-1]
-    if total <= 0:
-        return float("nan")
-    idx = int(np.searchsorted(cum, q * total, side="left"))
-    return float(v[min(idx, v.size - 1)])
+    return weighted_quantile(v, w, q)
+
+
+def _reported_metrics(dose, weights, rx_cgy: float) -> Dict[str, float]:
+    """``V100, V150, V200, D90, Dmean`` of a dose vector through the one
+    ``dose_stats`` (``plan.objective.metrics_from_dose``).  Reporting only:
+    the solvers' comparisons use the O(M) coverage primitives of
+    :class:`_HardEval` / :class:`_ContinuousCore`."""
+    from .objective import metrics_from_dose
+    return metrics_from_dose(dose, weights, rx_cgy)
 
 
 class _HardEval:
@@ -181,13 +185,7 @@ class _HardEval:
 
     def metrics_from_dose(self, dose: np.ndarray, oar_doses: Dict[str, np.ndarray]
                           ) -> Dict[str, float]:
-        m = {
-            "V100": self.coverage(dose, 1.0),
-            "V150": self.coverage(dose, 1.5),
-            "V200": self.coverage(dose, 2.0),
-            "D90": _weighted_quantile(dose, self.w, 0.10),
-            "Dmean": float(self.wn @ dose),
-        }
+        m = _reported_metrics(dose, self.w, self.rx)
         for name, vec in oar_doses.items():
             m["oar_dmax_" + name] = float(vec.max()) if vec.size else float("nan")
         return m
@@ -1004,11 +1002,7 @@ class _ContinuousCore:
         return float(self.wn @ (dose >= self.rx))
 
     def metrics(self, dose: np.ndarray) -> Dict[str, float]:
-        return {"V100": self.v100(dose),
-                "V150": float(self.wn @ (dose >= 1.5 * self.rx)),
-                "V200": float(self.wn @ (dose >= 2.0 * self.rx)),
-                "D90": _weighted_quantile(dose, self.w, 0.10),
-                "Dmean": float(self.wn @ dose)}
+        return _reported_metrics(dose, self.w, self.rx)
 
     def expired(self) -> bool:
         return self.deadline is not None and time.perf_counter() >= self.deadline
