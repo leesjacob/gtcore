@@ -30,8 +30,8 @@ from .interference import (
     tile_shadowing,
 )
 from .hrctv import HRCTV, HRCTV_DEPTH_MM, build_hrctv, hrctv_stats
-from .metrics import DVH, dose_metrics, dvh, resample_mask_to, rind_mask, \
-    surface_coverage, wall_dose
+from .metrics import DOSE_STAT_KEYS, DVH, dose_metrics, dose_stats, dvh, \
+    resample_mask_to, rind_mask, surface_coverage, wall_dose, weighted_quantile
 from .tg43 import DoseInterpolator
 
 __all__ = [
@@ -57,6 +57,9 @@ __all__ = [
     "tile_prescription_points",
     "DVH",
     "dvh",
+    "dose_stats",
+    "DOSE_STAT_KEYS",
+    "weighted_quantile",
     "dose_metrics",
     "resample_mask_to",
     "rind_mask",

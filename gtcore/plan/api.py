@@ -119,37 +119,27 @@ def _logger(verbose: bool, log: Optional[Callable[[str], None]]):
 # ------------------------------------------------------------------ metrics
 def weighted_quantile(values, weights, q: float) -> float:
     """Weighted ``q``-quantile (``q`` in [0, 1]) of ``values``: the smallest
-    value whose cumulative weight fraction reaches ``q``."""
+    value whose cumulative weight fraction reaches ``q`` (the type-1
+    inverted CDF of :func:`gtcore.dose.metrics.weighted_quantile`).  Empty
+    input or zero total weight -> nan."""
+    from ..dose.metrics import weighted_quantile as _wq
     v = np.asarray(values, dtype=float).reshape(-1)
     w = np.asarray(weights, dtype=float).reshape(-1)
-    if v.size == 0 or w.sum() <= 0:
-        return 0.0
-    order = np.argsort(v, kind="stable")
-    cum = np.cumsum(w[order])
-    k = int(np.searchsorted(cum, float(q) * cum[-1], side="left"))
-    return float(v[order][min(k, v.size - 1)])
+    if v.size == 0 or not (w.sum() > 0):
+        return float("nan")
+    return _wq(v, w, q)
 
 
 def target_metrics(dose, weights, rx_cgy: float) -> Dict[str, float]:
-    """``V100 / V150 / V200`` (weighted fractions), ``D90`` (weighted 10th
-    percentile, cGy), ``Dmean`` and the P1 ``hard`` value (no OAR term) for
-    one dose vector on a weighted target."""
-    d = np.asarray(dose, dtype=float).reshape(-1)
-    w = np.asarray(weights, dtype=float).reshape(-1)
-    total = float(w.sum())
-    rx = float(rx_cgy)
-    if d.size == 0 or total <= 0:
-        return {"V100": 0.0, "V150": 0.0, "V200": 0.0, "D90": 0.0,
-                "Dmean": 0.0, "hard": 0.0}
-    v100 = float(w[d >= rx].sum() / total)
-    v150 = float(w[d >= 1.5 * rx].sum() / total)
-    v200 = float(w[d >= 2.0 * rx].sum() / total)
-    return {
-        "V100": v100, "V150": v150, "V200": v200,
-        "D90": weighted_quantile(d, w, 0.10),
-        "Dmean": float((w * d).sum() / total),
-        "hard": v100 - LAMBDA_HOT * max(0.0, v200 - V200_TOL),
-    }
+    """``V100 / V150 / V200`` (weighted fractions), ``D90`` (weighted type-1
+    quantile, cGy), ``Dmean`` and the P1 ``hard`` value (no OAR term) for
+    one dose vector on a weighted target.  The statistics are
+    ``plan.objective.metrics_from_dose`` (hence ``dose_stats``); an empty /
+    zero-weight target gives nan for all of them, ``hard`` included."""
+    from .objective import metrics_from_dose
+    out = metrics_from_dose(dose, weights, rx_cgy)
+    out["hard"] = out["V100"] - LAMBDA_HOT * max(0.0, out["V200"] - V200_TOL)
+    return out
 
 
 def _sk_of(influence: Optional[InfluenceMatrix]) -> float:

@@ -16,6 +16,7 @@ from typing import Dict, Sequence
 import numpy as np
 
 from ..volume import Volume
+from .metrics import dose_stats
 
 DEFAULT_SHELL_OFFSETS_MM = (0.0, 5.0, 10.0)
 DEFAULT_CURVE_FRACTIONS = tuple(np.linspace(0.0, 3.0, 61))  # 0..300% rx
@@ -68,29 +69,17 @@ def dvh_curve(doses, levels_cgy):
 
 
 def dvh_stats(doses, rx_cgy: float) -> Dict[str, float]:
-    """D90/D50/Dmin/Dmax/Dmean [cGy] and V100/V150/V200 [fraction of samples].
+    """Unweighted shell statistics: :func:`gtcore.dose.metrics.dose_stats`
+    with every sample counting equally (the planner-panel wrapper).
 
-    ``Dxx`` is the dose received by at least xx% of the samples (the
-    (100-xx)th percentile); ``Vyyy`` is the fraction receiving at least yyy%
-    of the prescription.  Empty input yields all-zero stats.
+    Returns the full ``DOSE_STAT_KEYS`` set: ``Dxx`` is the weighted
+    inverted-CDF (type 1) quantile -- the smallest sample dose received by
+    at least xx % of the samples, never an interpolated value -- and
+    ``Vyyy`` the fraction of samples at >= yyy % of the prescription.
+    Empty input yields nan doses / fractions and ``n = 0`` (``volume_cc`` is
+    nan for a shell: it has no volume).
     """
-    d = np.asarray(doses, dtype=float).reshape(-1)
-    rx = float(rx_cgy)
-    if d.size == 0:
-        return {k: 0.0 for k in ("D90", "D50", "Dmin", "Dmax", "Dmean",
-                                 "V100", "V150", "V200", "n")}
-    v100, v150, v200 = dvh_curve(d, [1.0 * rx, 1.5 * rx, 2.0 * rx])
-    return {
-        "D90": float(np.percentile(d, 10.0)),
-        "D50": float(np.percentile(d, 50.0)),
-        "Dmin": float(d.min()),
-        "Dmax": float(d.max()),
-        "Dmean": float(d.mean()),
-        "V100": float(v100),
-        "V150": float(v150),
-        "V200": float(v200),
-        "n": float(d.size),
-    }
+    return dose_stats(doses, rx_cgy)
 
 
 def shell_report(dose_volume: Volume, mesh, rx_cgy: float,
@@ -115,11 +104,16 @@ def shell_report(dose_volume: Volume, mesh, rx_cgy: float,
 
 
 def format_report(report: Dict[float, Dict], rx_cgy: float) -> str:
-    """Fixed-width text table for the planner's dose panel."""
+    """Fixed-width text table for the planner's dose panel.  A shell with
+    no samples (nan statistics) prints ``n/a`` in every column."""
     lines = ["shell     D90    D50   Dmin   V100  V150"]
     for off, entry in report.items():
         s = entry["stats"]
         name = "wall" if abs(off) < 1e-9 else "+%g mm" % off
+        if not np.isfinite(s.get("D90", float("nan"))):
+            lines.append("%-7s %6s %6s %6s  %5s %5s" % (
+                name, "n/a", "n/a", "n/a", "n/a", "n/a"))
+            continue
         lines.append("%-7s %6.0f %6.0f %6.0f  %4.0f%% %4.0f%%" % (
             name, s["D90"], s["D50"], s["Dmin"],
             100.0 * s["V100"], 100.0 * s["V150"]))

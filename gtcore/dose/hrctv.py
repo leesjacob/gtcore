@@ -48,7 +48,7 @@ from scipy import ndimage
 from .._strict import swallow_or_raise
 from ..volume import Volume
 from .engine import TG43Engine, dose_at_points
-from .metrics import DVH
+from .metrics import DVH, dose_stats
 
 _log = logging.getLogger(__name__)
 
@@ -131,31 +131,14 @@ class HRCTV:
 
 
 def hrctv_stats(doses, rx_cgy: float, voxel_volume_mm3: float = 1.0) -> Dict[str, float]:
-    """Volumetric D90/D50/D100(min)/Dmean/Dmax [cGy], V100/V150/V200
-    [fraction], ``volume_cc`` and ``n`` for a set of equal-volume voxel
-    doses.  Empty input yields NaN doses and zero volume."""
-    d = np.sort(np.asarray(doses, dtype=float).reshape(-1))
-    rx = float(rx_cgy)
-    if d.size == 0:
-        nan = float("nan")
-        return {"D90": nan, "D50": nan, "Dmin": nan, "D100": nan,
-                "Dmean": nan, "Dmax": nan, "V100": nan, "V150": nan,
-                "V200": nan, "volume_cc": 0.0, "n": 0.0, "rx_cgy": rx}
-    h = DVH(d, float(voxel_volume_mm3))
-    return {
-        "D90": h.D(90.0),
-        "D50": h.D(50.0),
-        "Dmin": float(d[0]),
-        "D100": float(d[0]),
-        "Dmean": float(d.mean()),
-        "Dmax": float(d[-1]),
-        "V100": h.V(rx),
-        "V150": h.V(1.5 * rx),
-        "V200": h.V(2.0 * rx),
-        "volume_cc": h.volume_cc,
-        "n": float(d.size),
-        "rx_cgy": rx,
-    }
+    """Volumetric statistics of equal-volume voxel doses: the planner-path
+    wrapper of :func:`gtcore.dose.metrics.dose_stats`.
+
+    Returns the full ``DOSE_STAT_KEYS`` set (D90/D50/D100 = Dmin/Dmean/Dmax
+    [cGy] by the type-1 inverted-CDF rule, V100/V150/V200 fractions by the
+    ``>=`` rule, ``volume_cc = n * voxel_volume_mm3 / 1000``, ``n``).  Empty
+    input yields nan doses / fractions, ``n = 0`` and zero volume."""
+    return dose_stats(doses, rx_cgy, voxel_volume_mm3=float(voxel_volume_mm3))
 
 
 # ------------------------------------------------------------------ builder

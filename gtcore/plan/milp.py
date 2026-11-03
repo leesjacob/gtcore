@@ -127,40 +127,13 @@ _HIGHS_STATUS = {0: "optimal", 1: "time_limit", 2: "infeasible",
 
 
 # ------------------------------------------------------------- evaluation
-def _weighted_quantile(values: np.ndarray, weights: np.ndarray, q: float) -> float:
-    """Smallest value whose cumulative weight reaches ``q`` of the total."""
-    if values.size == 0:
-        return float("nan")
-    order = np.argsort(values, kind="stable")
-    v = values[order]
-    w = weights[order]
-    cum = np.cumsum(w)
-    total = cum[-1]
-    if total <= 0:
-        return float(v[0])
-    k = int(np.searchsorted(cum, q * total, side="left"))
-    return float(v[min(k, v.size - 1)])
-
-
 def _metrics_local(objective: Objective, ids: np.ndarray) -> Dict[str, float]:
     """Section 2 metrics computed directly from the influence matrix (used
-    while ``Objective.metrics`` is a stub on this branch)."""
+    while ``Objective.metrics`` is a stub on this branch); the numbers are
+    ``plan.objective.metrics_from_dose`` (hence ``dose_stats``)."""
+    from .objective import metrics_from_dose
     inf = objective.influence
-    rx = float(objective.rx_cgy)
-    dose = inf.dose_of(ids)
-    w = inf.target.weights
-    total = float(w.sum())
-    if total <= 0:
-        frac = lambda mask: float("nan")  # noqa: E731
-    else:
-        frac = lambda mask: float(w[mask].sum() / total)  # noqa: E731
-    out = {
-        "V100": frac(dose >= rx),
-        "V150": frac(dose >= 1.5 * rx),
-        "V200": frac(dose >= 2.0 * rx),
-        "D90": _weighted_quantile(dose, w, 0.10),
-        "Dmean": float((w * dose).sum() / total) if total > 0 else float("nan"),
-    }
+    out = metrics_from_dose(inf.dose_of(ids), inf.target.weights, objective.rx_cgy)
     for name in inf.oar:
         od = inf.oar_dose_of(name, ids)
         out["oar_dmax_" + name] = float(od.max()) if od.size else 0.0
