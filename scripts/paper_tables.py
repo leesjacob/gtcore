@@ -472,7 +472,7 @@ class Builder:
             "S2 real-data panel (2 mm vs 1 mm thin-cut)",
             "MISSING from disk since the 2026-11-03 folder move; the earlier numbers (median 0.32 mm, per-axis SD 0.51 / 0.40 / 0.63 mm) are quoted with their commit and labelled not regenerable from the tag",
             DECISIONS + "; " + LOCNOTES, "5073e01",
-            md_locator(DECISIONS, "64-slice gapped export", "missing from disk since 2026-11-03") + " ;; " + md_locator(LOCNOTES, "0.506 / 0.398 / 0.631", "5073e01"))
+            md_locator(DECISIONS, "the 64-slice gapped", "missing from disk since 2026-11-03") + " ;; " + md_locator(LOCNOTES, "0.506 / 0.398 / 0.631", "5073e01"))
         row("PT-RT (= JD RT)",
             "MIM 7.2.5 exports: RTSTRUCT (Cav_Post %s cc, CTV_GT %s cc = HRCTV_PHYS, CTV_Post, Brain %s cc, Seeds 30 contours) and RTDOSE (1 x 1 x 1.667 mm, Gy, total dose to decay; the plan has 32 sources)" % (cav, ctv, brain),
             "RTDOSE 250 x 266 x 266 at 1 x 1 x 1.667 mm, PLAN, no DVHSequence; RTSTRUCT contours at 1 mm pitch",
@@ -629,7 +629,7 @@ class Builder:
                         [L(MODES_PT, {"mode": "count_6full_4half"}, "n_tiles", "int"), L(MODES_PT, {"mode": "count_6full_4half"}, "n_degraded", "int"),
                          L(MODES_PT, {"mode": "count_6full_4half"}, "n_assigned", "int"), L(MODES_PT, {"mode": "count_6full_4half"}, "n_leftover", "int")],
                         "ImplantPrior(n_full=6, n_half=4) as an input; which count-known row the paper quotes waits for the operative record", FLAG_CAL))
-        add(self.t3_csv("implant recovery", "PH8, PT-CT1mm", "marginal bent-tile score vs tile count (count-free; lambda = {2})",
+        add(self.t3_csv("implant recovery", "PH8, PT-CT1mm", "marginal bent-tile score vs tile count (count-free search)",
                         "PH8 selects n = {0} (curve ends at 8: no 9th candidate); PT-CT1mm selects n = {1} (no 7th candidate); in neither scan does the marginal fall below lambda = {2} -- the plateau is a termination, not a lambda crossing",
                         [L(MARGINAL, {"dataset": "PH8", "n": "8"}, "n_selected", "int"),
                          L(MARGINAL, {"dataset": "PT-CT1mm", "n": "6"}, "n_selected", "int"),
@@ -658,8 +658,8 @@ class Builder:
                        "no STL; the printed geometry is this patient's intra-operative cavity (PT-intraMRI)", FLAG_CAL, NOTES, "4cd9891",
                        ["55.3 cc", "32/32 seeds inside", "47.72 cc", "4cd9891"],
                        'python -m gtcore.cli optimize "$GT_DATA_ROOT/<PH8>" --phantom-ref "$GT_DATA_ROOT/<PH0>" ...'))
-        add(self.t3_csv("target definition", "PT-CT1mm + PT-RT", "structure volumes and Dice vs CTV_GT (HRCTV_PHYS, {0} cc)",
-                        "RIND5(Cav_Post, clip Brain) {1} cc, Dice {2} (CTV_GT covers 53 % of the full rind); RIND5(gtcore cavity, clip cranial interior) {3} cc, Dice {4}; IMPLANT_REACH(r = 10 mm) {5} cc, Dice {6}; IMPLANT_REACH(r = 12 mm) {7} cc, Dice {8}",
+        add(self.t3_csv("target definition", "PT-CT1mm + PT-RT", "structure volumes and Dice vs CTV_GT (HRCTV_PHYS)",
+                        "CTV_GT {0} cc; RIND5(Cav_Post, clip Brain) {1} cc, Dice {2} (CTV_GT covers 53 % of the full rind); RIND5(gtcore cavity, clip cranial interior) {3} cc, Dice {4}; IMPLANT_REACH(r = 10 mm) {5} cc, Dice {6}; IMPLANT_REACH(r = 12 mm) {7} cc, Dice {8}",
                         [clin("HRCTV_PHYS (CTV_GT)", "-", "volume_cc", "cc1"),
                          clin("RIND5(Cav_Post, clip Brain)", "-", "volume_cc", "cc2"), clin("RIND5(Cav_Post, clip Brain)", "-", "dice_vs_CTV_GT", "f3"),
                          clin("RIND5(gtcore cavity, clip cranial interior)", "-", "volume_cc", "cc2"), clin("RIND5(gtcore cavity, clip cranial interior)", "-", "dice_vs_CTV_GT", "f3"),
@@ -779,20 +779,16 @@ class Builder:
                        ["19.39 cc", "+2.0 %", "+0.9 %", "+1.9 %", "6360 cGy", "d40bb32"],
                        "python -c \"from gtcore.io.rt import load_rtstruct, load_rtdose, rasterize_roi ...\" (Phase 2 rt-io notes)"))
         add(self.t3_csv("structure rasterisation", "PT-RT vs MIM export", "structure volume / D90 reproduction vs the TPS (verify_against_tps, 2 % gate)",
-                        "{0} -- the MIM DVH / plan export is not on this machine and the RTDOSE has no DVHSequence; every dose row above carries this flag until the export arrives",
-                        [clin(H, "RTDOSE", "D90", "str")],
-                        "MIM structure volumes and D90 (pending)", FLAG_CAL))
-        # the lookup above returns the D90; the row's text comes from the tps_check column:
-        t.rows[-1].cells["value"] = "pending MIM export: tps_check = '%s'" % clin(H, "RTDOSE", "D90", "str").raw(R) and \
-            "pending MIM export (tps_check = '%s' on every dose row)" % L(CLIN, {"row": H, "dose_source": "RTDOSE", "metric": "D90"}, "tps_check", "str").value(R)
-        t.rows[-1].locator = L(CLIN, {"row": H, "dose_source": "RTDOSE", "metric": "D90"}, "tps_check", "str").encode()
+                        "pending MIM export (tps_check = '{0}' on every dose row above; the MIM DVH / plan export is not on this machine and the RTDOSE has no DVHSequence)",
+                        [L(CLIN, {"row": H, "dose_source": "RTDOSE", "metric": "D90"}, "tps_check", "str")],
+                        "MIM structure volumes and D90", FLAG_CAL))
         # ---------------------------------------------------------- packing capacity, eligibility
         add(self.t3_md("placement optimisation", "PT-CT1mm (F8b eligible wall)", "craniotomy-side eligibility and packing capacity at grid (h 2.5 mm, 6 spins; not exact)",
-                       "eligible wall (facing + line of sight, no implant term) 26.5 % of the cavity area (11.8 % with the implant-visibility term); capacity 13 tiles (10 with the implant term) vs the manufacturer rule 4 tiles on the eligible area (34 on the whole wall); 27 of 32 implanted seeds within 6 mm of an eligible face",
+                       "facing + line-of-sight wall (no implant term) 26.5 % of the cavity area (11.8 % with the implant-visibility term); capacity 13 tiles (10 with the implant term) vs the manufacturer rule 4 tiles on the eligible area (34 on the whole wall); only 9/32 implanted seeds lie on the facing + line-of-sight wall, so the patient arms use that wall UNION the wall within 10 mm of an implanted seed (demonstrated reach; fraction pending campaign)",
                        "geometry only (no dose); opening = skull defect U cavity mouth, 28.7 cm2", FLAG_CAL, NOTES, "4cd9891",
                        ["0.265", "0.118", "10 tiles", "28.7 cm²", "4cd9891"],
                        'python -m gtcore.cli optimize "$GT_DATA_ROOT/<PT-CT1mm>" --tiles 8 --solver sa --eligible craniotomy',
-                       [md_locator(DECISIONS, "26.5 %", "13 tiles at h 2.5 mm")]))
+                       [md_locator(DECISIONS, "26.5 %", "13 tiles at h 2.5 mm", "9/32", "demonstrated reach")]))
         add(self._capacity_row())
         for r in self._optimizer_rows():
             add(r)
@@ -907,35 +903,35 @@ class Builder:
                                         "campaign (Phase 4 V6 on the registered tile-less wall; the rev-1 as_implanted 0.654 -> SA 0.849 on the +5 mm shell is superseded)", V6_PHANTOM,
                                         "hand-placed tiles vs the optimizer on the same wall", FLAG_CAL,
                                         'python scripts/validation_optimize.py --section v6 --phantom "$GT_DATA_ROOT/<PH8>" --ph0 "$GT_DATA_ROOT/<PH0>" --sa-seeds 3 --same-candidates'))
-        # ---- patient: as implanted vs optimized
+        # ---- patient: three arms (decisions 2026-11-03 a445cf7): as implanted; optimized for RIND5; optimized for CTV_GT
         if self.landed(F8_SUMMARY, ["arm"]):
             _, arms = R.csv(F8_SUMMARY)
-            impl = [r for r in arms if r["arm"].startswith("as_implant") or r["arm"].startswith("implant")]
-            opt = [r for r in arms if r["arm"] in ("optimized_sa_best", "optimized_best")] or \
-                  [r for r in arms if r["arm"].startswith("optimized_sa_mean") or r["arm"].startswith("optimized_mean")] or \
-                  [r for r in arms if r["arm"].startswith("optimized")]
             parts, locs = [], []
-            for lab, grp in (("as implanted", impl[:1]), ("optimized", opt[:1])):
-                for r in grp:
-                    key = {"arm": r["arm"]}
-                    if r.get("sa_seed", "").strip():
-                        key["sa_seed"] = r["sa_seed"]
-                    parts.append("%s (%s): RIND5(gtcore cavity) V100 %s %% / D90 %s cGy; CTV_GT V100 %s %% / D90 %s cGy; IMPLANT_REACH(10) V100 %s %% / D90 %s cGy; overlaps %s; solve %s s" % (
-                        lab, r["arm"], fmt("pct1", r["RIND5_gtcore_V100"]), fmt("cgy", r["RIND5_gtcore_D90_cGy"]), fmt("pct1", r["CTV_GT_V100"]), fmt("cgy", r["CTV_GT_D90_cGy"]),
-                        fmt("pct1", r["REACH10_V100"]), fmt("cgy", r["REACH10_D90_cGy"]), fmt("str", r.get("n_overlaps", "")), fmt("s1", r.get("solve_s", "nan")) if r.get("solve_s", "").strip() not in ("", "nan") else "n/a"))
-                    for c, f in (("RIND5_gtcore_V100", "pct1"), ("RIND5_gtcore_D90_cGy", "cgy"), ("CTV_GT_V100", "pct1"), ("CTV_GT_D90_cGy", "cgy"), ("REACH10_V100", "pct1"), ("REACH10_D90_cGy", "cgy")):
-                        locs.append(L(F8_SUMMARY, key, c, f).encode())
+            for r in arms:
+                key = {"arm": r["arm"]}
+                if r.get("sa_seed", "").strip():
+                    key["sa_seed"] = r["sa_seed"]
+                bits = []
+                for lab, cv, cd in (("RIND5(gtcore)", "RIND5_gtcore_V100", "RIND5_gtcore_D90_cGy"), ("CTV_GT", "CTV_GT_V100", "CTV_GT_D90_cGy"),
+                                    ("IMPLANT_REACH(10)", "REACH10_V100", "REACH10_D90_cGy")):
+                    if cv in r and cd in r:
+                        bits.append("%s %s %% / %s cGy" % (lab, fmt("pct1", r[cv]), fmt("cgy", r[cd])))
+                        locs += [L(F8_SUMMARY, key, cv, "pct1").encode(), L(F8_SUMMARY, key, cd, "cgy").encode()]
+                parts.append("%s%s: %s; overlaps %s" % (r["arm"], (" (SA seed %s)" % r["sa_seed"]) if r.get("sa_seed", "").strip() else "",
+                                                        ", ".join(bits), fmt("str", r.get("n_overlaps", ""))))
             if parts:
                 self._note(F8_SUMMARY)
-                rows.append(Row({"stage": "placement optimisation", "dataset": "PT-CT1mm (gtcore cavity; eligible = craniotomy side)", "metric": "patient: as implanted vs optimized 8 tiles, both targets side by side (one case, illustration, not a cohort claim)",
-                                 "value": "; ".join(parts), "truth/reference": "the implanted 32 seeds (physical axes) vs plan.optimize(mesh, 8, solver='sa') on the eligible wall; both scored with one dose_stats",
+                rows.append(Row({"stage": "placement optimisation", "dataset": "PT-CT1mm (gtcore cavity; eligible = craniotomy U 10 mm demonstrated reach)",
+                                 "metric": "patient: as implanted / optimized for RIND5 / optimized for CTV_GT, each scored on all three targets (V100 / D90; one case, illustration, not a cohort claim)",
+                                 "value": "; ".join(parts), "truth/reference": "the implanted 32 seeds (physical axes) vs plan.optimize(mesh, 8, solver='sa') for the stated target; one dose_stats",
                                  "source csv": F8_SUMMARY, "command": R.csv_command(F8_SUMMARY), "commit": R.csv_commit(F8_SUMMARY) or "?", "flag": FLAG_CAL},
                                 " ;; ".join(locs)))
         else:
-            rows.append(self.t3_pending("placement optimisation", "PT-CT1mm (gtcore cavity; eligible = craniotomy side)", "patient: as implanted vs optimized 8 tiles on RIND5(gtcore cavity) / CTV_GT / IMPLANT_REACH(10); overlaps; solve time (F8 titles)",
-                                        "campaign (scripts/patient_optimize.py; never the mock run's 0.67 -> 0.81 / 0.92 -> 0.91)", F8_SUMMARY,
-                                        "the implanted 32 seeds vs the optimizer on the same cavity wall", FLAG_CAL,
-                                        'python scripts/patient_optimize.py "$GT_DATA_ROOT/<PT-CT1mm>" --rtstruct "$GT_DATA_ROOT/<PT-RT RTSTRUCT>" --tiles 8 --sa-seeds 0 1 2 --halves 6,4 --out-csv docs/figures/optimize/data --out-data docs/figures/data'))
+            rows.append(self.t3_pending("placement optimisation", "PT-CT1mm (gtcore cavity; eligible = craniotomy U 10 mm demonstrated reach)",
+                                        "patient: three arms -- as implanted / optimized for RIND5 / optimized for the physician's target (CTV_GT) -- each scored on RIND5(gtcore cavity), CTV_GT and IMPLANT_REACH(10); overlaps; solve time (F8 titles)",
+                                        "campaign (scripts/patient_optimize.py; the 4748ccb trial run in docs/paper2-decisions.md and the mock 0.67 -> 0.81 / 0.92 -> 0.91 are not quoted)", F8_SUMMARY,
+                                        "the implanted 32 seeds vs the optimizer on the same cavity wall; the optimizer optimizes the target it is given", FLAG_CAL,
+                                        'python scripts/patient_optimize.py "$GT_DATA_ROOT/<PT-CT1mm>" --rtstruct "$GT_DATA_ROOT/<PT-RT RTSTRUCT>" --tiles 8 ... --out-csv docs/figures/optimize/data --out-data docs/figures/data'))
         return rows
 
     # ================================================================ Table 4
@@ -973,10 +969,10 @@ class Builder:
                   "pending:" + TABLE4_RUNTIMES))
         md("PT-CT1mm", "reconstruct", "seed detection / metal inpainting / head segmentation / cavity segmentation / surface meshes / tile fitting (count-free)",
            "0.55 / 1.75 / 7.92 / 3.89 / 5.93 / 28.3", "stage timings of reconstruct(auto), 49.6 s total (31 seeds at this pre-vault-fix commit)", NOTES, "bcb7a22",
-           ["seed detection 0.55 s, metal inpainting 1.75 s", "head segmentation 7.92 s, cavity segmentation 3.89 s, surface meshes 5.93 s", "tile fitting 28.3 s", "49.6 s"])
+           ["seed detection 0.55 s", "metal inpainting 1.75 s", "head segmentation 7.92 s", "cavity segmentation 3.89 s", "surface meshes 5.93 s", "tile fitting 28.3 s", "49.6 s"])
         md("PH8", "reconstruct", "seed detection / metal inpainting / head segmentation / cavity segmentation / surface meshes / tile fitting (count-free)",
            "0.38 / 0.23 / 27.86 / 2.54 / 0.61 / 2.42", "stage timings of reconstruct(auto), 34.6 s total", NOTES, "bcb7a22",
-           ["seed detection 0.38 s, metal inpainting 0.23 s, head segmentation 27.86 s, cavity segmentation 2.54 s", "0.61 s, tile fitting 2.42 s", "34.6 s"])
+           ["seed detection 0.38 s", "metal inpainting 0.23 s", "head segmentation 27.86 s", "cavity segmentation 2.54 s", "tile fitting 2.42 s", "34.6 s"])
         md("PT-CT1mm", "reconstruct", "reconstruct (32 seeds, cavity, meshes) in the Phase 3 follow-up runs", "17.5", "wall, suite running concurrently", NOTES, "378b819", ["reconstruct 17.5 s", "378b819"])
         md("PT-CT1mm + PT-RT", "targets", "rind5 on the full CT grid (204 x 512 x 512)", "5.6", "EDT in physical mm + clip", NOTES, "32234a4", ["`rind5` on the full CT grid: 5.6 s", "32234a4"])
         md("PT-CT1mm + PT-RT", "validation", "structure x dose matrix (6 gtcore columns, exact engine at ~560 k voxel centres)", "22.7", "validation_clinical.py", NOTES, "378b819", ["matrix 22.7 s", "378b819"])
@@ -1243,13 +1239,11 @@ class Builder:
             [clin("RIND5(gtcore cavity, clip cranial interior)", "-", "volume_cc", "cc1"), clin("RIND5(gtcore cavity, clip cranial interior)", "gtcore@32 gtcore seeds", "V100", "pct1"),
              clin("RIND5(gtcore cavity, clip cranial interior)", "gtcore@32 gtcore seeds", "D90", "cgy"), clin(H, "gtcore@32 gtcore seeds", "V100", "pct1"), clin(H, "gtcore@32 gtcore seeds", "D90", "cgy"),
              clin("RIND5(gtcore cavity, clip cranial interior)", "RTDOSE", "V100", "pct1"), clin("RIND5(gtcore cavity, clip cranial interior)", "RTDOSE", "D90", "cgy")])
-        capmd("F8", "b", "eligible wall for the optimizer", "craniotomy-side wall (facing + line of sight, no implant term): 26.5 % of the cavity area; packing capacity 13 tiles at h 2.5 mm / 6 spins",
-              DECISIONS, "4748ccb", ["26.5 %", "13 tiles at h 2.5 mm"])
+        capmd("F8", "b", "eligible wall for the optimizer", "craniotomy wall (facing + line of sight, no implant term; 26.5 % of the cavity area, holds 9/32 implanted seeds) UNION the wall within 10 mm of an implanted seed (demonstrated reach); packing capacity 13 tiles at h 2.5 mm / 6 spins on the craniotomy wall",
+              DECISIONS, "a445cf7", ["26.5 %", "13 tiles at h 2.5 mm", "9/32", "demonstrated reach"])
         if self.landed(F8_SUMMARY, ["arm"]):
             _, arms = R.csv(F8_SUMMARY)
-            opt = [r for r in arms if r["arm"] in ("optimized_sa_best", "optimized_best")] or [r for r in arms if r["arm"].startswith("optimized")]
-            if opt:
-                r = opt[0]
+            for r in [r for r in arms if not r["arm"].startswith("as_impl")]:
                 key = {"arm": r["arm"]}
                 if r.get("sa_seed", "").strip():
                     key["sa_seed"] = r["sa_seed"]
@@ -1258,7 +1252,7 @@ class Builder:
                     [L(F8_SUMMARY, key, "RIND5_gtcore_V100", "pct1"), L(F8_SUMMARY, key, "RIND5_gtcore_D90_cGy", "cgy"), L(F8_SUMMARY, key, "CTV_GT_V100", "pct1"),
                      L(F8_SUMMARY, key, "CTV_GT_D90_cGy", "cgy"), L(F8_SUMMARY, key, "n_overlaps", "str")])
         else:
-            t.add(Row({"figure": "F8", "panel": "b", "item": "optimized 8 tiles (title numbers: V100 / D90 on the full rind and on CTV_GT; overlaps; solve time)",
+            t.add(Row({"figure": "F8", "panel": "b", "item": "optimized arms (for RIND5; for CTV_GT): title numbers V100 / D90 on the full rind, CTV_GT and IMPLANT_REACH(10); overlaps; solve time",
                        "value": "pending campaign (scripts/patient_optimize.py -> f8_patient_summary.csv, f8b_patient_optimized.npz)", "source": F8_SUMMARY + " (expected)",
                        "commit": "--", "flag": FLAG_CAL}, "pending:" + F8_SUMMARY))
         return t
@@ -1313,7 +1307,7 @@ def table_md(t: Table) -> str:
     out = ["## %s" % t.title, ""]
     for line in t.preamble:
         out += [line, ""]
-    out.append("| " + " | ".join(t.columns) + " |")
+    out.append("| " + " | ".join(md_escape(c) for c in t.columns) + " |")
     out.append("|" + "|".join("---" for _ in t.columns) + "|")
     for r in t.rows:
         out.append("| " + " | ".join(md_escape(r.cells[c]) for c in t.columns) + " |")
@@ -1364,7 +1358,7 @@ Every line: mock -> measured (commit of the measurement). The mock numbers are n
 - Formalism: "a 1D plan would give 1.29 -> 0.96" -> far field only; under the test's selection 0.95 -> 1.05. **MIM is 2D with every seed axis along S-I** (common fitted axis 2.2 deg from S-I; physical axes 64.5 deg from it); the residual +-6 % angular trend of rev 3 is that axis convention, not the dataset, grid or S_K (aaddf65).
 - Phantom "localized seeds 0.84 mm off the wall mesh" -> a reference-surface artifact (the PH8 body mask includes the tiles: -0.68 mm to the tile face); +3.05 mm to the registered tile-less wall, 26/32 in the hydrated band (448a6b3).
 - Phantom cavity "lumen = filled minus body" -> impossible for this print (no plateau); gtcore's cavity rule on the registered twin: 55.3 cc, RIND5 47.7 cc (4cd9891).
-- F8 arms: the mock run's 0.67 -> 0.81 (rind) / 0.92 -> 0.91 (CTV_GT) is never quoted; the numbers come from the Phase 4 patient run (`scripts/patient_optimize.py`, SA 8 x 60, craniotomy-side eligibility without the implant term, both targets side by side) -- pending.
+- F8 arms: the mock run's 0.67 -> 0.81 (rind) / 0.92 -> 0.91 (CTV_GT) is never quoted. Two arms -> **three** (decisions a445cf7): as implanted; optimized for `RIND5`; optimized for the physician's target (`HRCTV_PHYS` = `CTV_GT`), each scored on all three targets. Eligibility facing + line of sight (26.5 % of the wall, only 9/32 implanted seeds on it) -> that wall **UNION the wall within 10 mm of an implanted seed** ("demonstrated reach"). The trial run at 4748ccb (optimizing the full rind costs -17 pp on `CTV_GT`: 0.917 -> 0.750) is recorded in the decisions log, not quoted; the paper numbers come from the campaign's patient run -- pending.
 - Optimizer campaign: the rev-1 numbers (2026-10-07 at cca2120: SA - uniform +22.8 pp [19.3, 26.4] on the +5 mm shell; phantom as_implanted V100 0.654 -> SA 0.849; min-N 10 vs rule 12) are superseded by the Phase 4 campaign (full-grid RIND5 scoring, SA 8 x 60, same-candidate V100 bound, registered PH0 wall) -- pending.
 - F2(c): the kappa range shown is stated (`KAPPA_RANGE` (-0.08, 0.5) per mm; wall-conformed render at 1/17 per mm). F9: no STL, reduced or cut. S2: PT-CT2mm lost; substitutes PT-CT-s3 vs PT-CT1mm and a decimated thin-cut.
 """
@@ -1400,9 +1394,13 @@ def write_summary(path: str, tables: Dict[str, Table], head: str, data_commits: 
         for line in t.preamble:
             out += [line, ""]
         if name == "table3":
+            stages = list(dict.fromkeys(r.cells["stage"] for r in t.rows))
+            ordered = [r for st in stages for r in t.rows if r.cells["stage"] == st]
             stage = None
-            for r in t.rows:
+            for r in ordered:
                 if r.cells["stage"] != stage:
+                    if stage is not None:
+                        out.append("")
                     stage = r.cells["stage"]
                     out += ["### %s" % stage, ""]
                 flag = r.cells["flag"] + (" / pending" if r.cells["value"].startswith("pending") else "")
@@ -1429,6 +1427,8 @@ def write_summary(path: str, tables: Dict[str, Table], head: str, data_commits: 
             fig = None
             for r in t.rows:
                 if r.cells["figure"] != fig:
+                    if fig is not None:
+                        out.append("")
                     fig = r.cells["figure"]
                     out += ["### %s" % fig, ""]
                 out.append("- (%s) %s: %s  \n  flag `%s`; source `%s`; commit `%s`" % (r.cells["panel"], r.cells["item"], r.cells["value"], r.cells["flag"], r.cells["source"], r.cells["commit"]))
