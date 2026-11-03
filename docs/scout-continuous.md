@@ -175,7 +175,7 @@ dominates), which a cached/vectorized conformer would shrink; only one N
 ## Reproduce
 
     cd <worktree root>
-    C:/Users/jacob/.venvs/gammatile/Scripts/python.exe scripts/scout_continuous.py
+    python scripts/scout_continuous.py        # the project venv's python
 
 Writes `output/scout_continuous/results.csv`, `log.txt`, cached
 `cavity_seed{1,2,3}.ply`. Fixed seeds; total wall 677 s on this machine.

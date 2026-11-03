@@ -15,7 +15,7 @@
 ``--part thincut``
     PostOp (1 mm slabs every 2 mm, gaps interpolated) seeds against the
     seeds of the contiguous 1 mm thin-cut of the same acquisition
-    (DOEJOHNPOSTCT) with the two sides refined independently, from the
+    (``PT-CT1mm``) with the two sides refined independently, from the
     cached results of ``validation_realdata_proxies.py --refine none`` and
     ``--refine centroid`` (``--cache-dir``, default
     output/validation_realdata_proxies/cache, newest commit in the cache):
@@ -180,7 +180,7 @@ def _load_cache(cache_dir):
             s = pickle.load(fh)
         k = s["key"]
         name = "postop" if os.path.basename(fn).startswith("postop_") else (
-            "doe" if os.path.basename(fn).startswith("doe_") else None)
+            "thincut" if os.path.basename(fn).startswith("thincut_") else None)
         if name is None or k.get("fuse"):
             continue
         slims.setdefault(k["commit"], {})[(name, k["refine"])] = s
@@ -191,12 +191,12 @@ def part_thincut(vp, cache_dir, commit=None):
     from gtcore.tiles import fit_tiles
 
     by_commit = _load_cache(cache_dir)
-    need = {("postop", "none"), ("postop", "centroid"), ("doe", "none"),
-            ("doe", "centroid")}
+    need = {("postop", "none"), ("postop", "centroid"), ("thincut", "none"),
+            ("thincut", "centroid")}
     usable = [c for c, d in by_commit.items() if need <= set(d)]
     if commit is None:
         if not usable:
-            print("no commit in %s has all four cached runs (postop / doe x "
+            print("no commit in %s has all four cached runs (postop / thincut x "
                   "none / centroid); run validation_realdata_proxies.py "
                   "--refine none and --refine centroid first" % cache_dir)
             return 1
@@ -207,7 +207,7 @@ def part_thincut(vp, cache_dir, commit=None):
     print("cached runs at commit %s" % commit)
     for pr in ("none", "centroid"):
         for tr in ("none", "centroid"):
-            x = vp.postop_vs_thincut(slims[("postop", pr)], slims[("doe", tr)])
+            x = vp.postop_vs_thincut(slims[("postop", pr)], slims[("thincut", tr)])
             for name in ("all", "assigned"):
                 v = x["rows"]["detected"][name]
                 print("PostOp %-8s thin-cut %-8s %-8s n %2d mean %6.3f %6.3f "
@@ -219,9 +219,9 @@ def part_thincut(vp, cache_dir, commit=None):
     P0 = np.asarray(slims[("postop", "none")]["centers_raw"], float)
     P1 = np.asarray(slims[("postop", "centroid")]["centers_raw"], float)
     st = slims[("postop", "centroid")]["refine"]["status"]
-    T0 = np.asarray(slims[("doe", "none")]["centers_raw"], float)
-    T1 = np.asarray(slims[("doe", "centroid")]["centers_raw"], float)
-    stt = slims[("doe", "centroid")]["refine"]["status"]
+    T0 = np.asarray(slims[("thincut", "none")]["centers_raw"], float)
+    T1 = np.asarray(slims[("thincut", "centroid")]["centers_raw"], float)
+    stt = slims[("thincut", "centroid")]["refine"]["status"]
     dt = np.linalg.norm(T1 - T0, axis=1)
     print("thin-cut refined %d/%d, |shift| median %.3f max %.3f mm; "
           "fallbacks %s" % (sum(s == "ok" for s in stt), len(stt),
@@ -248,8 +248,8 @@ def part_thincut(vp, cache_dir, commit=None):
                   % (i, np.linalg.norm(e0), *e0, np.linalg.norm(e1), *e1,
                      np.linalg.norm(P1[i] - P0[i]), k0,
                      sorted(k for k in interp if abs(k - k0) <= 1.5)))
-    for lab, S in (("none", slims[("doe", "none")]),
-                   ("centroid", slims[("doe", "centroid")])):
+    for lab, S in (("none", slims[("thincut", "none")]),
+                   ("centroid", slims[("thincut", "centroid")])):
         res = fit_tiles(S["centers_raw"], S["axes"], "auto", 0,
                         spacing_mm=S["spacing"])
         r = [float(p.deform.rms_mm) for p in res.tiles

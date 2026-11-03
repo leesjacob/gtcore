@@ -1,36 +1,68 @@
-# Branch status (snapshot 2026-10-07, optimizer overnight run)
+# Branch status (snapshot 2026-11-03, Phase 5 of Paper 2)
 
-Remote: https://github.com/Peelyboneheader/gtcore.git
-Main branch lives in `C:\Users\jacob\OneDrive\Desktop\AlgorithmProject` (Desktop is OneDrive-synced on this machine).
-Each feature branch is checked out in its own worktree under `C:\Users\jacob\OneDrive\Desktop\gt-worktrees\<name>`.
+Remotes: `origin` (https://github.com/Peelyboneheader/gtcore.git) and `leesjacob`
+(https://github.com/leesjacob/gtcore.git). The paper's integration branch is
+`paper2/integration`. `main` is still at `aff83c0`; every commit on `main` is
+contained in `paper2/integration`, so `main` fast-forwards to it when Phase 5 is tagged
+(`v1.0-medphys`, pushed with `main` to `leesjacob`). Each branch has its own git
+worktree in a sibling folder (`gt-worktrees/<name>`) next to the main checkout.
 
-## Optimizer build (`gtcore.plan`, docs/plan-tile-optimize.md)
+## Merged into `paper2/integration` (no commits outside it; worktree and branch can go)
 
-Baseline before the build: da71f76 (tile-selection work committed, 436 tests).
-Interface freeze: cd73082. All branches below are fully merged into main;
-the suite on main is 671 passed / 14 skipped (14 = interface stub checks for
-wired functions + one `GT_E2E=1`-gated planner test).
+| Group | Branches |
+|---|---|
+| Paper 2 Phase 1 | `p2/strict-exceptions`, `p2/vault-filter`, `p2/footprint-rcond`, `p2/cavity-reach`, `p2/packaging` |
+| Paper 2 Phase 2 | `p2/targets`, `p2/rt-io`, `p2/dose-stats`, `p2/report-rind5` |
+| Paper 2 Phase 3 | `p2/clinical-rebuild`, `p2/uncertainty`, `p2/engine-qa`, `p2/seed-wall`, `p2/gamma`, `p2/leftovers`, `p2/formalism`, `p2/clinical-followups` |
+| Paper 2 Phase 4 | `p2/opt-constants-bound`, `p2/opt-eligibility-phantom` |
+| Optimizer build (Oct 2026) | `plan/candidates`, `plan/influence`, `plan/solvers`, `plan/milp`, `plan/validation`, `plan/ui`, `plan/review` |
+| Localization upgrade (Oct 2026) | `loc/harness`, `loc/refine`, `loc/mergesplit`, `loc/scoring`, `loc/hwls`, `loc/proxies`, `loc/integration`, `loc/main-merge`, `feature/localization` |
+| Earlier features | `feature/dose-engine`, `feature/hrctv`, `feature/reconstruction`, `feature/tile-autogen`, `feature/tile-inference`, `feature/tile-selection`, `feature/ui-interaction`, `feature/validation`, `fix/planner-key-sync`, `main` |
 
-| Branch | Worktree | Owner | State |
-|---|---|---|---|
-| plan/candidates | gt-worktrees/plan-candidates | A1 | merged (candidates, visible_faces angular broad phase, robust conflicts, tile-count rule) |
-| plan/influence | gt-worktrees/plan-influence | A2 | merged (influence matrix, objective, §3 B gate) |
-| plan/solvers | gt-worktrees/plan-solvers | A3 | merged (greedy, local, SA, E5, continuous multi-start, N-sweep) |
-| plan/milp | gt-worktrees/plan-milp | A4 | merged (enumeration B&B reference, HiGHS MILP, LP bound, brute force) |
-| plan/validation | gt-worktrees/plan-validation | A5 | merged (final_report, campaign script, quick-run results); full campaign results merged when its commit lands |
-| plan/ui | gt-worktrees/plan-ui | A6 | merged (api, `gt optimize`, planner O/N keys with capacity-aware prompt) |
-| plan/review | gt-worktrees/plan-review | A7 | merged (independent reference metrics + adversarial tests, 16/16 pass) |
-| plan/scout-objective | gt-worktrees/plan-scout-objective | scout 7.1 | NOT merged by design; report + script copied into main (docs/scout-objective.md) |
-| plan/scout-milp-bound | gt-worktrees/plan-scout-milp-bound | scout 7.3 | NOT merged by design; report + script copied (docs/scout-milp-bound.md) |
-| plan/scout-continuous | gt-worktrees/plan-scout-continuous | scout 7.4 | NOT merged by design; report + script copied (docs/scout-continuous.md) |
+Removal, after Phase 5 is tagged (from the main checkout; `-d` refuses an unmerged branch):
 
-Older feature branches (dose-engine, reconstruction, tile-autogen, tile-inference,
-tile-selection, ui-interaction, validation) are all contained in main and can be
-deleted with their worktrees (`git worktree remove <path>`, `git branch -d <name>`).
-The plan/* worktrees can be removed the same way once the campaign commit is merged.
+```
+git worktree remove ../gt-worktrees/<name>
+git branch -d <branch>
+```
+
+Worktrees whose branch is in the table above: `p2-strict-exceptions`, `p2-vault-filter`,
+`p2-footprint-rcond`, `p2-cavity-reach`, `p2-packaging`, `p2-targets`, `p2-rt-io`,
+`p2-dose-stats`, `p2-report-rind5`, `p2-clinical-rebuild`, `p2-uncertainty`,
+`p2-engine-qa`, `p2-seed-wall`, `p2-gamma`, `p2-leftovers`, `p2-formalism`,
+`p2-clinical-followups`, `p2-opt-constants-bound`, `p2-opt-eligibility-phantom`,
+`plan-candidates`, `plan-influence`, `plan-solvers`, `plan-milp`, `plan-validation`,
+`plan-ui`, `plan-review`, `loc-harness`, `loc-refine`, `loc-mergesplit`, `loc-scoring`,
+`loc-hwls`, `loc-proxies`, `loc-integration`, `loc-main-merge`, `dose-engine`, `hrctv`,
+`reconstruction`, `tile-autogen`, `tile-inference`, `tile-selection`, `ui-interaction`,
+`validation`, `planner-keys`, `main-objective` (branch `main`).
+
+## In flight (Phase 5; the coordinator merges them)
+
+| Branch | Worktree | Task |
+|---|---|---|
+| `p2/campaign` | `p2-campaign` | Phase 4 optimizer campaign (owns `scripts/validation_optimize.py`, `docs/optimize-notes.md`, `docs/figures/optimize/`) |
+| `p2/cavity-change` | `p2-cavity-change` | `scripts/cavity_change.py` (cavity across the loop, F3) |
+| `p2/paper-figures` | `p2-paper-figures` | `scripts/paper_figures.py`, `scripts/_figstyle.py` |
+| `p2/paper-tables` | `p2-paper-tables` | `scripts/paper_tables.py`, `docs/results-summary.md`, `docs/figures/tables/` |
+| `p2/scrub-readme` | `p2-scrub-readme` | identifier/path scrub, dataset resolver, README |
+
+## Not merged by design (keep or delete; nothing in the paper depends on them)
+
+| Branch | Worktree | Content |
+|---|---|---|
+| `plan/scout-objective` | `plan-scout-objective` | scout 7.1; report + script copied (`docs/scout-objective.md`) |
+| `plan/scout-milp-bound` | `plan-scout-milp-bound` | scout 7.3; report + script copied (`docs/scout-milp-bound.md`) |
+| `plan/scout-continuous` | `plan-scout-continuous` | scout 7.4; report + script copied (`docs/scout-continuous.md`) |
+| `plan/continuous-perf` | `plan-continuous-perf` | continuous solver overlap/deadline tweak (2 commits); SA stays the default |
+| `notes/clinical-audit` | `notes-clinical-audit` | independent audit of the clinical case (2026-10-08 doc + figures); **its doc still names the patient folder**: scrub it (dataset ids) before it is ever merged |
 
 ## To resume
 
-- Test command: `C:\Users\jacob\.venvs\gammatile\Scripts\python.exe -m pytest -q -p no:cacheprovider` (about 7 min; run it alone — the off-screen VTK planner tests hang when several suites share the GPU).
-- Open decision for Jacob: `interact._footprint_surface` rcond (docs/optimize-notes.md, "Open decisions"); the optimizer works around it with the geometric proxy.
-- Validation campaign: `python scripts/validation_optimize.py` (3-3.5 h, needs ~11 GB free); `--quick` for a smoke run.
+- Test command (from a worktree root, the project venv's python):
+  `GTCORE_STRICT=1 python -m pytest -q -p no:cacheprovider` (about 10 min; run it
+  alone, the off-screen VTK planner tests hang when several suites share the GPU).
+- Data: `GT_DATA_ROOT` + an uncommitted `GT_DATASETS_JSON` map (format:
+  `docs/datasets.example.json`; README, "Data").
+- Identifier check: `python scripts/check_no_identifiers.py` (`--strict` includes the
+  campaign-owned files still allowlisted).

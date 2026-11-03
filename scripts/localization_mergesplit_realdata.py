@@ -5,7 +5,7 @@ Usage (from the repo root, PYTHONPATH=.)::
     python scripts/localization_mergesplit_realdata.py diagnose  [--merge on|off]
     python scripts/localization_mergesplit_realdata.py check SCAN [--merge on|off]
 
-``diagnose`` reconstructs the PostOp CT (cached under
+``diagnose`` reconstructs the gapped post-op export ``PT-CT2mm`` (cached under
 output/loc_mergesplit/cache/), runs the count-free tile inference the
 planner uses (``fit_tiles_prior`` with an empty ``ImplantPrior``) and dumps
 every in-implant unassigned candidate with its nearest neighbour: separation
@@ -13,9 +13,11 @@ every in-implant unassigned candidate with its nearest neighbour: separation
 segment ("bridge HU"), interpolated-slice status and whether the two came
 from one thresholded blob.
 
-``check`` runs one real scan (postop, phantom8, tilefree, doe) through
+``check`` runs one real scan (postop, phantom8, tilefree, thincut) through
 ``reconstruct`` and prints the numbers the stage gate needs.  Run the real
-scans one at a time (each needs a few GB).
+scans one at a time (each needs a few GB).  Scan folders come from
+``GT_DATA_ROOT`` + the optional ``GT_DATASETS_JSON`` map
+(``gtcore.io.datasets``); ``--data-root`` overrides.
 """
 from __future__ import annotations
 
@@ -28,12 +30,17 @@ import time
 import numpy as np
 from scipy import ndimage
 
+REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if REPO not in sys.path:
+    sys.path.insert(0, REPO)
+# scan key -> dataset id (folders resolved by gtcore.io.datasets at run time)
 SCANS = {
-    "postop": r"C:\Users\jacob\Documents\PostOp CT",
-    "phantom8": r"C:\Users\jacob\Documents\3D-Printed Phantom-8tiles (223)",
-    "tilefree": r"C:\Users\jacob\Documents\CT 3D printed",
-    "doe": r"C:\Users\jacob\Documents\DOEJOHNPOSTCT",
+    "postop": "PT-CT2mm",
+    "phantom8": "PH8",
+    "tilefree": "PH0",
+    "thincut": "PT-CT1mm",
 }
+DATA_ROOT_OVERRIDE = None   # set from --data-root
 CACHE = os.path.join("output", "loc_mergesplit", "cache")
 
 
@@ -41,10 +48,16 @@ def _merge_flag(s):
     return {"on": True, "off": False, "default": None}[s]
 
 
+def scan_path(scan):
+    from gtcore.io.datasets import dataset_path
+
+    return str(dataset_path(SCANS[scan], root=DATA_ROOT_OVERRIDE))
+
+
 def load(scan):
     from gtcore.io import load_volume
 
-    return load_volume(SCANS[scan])
+    return load_volume(scan_path(scan))
 
 
 def interpolated_slices(vol):
@@ -296,7 +309,10 @@ def check(args):
 
 
 def main(argv=None):
+    global DATA_ROOT_OVERRIDE
     ap = argparse.ArgumentParser()
+    ap.add_argument("--data-root", default=None,
+                    help="scan root (default: GT_DATA_ROOT; ids mapped by GT_DATASETS_JSON)")
     sub = ap.add_subparsers(dest="cmd", required=True)
     d = sub.add_parser("diagnose")
     d.add_argument("--merge", default="default", choices=["on", "off", "default"])
@@ -306,6 +322,7 @@ def main(argv=None):
     c.add_argument("--merge", default="default", choices=["on", "off", "default"])
     c.add_argument("--legacy-split", action="store_true")
     args = ap.parse_args(argv)
+    DATA_ROOT_OVERRIDE = args.data_root
     if args.cmd == "diagnose":
         diagnose(args)
     else:

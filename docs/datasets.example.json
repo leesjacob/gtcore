@@ -1,0 +1,14 @@
+{
+  "_comment": "Copy to a private location (for example <GT_DATA_ROOT>/datasets.json, or any path named by GT_DATASETS_JSON) and replace the placeholders with the real folder names. Values are folder names relative to GT_DATA_ROOT, or absolute paths. Never commit the filled-in copy.",
+  "PH8": "<folder of the 8-tile printed-phantom CT>",
+  "PH0": "<folder of the tile-less printed-phantom CT>",
+  "PT-CT1mm": "<patient folder>/<post-implant CT, contiguous 1 mm thin-cut>",
+  "PT-CT2mm": "<patient folder>/<post-implant CT, gapped 2 mm export>",
+  "PT-CT-s3": "<patient folder>/<post-implant CT, second reconstruction>",
+  "PT-RTSTRUCT": "<patient folder>/<RTSTRUCT export folder>",
+  "PT-RTDOSE": "<patient folder>/<RTDOSE export folder>",
+  "PT-RTPLAN": "<patient folder>/<RTPLAN export folder>",
+  "PT-preMRI": "<patient folder>/<pre-operative MRI>",
+  "PT-intraMRI": "<patient folder>/<intra-operative MRI>",
+  "PT-postMRI": "<patient folder>/<post-operative MRI>"
+}

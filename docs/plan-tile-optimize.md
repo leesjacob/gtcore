@@ -454,7 +454,7 @@ notes.
   recommendation pre-filled, then runs the optimizer and drops the tiles as
   ordinary placed tiles.
 - **Test case.** The 8-tile printed phantom
-  (`C:\Users\jacob\OneDrive\Documents\3D-Printed Phantom-8tiles (223)`),
+  (`PH8`, `$GT_DATA_ROOT/<PH8>`),
   HR-CTV defined as the +5 mm shell of the cavity wall. This scan has no
   cavity mask (printed shell, no brain window); the wall is the inner
   surface of the printed shell (`meshes["body"]`, the planner's existing

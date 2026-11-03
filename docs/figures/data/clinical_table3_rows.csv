@@ -251,6 +251,6 @@ RTSTRUCT,RTSTRUCT:Cav_Post,-,volume_cc,35.1008,cc,PT-CT1mm 0.52x0.52x1.00 mm,cal
 RTSTRUCT,RTSTRUCT:CTV_GT,-,volume_cc,19.0121,cc,PT-CT1mm 0.52x0.52x1.00 mm,calibration-set,n/a
 RTSTRUCT,RTSTRUCT:Brain,-,volume_cc,1383.98,cc,PT-CT1mm 0.52x0.52x1.00 mm,calibration-set,n/a
 RTSTRUCT,RTSTRUCT:Seeds,-,volume_cc,0.356285,cc,PT-CT1mm 0.52x0.52x1.00 mm,calibration-set,n/a
-hook,-,-,gamma,available (C:\Users\jacob\Desktop\gt-worktrees\p2-clinical-followups\gtcore\dose\gamma.py),-,-,calibration-set,n/a
-hook,-,-,formalism,available (C:\Users\jacob\Desktop\gt-worktrees\p2-clinical-followups\gtcore\dose\formalism.py),-,-,calibration-set,n/a
+hook,-,-,gamma,available (gtcore/dose/gamma.py),-,-,calibration-set,n/a
+hook,-,-,formalism,available (gtcore/dose/formalism.py),-,-,calibration-set,n/a
 hook,-,-,optimizer_arm,Phase 4/5 (not run here),-,-,calibration-set,n/a

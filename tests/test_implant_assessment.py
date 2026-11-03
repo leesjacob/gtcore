@@ -33,7 +33,8 @@ def test_scattered_candidates_are_not_an_implant():
 
 
 def test_chained_bone_spots_are_not_an_implant():
-    """Proximity chains (the DOE negative-control failure mode) must not count."""
+    """Proximity chains (the failure mode once attributed to the PT-CT1mm
+    "negative control") must not count."""
     rng = np.random.default_rng(2)
     # a long chain of points ~12 mm apart along a curve, random axes:
     # single-linkage clusters them, but no 4 of them form a 10 mm quad

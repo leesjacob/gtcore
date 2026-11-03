@@ -3,7 +3,7 @@
 SimpleITK spreads N slices uniformly across the scanned extent; with missing
 slices that distorts z coordinates by up to the largest gap. The loader must
 instead place each present slice at its true ImagePositionPatient and
-interpolate the gaps (seen in practice with partially synced OneDrive
+interpolate the gaps (seen in practice with partially synced cloud-storage
 exports of the phantom and post-op scans).
 """
 from __future__ import annotations

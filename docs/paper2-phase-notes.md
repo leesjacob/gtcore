@@ -154,8 +154,9 @@ now observable (WARNING + traceback) if they ever do, and fatal under the
 flag. No handler intent was changed; nothing was loosened.
 
 Data layout note: between the first and the final JD-1mm run (2026-11-03
-00:05) the clinical folders were moved one level down into a `JohnDoe/`
-folder under `GT_DATA_ROOT` (same folder names); the phantom folders are
+00:05) the clinical folders were moved one level down into a per-patient
+sub-folder under `GT_DATA_ROOT` (same folder names; `GT_DATASETS_JSON` maps
+the dataset ids to them since Phase 5); the phantom folders are
 unchanged. Commands above take the dataset path as an argument, so only the
 path changed; the pipeline results did not.
 
@@ -262,7 +263,7 @@ Driver (no script change needed): `load_volume(path)`, then
 `scripts/validation_realdata_proxies.py --scans negatives,printed8` reports
 the same quantities.
 
-| | PH0 `CT 3D printed` (248 slices, 0.68 x 0.68 x 1.0 mm) | PH8 printed 8-tile phantom (157 slices, 0.59 x 0.59 x 1.0 mm) |
+| | PH0 (tile-less printed phantom, 248 slices, 0.68 x 0.68 x 1.0 mm) | PH8 printed 8-tile phantom (157 slices, 0.59 x 0.59 x 1.0 mm) |
 |---|---|---|
 | before `aff83c0` | 0 raw blobs, 0 seed candidates; vault_filter applied False, interior 0.0 mL; implant present False ("only 0 candidates") | 32 raw / 32 seeds; vault filter skipped (0 mL, fails open); implant confirmed (7 gate-passing quads); auto fit 8 full tiles |
 | after `fad8701` | 0 raw blobs, 0 seed candidates; `{'applied': False, 'interior_ml': 0.0, 'n_dropped': 0, 'margin_mm': 4.0}`; implant present False | 32 raw / 32 seeds; `{'applied': False, 'interior_ml': 0.0, 'n_dropped': 0, 'margin_mm': 4.0}`; implant confirmed; **8 supported full tiles, 0 tentative, 32 of 32 seeds assigned** |
@@ -560,12 +561,12 @@ That table is now historical: voxel-step growth.)
 **(b) Clinical JD-1mm vs `Cav_Post`.**
 
 ```
-python scripts/validation_clinical.py "$GT_DATA_ROOT/JohnDoe/<JD-1mm>" \
-    "$GT_DATA_ROOT/JohnDoe/<JD RT RTSTRUCT>" "$GT_DATA_ROOT/JohnDoe/<JD RT RTDOSE>"
+python scripts/validation_clinical.py "$GT_DATA_ROOT/<PT-CT1mm>" \
+    "$GT_DATA_ROOT/<PT-RTSTRUCT>" "$GT_DATA_ROOT/<PT-RTDOSE>"
 ```
 (the "before" run used the pre-move paths `$GT_DATA_ROOT/<...>`; same
 files.)  Cavity-stage runtime from
-`python scripts/cavity_reach_sweep.py --ct "$GT_DATA_ROOT/JohnDoe/<JD-1mm>" --rtstruct "$GT_DATA_ROOT/JohnDoe/<JD RT RTSTRUCT>"`
+`python scripts/cavity_reach_sweep.py --ct "$GT_DATA_ROOT/<PT-CT1mm>" --rtstruct "$GT_DATA_ROOT/<PT-RTSTRUCT>"`
 (`reconstruct(verbose=True)` stage timings; Dice identical to the
 validation script's).
 
@@ -4434,3 +4435,136 @@ Full suite at `676de0d` (`GTCORE_STRICT=1 python -m pytest -q -p no:cacheprovide
 other agents running concurrently, wall time an upper bound): **1105 passed, 15 skipped**, 15262
 warnings in 1159.89 s (0:19:19). The 15 skips are the pre-existing gates (13 interface
 placeholders, `GT_PAPER1_ENGINE`, `GT_E2E`); `tests/test_paper_tables.py` adds 11 passed.
+
+## 2026-11-03 — Phase 5 — identifier/path scrub and README (task `scrub-readme`, branch `p2/scrub-readme`)
+
+Branch `p2/scrub-readme` from `paper2/integration` `4748ccb`, with `a445cf7` merged in
+(`1e42f19`) so its new decisions entries were scrubbed too. Code commit **`fd43f32`**
+(the resolver commit `8ea0434` plus the scrub/README/check commit). No number in the
+paper changed: only identifiers, paths and README drift.
+
+### Dataset resolver (`gtcore/io/datasets.py`, new)
+
+`dataset_path(dataset_id, root=None, datasets_json=None, must_exist=True)`:
+`GT_DATA_ROOT` (required; `DatasetNotConfigured` names the variable and the remedy
+when unset), plus an optional user-local id → folder JSON (`GT_DATASETS_JSON`, else
+`<GT_DATA_ROOT>/datasets.json`; values relative to the root or absolute; `_` keys are
+comments; never committed, `datasets.json` added to `.gitignore`). An id with no
+entry resolves to the folder literally named after the id. The `JD-*` aliases and the
+localisation scripts' legacy scan keys are accepted. Template with placeholders only:
+`docs/datasets.example.json`. `python -m gtcore.io.datasets [ID ...]` prints how
+every id resolves. Exported as `gtcore.io.dataset_path` / `DatasetNotConfigured`.
+Tests: `tests/test_datasets.py` (11).
+
+Scripts switched to it (hard-coded folder maps removed; CLI flags still override):
+`scripts/validation_realdata_proxies.py` (`SCANS` = dataset ids, `--data-root`,
+`--datasets-json`; inserts its own repo root on `sys.path` now, the import trap
+noted in AGENT_COMMON), `scripts/localization_mergesplit_realdata.py`
+(`--data-root`), `scripts/validation_loc_scoring.py` (`--phantom8` default = id
+`PH8`), `scripts/localization_proxies_diag.py` (uses the proxies module). The legacy
+scan key that carried the pseudonym fragment is renamed `thincut` (cache files written under the old key are not
+picked up; rerun with `--no-cache`). `scripts/validation_spacing.py` has no data
+paths (synthetic only), so it needed no change. `scripts/validation_clinical.py`
+now writes the gamma/formalism hook location repo-relative, and the committed
+`docs/figures/data/clinical_table3_rows.csv` hook rows were edited to match
+(`gtcore/dose/gamma.py`, `gtcore/dose/formalism.py`; values otherwise unchanged).
+
+Real-data check of the resolver (private map in the session scratchpad, not
+committed; `gtcore.__file__` = this worktree): every id resolves except
+`PT-CT2mm` and `PT-RTPLAN` (not on disk, as known), and
+
+```
+GT_DATA_ROOT=<data root> GT_DATASETS_JSON=<private map> PYTHONPATH=. \
+  python scripts/validation_realdata_proxies.py --scans negatives --out <scratch> --no-cache
+```
+
+gives `PH0`: 248 slices, 0 candidates, absent (42 s); `PT-CT1mm`: 204 slices, 32
+candidates, confirmed, 6 grouped quads (32 s; upper bounds, machine shared).
+
+### Scrub
+
+Removed or replaced by dataset ids / `$GT_DATA_ROOT/<id>`: Windows profile paths,
+cloud-sync folder names, checkout folder names, the patient pseudonym in every
+spelling (folder names, DICOM `PatientName`, its three-letter shorthand), the
+superseded case-number label and its held-out script name, the phantom folder names, and DICOM
+header values copied into the notes (anonymised patient id, study/series
+descriptions, reconstruction kernel name, acquisition date and times). Historical
+notes keep their science: every measured number and every correction is unchanged;
+the mislabel history of the thin-cut ("once recorded as a pre-implant control") is
+kept and now names the scan `PT-CT1mm`. The second MRI/CT folder is described as
+"the separately delivered folder (`PT-preMRI`, `PT-intraMRI`, `PT-postMRI`,
+`PT-CT-s3`)" in `docs/paper2-decisions.md`.
+
+Files changed: `.gitignore`, `README.md`, `docs/branch-status.md` (rewritten:
+merged branches, removable worktrees, in-flight Phase 5 branches, unmerged-by-design
+branches), `docs/clinical-validation-notes.md` (title), `docs/data-notes.md`,
+`docs/datasets.example.json` (new), `docs/localization-notes.md`,
+`docs/paper2-decisions.md` (the one-patient entry: labels only),
+`docs/paper2-phase-notes.md` (four command lines, one table cell, one data-layout
+sentence), `docs/plan-tile-autogen.md`, `docs/plan-tile-optimize.md`,
+`docs/scout-continuous.md`, `docs/figures/data/clinical_table3_rows.csv` (two hook
+rows), `gtcore/io/__init__.py`, `gtcore/io/datasets.py` (new), `gtcore/pipeline.py`
+and `gtcore/seeds/detect.py` (comments), `scripts/cavity_reach_sweep.py`
+(docstring), `scripts/check_no_identifiers.py` (new),
+`scripts/localization_mergesplit_realdata.py`, `scripts/localization_proxies_diag.py`,
+`scripts/validation_clinical.py`, `scripts/validation_loc_scoring.py`,
+`scripts/validation_realdata_proxies.py`, `tests/test_datasets.py` (new),
+`tests/test_implant_assessment.py`, `tests/test_io_gaps.py` (docstrings),
+`tests/test_no_identifiers.py` (new).
+
+Not on this branch, so not scrubbed: `docs/clinical-audit-2026-10-08.md` lives only on
+the unmerged `notes/clinical-audit` branch and still names the patient folder (two
+lines); scrub it before that branch is ever merged.
+
+### Left for the coordinator (campaign-owned, allowlisted in the checker)
+
+`python scripts/check_no_identifiers.py --strict` lists them:
+
+- `scripts/validation_optimize.py:188` — `V6_PHANTOM_DIR` is a machine path with the
+  PH8 folder name (default of `--phantom`, line 2441, and `load_printed_phantom`, line
+  1828); replace with `dataset_path("PH8")` resolved at run time.
+- `scripts/validation_optimize.py:1927` — writes the absolute cache path into
+  `visible_faces_source` (`"cached mask (%s)" % vis_cache`); write it repo-relative.
+- `docs/figures/optimize/data/v6_info.json:8` — the absolute cache path that line
+  produced (machine path, cloud-sync folder).
+- `docs/optimize-notes.md:658` (PH8 folder name), `:725` and `:2315` (the same cache
+  path), `:1865` (a `gt optimize` command with the machine path and PH8 folder name).
+
+After they are scrubbed: delete `ALLOWLIST` in `scripts/check_no_identifiers.py` and
+the xfail test in `tests/test_no_identifiers.py`.
+
+### Identifier check (`scripts/check_no_identifiers.py`, new)
+
+Scans every tracked and untracked-not-ignored text file (git file list; `.git`,
+`output/` and binaries never read) for: Windows/macOS home paths, cloud-sync,
+checkout and temp folder names; the pseudonym in every spelling, its three-letter
+fragment and the superseded case-number label; the dataset folder names; the DICOM header strings of the
+clinical export (anonymised id, descriptions, kernel, acquisition date/times); vendor
+UID roots and any 7+ segment UID outside the DICOM standard root `1.2.840.10008` and
+the public synthetic root `1.2.826.0.1.3680043`. Exit 1 on a hit; `--strict` includes
+the allowlist. `tests/test_no_identifiers.py` (20 tests: the tree check, the strict
+check as a non-strict xfail until the campaign files are scrubbed, 16 positive
+patterns, the accepted forms, the allowlist behaviour).
+
+### README drift
+
+Test count (1140 collected, from the run below); one reach value (14 mm, physical mm,
+`HULL_REACH_MM`; cavity numbers updated to the Phase 1 re-measurement: 41.4 cc vs
+`Cav_Post` 35.1 cc, Dice 0.66; synthetic Dice 0.90); the "isotropic resampling" stage
+removed (the pipeline never resamples; `resample_iso` is a utility); the pre-implant
+control wording and the "clinical case 2" line replaced (one patient, no held-out
+scan, `PH0` the only negative control); new sections "Data (`GT_DATA_ROOT`,
+`GT_DATASETS_JSON`)" and "Paper 2 (Medical Physics): status, scripts, branch"
+(half-tile reading pending the operative record, TPS S–I axis convention, seed plane,
+`IMPLANT_REACH`, gamma, the ten Paper 2 scripts, `paper2/integration` and the
+`v1.0-medphys` tag); the "Paper figures" paragraph updated to the 600 dpi PNG + PDF +
+SVG output. Sections still true (planner keys, pipeline 1–2 and 5–8, dated
+validation snapshots) were not rewritten.
+
+### Test suite
+
+```
+GTCORE_STRICT=1 python -m pytest -q -p no:cacheprovider
+```
+
+on the tree of `fd43f32` (it differed only by docs: the README count and two phrases in `docs/localization-notes.md`): **`1124 passed, 15 skipped, 1 xfailed, 15262 warnings in 1165.46s (0:19:25)`** (wall clock an upper bound: other agents running). The xfail is the strict identifier check (campaign-owned files). After the commit, `python -m pytest -q tests/test_no_identifiers.py tests/test_datasets.py` was rerun at `fd43f32`: `30 passed, 1 xfailed in 3.69s`.
