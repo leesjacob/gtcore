@@ -233,10 +233,12 @@ def _extent(x_ras: np.ndarray, y_ras: np.ndarray) -> Tuple[float, float, float, 
 
 
 def ct_panel(size, hu: np.ndarray, x_ras: np.ndarray, y_ras: np.ndarray, window: str,
-             center_xy: Tuple[float, float], half_mm: float):
+             center_xy: Tuple[float, float], half_mm: float, legend_rows: int = 0):
     """Grey CT slice, fixed window, square crop, isotropic pixels, no axes,
-    radiological orientation, 10 mm scale bar.  Returns (fig, ax, crop)."""
-    fig, ax = S.image_axes(size)
+    radiological orientation, 10 mm scale bar.  ``legend_rows`` > 0 adds a
+    white band of that many legend rows BELOW the image (nothing overlays the
+    image).  Returns (fig, ax, crop)."""
+    fig, ax = S.image_axes(size, legend_rows=legend_rows)
     ext = _extent(x_ras, y_ras)
     vmin, vmax = S.set_window(window)
     ax.imshow(hu, cmap="gray", vmin=vmin, vmax=vmax, extent=ext, origin="upper",
@@ -353,17 +355,18 @@ def f3c_phantom_slice(ctx) -> Dict[str, Any]:
 
 
 # ============================================================ panels: F4(a), F5(a), F6
-def _clinical_ct(size):
+def _clinical_ct(size, legend_rows: int = 0):
     d = clinical_slice()
     cx, cy = S.CLINICAL_CROP["center_xy"]
-    return ct_panel(size, d["ct_hu"], d["x_ras"], d["y_ras"], "clinical", (cx, cy), S.CLINICAL_CROP["half_mm"])
+    return ct_panel(size, d["ct_hu"], d["x_ras"], d["y_ras"], "clinical", (cx, cy), S.CLINICAL_CROP["half_mm"],
+                    legend_rows=legend_rows)
 
 
 def f4a_seed_slice(ctx) -> Dict[str, Any]:
     """F4(a): the clinical slice (W 400 / L 40) with the TPS seed contours
     (open circles at the contour centroids), gtcore seeds (x) and any
     uncontoured source (filled diamond) within 3 mm of the slice plane."""
-    fig, ax, crop = _clinical_ct(S.SIZE["f4a"])
+    fig, ax, crop = _clinical_ct(S.SIZE["f4a"], legend_rows=1)
     rows = clinical_slice_seeds()
     tps = [r for r in rows if r["set"] == "tps_contour_centroid" and abs(fnum(r["dz_mm"])) <= F4A_NEAR_MM]
     gt = [r for r in rows if r["set"] == "gtcore_seed" and abs(fnum(r["dz_mm"])) <= F4A_NEAR_MM]
@@ -387,7 +390,7 @@ def f4a_seed_slice(ctx) -> Dict[str, Any]:
                      mfc=S.COL["gtcore"], mec="black", mew=0.5, ms=S.MS["uncontoured"], zorder=9,
                      label="uncontoured source (gtcore)")
         handles.append(h)
-    S.legend(ax, handles, [h.get_label() for h in handles], loc="lower left", on_image=True)
+    S.legend_below_image(fig, handles)
     outs = S.save_panel(fig, ctx["out"], "f4a_seed_slice")
     uncont_all = [r for r in rows if r["set"] == "gtcore_seed" and r["contoured"] != "True"]
     d = clinical_slice()
@@ -404,7 +407,7 @@ def f4a_seed_slice(ctx) -> Dict[str, Any]:
 def f5a_isodoses(ctx) -> Dict[str, Any]:
     """F5(a): the same slice with the TPS 30 / 60 Gy isodoses (black, dashed)
     and gtcore's (vermilion), and the CTV_GT outline."""
-    fig, ax, crop = _clinical_ct(S.SIZE["f5a"])
+    fig, ax, crop = _clinical_ct(S.SIZE["f5a"], legend_rows=2)
     con = clinical_contours()
     for lvl in ("3000", "6000"):
         draw_polylines(ax, con.get(("rtdose_iso", lvl), []), S.COL["tps"], S.LW["ref"], ls=(0, (3.2, 1.8)),
@@ -415,7 +418,7 @@ def f5a_isodoses(ctx) -> Dict[str, Any]:
     handles = [Line2D([], [], color=S.COL["tps"], lw=S.LW["ref"], ls=(0, (3.2, 1.8)), label="TPS 30 / 60 Gy"),
                Line2D([], [], color=S.COL["gtcore"], lw=S.LW["overlay"], label="gtcore 30 / 60 Gy"),
                Line2D([], [], color=S.COL["ctv_gt"], lw=S.LW["overlay"], label="CTV_GT")]
-    S.legend(ax, handles, [h.get_label() for h in handles], loc="upper right", on_image=True)
+    S.legend_below_image(fig, handles)
     outs = S.save_panel(fig, ctx["out"], "f5a_isodoses")
     d = clinical_slice()
     kn = {"slice_k": int(d["slice_k"]), "levels_cgy": [3000, 6000], "gtcore_field": F5_GTCORE_FIELD,
@@ -428,18 +431,20 @@ def f5a_isodoses(ctx) -> Dict[str, Any]:
 def f6_targets(ctx) -> Dict[str, Any]:
     """F6: the same slice with the cavity (Cav_Post) filled grey, the
     physician's CTV_GT filled green and the full 5 mm rind outlined (dashed)."""
-    fig, ax, crop = _clinical_ct(S.SIZE["f6"])
+    fig, ax, crop = _clinical_ct(S.SIZE["f6"], legend_rows=2)
     d = clinical_slice()
     ext = _extent(d["x_ras"], d["y_ras"])
-    mask_overlay(ax, np.asarray(d["mask_cav_post"], bool), S.COL["cavity"], S.ALPHA["cavity_fill"], ext, zorder=2)
     mask_overlay(ax, np.asarray(d["mask_ctv_gt"], bool), S.COL["ctv_gt"], S.ALPHA["ctv_fill"], ext, zorder=3)
     con = clinical_contours()
     draw_polylines(ax, con.get(("rind5_cavpost_outline", "nan"), []), S.COL["rind"], S.LW["ref"],
                    ls=(0, (3.2, 1.8)), halo_colour="white", zorder=6, min_length_mm=F6_MIN_OUTLINE_MM)
-    handles = [Patch(facecolor=S.COL["cavity"], alpha=S.ALPHA["cavity_fill"], edgecolor="none", label="cavity (Cav_Post)"),
+    draw_polylines(ax, con.get(("cav_post_outline", "nan"), []), "white", S.LW["overlay"], halo_colour="black",
+                   zorder=7, min_length_mm=F6_MIN_OUTLINE_MM)
+    handles = [Line2D([], [], color="white", lw=S.LW["overlay"], label="cavity (Cav_Post)",
+                      path_effects=S.halo(S.LW["overlay"], "black", 0.9)),
                Patch(facecolor=S.COL["ctv_gt"], alpha=S.ALPHA["ctv_fill"], edgecolor="none", label="physician's CTV_GT"),
                Line2D([], [], color=S.COL["rind"], lw=S.LW["ref"], ls=(0, (3.2, 1.8)), label="full 5 mm rind")]
-    S.legend(ax, handles, [h.get_label() for h in handles], loc="lower left", on_image=True)
+    S.legend_below_image(fig, handles)
     outs = S.save_panel(fig, ctx["out"], "f6_target_definition")
     kn = {"slice_k": int(d["slice_k"]), "window": "W 400 / L 40", "crop": S.CLINICAL_CROP}
     for pref, lab in (("HRCTV_PHYS", "ctv_gt"), ("RIND5(Cav_Post", "rind5_cavpost"), ("IMPLANT_REACH(r=10", "reach10")):
@@ -447,7 +452,9 @@ def f6_targets(ctx) -> Dict[str, Any]:
         kn[lab + "_D90_cGy_rtdose"] = table3_value(pref, "RTDOSE", "D90")
         kn[lab + "_D90_cGy_gtcore32"] = table3_value(pref, "gtcore@32 gtcore seeds", "D90")
     kn["cav_post_volume_cc"] = table3_value("RTSTRUCT", "-", "volume_cc")
-    return {"outputs": outs, "key_numbers": kn, "note": "fills are the CT-grid masks (pixel exact); the rind outline is the committed polyline"}
+    return {"outputs": outs, "key_numbers": kn,
+            "note": "CTV_GT fill = the CT-grid mask (pixel exact); Cav_Post and the full rind are the committed outlines "
+                    "(islands < %g mm, voxel specks at the Brain clip, not drawn)" % F6_MIN_OUTLINE_MM}
 
 
 # ============================================================ panels: F5(b) DVH
@@ -599,27 +606,46 @@ def half_tile_sheets(c0: np.ndarray, c1: np.ndarray, cavity_center: np.ndarray, 
 
 
 def tile_colour_list(n_tiles: int, degraded: Sequence[bool]) -> List[str]:
-    """Fixed palette order; the attention colour (vermilion, last) goes to a
-    degraded (crumpled) tile first, otherwise to the 8th tile."""
-    base = [c for c in S.TILE_COLOURS if c != S.OI["vermilion"]]
-    out = [""] * n_tiles
-    k = 0
+    """Fixed palette order (_figstyle.TILE_COLOURS, never cycled, no grey:
+    grey is the cavity); the attention colour vermilion goes to a degraded
+    (crumpled) tile."""
+    base = list(S.TILE_COLOURS)
+    out, k = [], 0
     for i in range(n_tiles):
         if degraded[i]:
-            out[i] = S.OI["vermilion"]
-    for i in range(n_tiles):
-        if not out[i]:
-            out[i] = base[k] if k < len(base) else S.OI["vermilion"]
+            out.append(S.OI["vermilion"])
+        else:
+            out.append(base[k % len(base)])
             k += 1
     return out
+
+
+def _darken(colour: str, f: float = 0.55) -> Tuple[float, float, float]:
+    from matplotlib.colors import to_rgb
+    r, g, b = to_rgb(colour)
+    return (r * f, g * f, b * f)
+
+
+def smooth_mesh(pv, vertices: np.ndarray, faces: np.ndarray, n_iter: int = S.RENDER["mesh_smooth_iter"],
+                pass_band: float = S.RENDER["mesh_smooth_pass_band"]):
+    """Display smoothing of a marching-cubes mesh: Taubin (windowed-sinc
+    low-pass, volume-preserving), then point normals for soft shading.  The
+    committed geometry is not changed; only what is drawn."""
+    pd = _polydata(pv, vertices, faces).clean()
+    if n_iter > 0:
+        pd = pd.smooth_taubin(n_iter=n_iter, pass_band=pass_band, boundary_smoothing=False)
+    return pd.compute_normals(auto_orient_normals=False, consistent_normals=True, split_vertices=False)
 
 
 def render_scene(camera: Dict[str, Sequence[float]], mesh: Optional[Tuple[np.ndarray, np.ndarray]],
                  tiles: Sequence[Dict[str, Any]], seeds: Sequence[Dict[str, Any]],
                  mesh_opacity: float = S.RENDER["mesh_opacity"], eligible: Optional[np.ndarray] = None,
-                 window=S.RENDER["window_px"]) -> np.ndarray:
-    """Off-screen render.  ``tiles``: dicts with tissue, cavity (n*n, 3),
-    n, colour, highlight; ``seeds``: dicts with centers, axes, colour."""
+                 window=S.RENDER["window_px"], smooth: bool = True, culling: Optional[str] = "default") -> np.ndarray:
+    """Off-screen render.  ``tiles``: dicts with tissue (n*n, 3), n, colour,
+    highlight; ``seeds``: dicts with centers, axes, colour.  The context mesh
+    is display-smoothed, drawn with its front faces culled (the camera looks
+    at the wall behind) and only its true silhouette outlined; tiles are
+    translucent sheets with a darker edge of their own hue, depth-peeled."""
     pv = _pv()
     pl = pv.Plotter(off_screen=True, window_size=list(window), lighting="three lights")
     pl.set_background("white")
@@ -628,29 +654,27 @@ def render_scene(camera: Dict[str, Sequence[float]], mesh: Optional[Tuple[np.nda
     except Exception:
         pass
     pl.enable_parallel_projection()
+    sil = {"color": S.RENDER["silhouette_colour"], "line_width": S.RENDER["silhouette_lw"]}
     if mesh is not None:
-        pd = _polydata(pv, *mesh)
+        pd = smooth_mesh(pv, *mesh) if smooth else _polydata(pv, *mesh)
+        kw = dict(opacity=mesh_opacity, smooth_shading=True, specular=0.05, ambient=0.35, diffuse=0.7,
+                  culling=camera.get("mesh_culling", S.RENDER["mesh_culling"]) if culling == "default" else culling,
+                  silhouette=sil)
         if eligible is not None and len(eligible) == pd.n_cells:
             pd.cell_data["eligible"] = np.asarray(eligible, float)
             pl.add_mesh(pd, scalars="eligible", cmap=[S.COL["mesh"], S.COL["mesh_eligible"]], clim=[0, 1],
-                        opacity=mesh_opacity, smooth_shading=True, show_scalar_bar=False, specular=0.15,
-                        culling=S.RENDER["mesh_culling"],
-                        silhouette={"color": "#606060", "line_width": S.RENDER["silhouette_lw"]})
+                        show_scalar_bar=False, **kw)
         else:
-            pl.add_mesh(pd, color=S.COL["mesh"], opacity=mesh_opacity, smooth_shading=True, specular=0.15,
-                        culling=S.RENDER["mesh_culling"],
-                        silhouette={"color": "#606060", "line_width": S.RENDER["silhouette_lw"]})
+            pl.add_mesh(pd, color=S.COL["mesh"], **kw)
     for t in tiles:
-        if S.RENDER.get("tile_style", "sheet") == "slab":
-            surf = _slab(pv, t["tissue"], t["cavity"], t["n"])
-        else:   # one translucent sheet: the tile's tissue face (the collagen on the wall)
-            surf = _polydata(pv, t["tissue"], _grid_faces(t["n"]))
-        op = t.get("opacity", 0.85 if t.get("highlight") else S.RENDER["tile_opacity"])
-        pl.add_mesh(surf, color=t["colour"], opacity=op,
-                    smooth_shading=True, specular=0.1, ambient=0.25)
+        surf = _polydata(pv, t["tissue"], _grid_faces(t["n"]))
+        hl = bool(t.get("highlight"))
+        op = t.get("opacity", S.RENDER["tile_opacity_highlight"] if hl else S.RENDER["tile_opacity"])
+        pl.add_mesh(surf, color=t["colour"], opacity=op, smooth_shading=True, specular=0.0 if hl else 0.1,
+                    ambient=0.15 if hl else 0.3, diffuse=0.6 if hl else 0.75)
         edges = _sheet_edges(pv, t["tissue"], t["n"])
-        pl.add_mesh(edges, color="black" if t.get("highlight") else t["colour"],
-                    line_width=4.0 if t.get("highlight") else 2.0, render_lines_as_tubes=True)
+        pl.add_mesh(edges, color=(0.08, 0.08, 0.08) if hl else _darken(t["colour"]),
+                    line_width=S.RENDER["tile_edge_lw"] * (1.8 if hl else 1.0), render_lines_as_tubes=True)
     for sd in seeds:
         L, D = float(sd.get("length", 4.5)), float(sd.get("diameter", 0.8))
         for c, a in zip(sd["centers"], sd["axes"]):
@@ -663,12 +687,30 @@ def render_scene(camera: Dict[str, Sequence[float]], mesh: Optional[Tuple[np.nda
     pl.camera.parallel_scale = float(camera["parallel_scale"])
     pl.camera_set = True
     try:
-        pl.enable_depth_peeling(number_of_peels=12)
+        pl.enable_depth_peeling(number_of_peels=16, occlusion_ratio=0.0)
     except Exception:
         pass
     img = pl.screenshot(None, return_img=True, transparent_background=False)
     pl.close()
     return np.asarray(img)
+
+
+def fit_camera(direction: Sequence[float], points: np.ndarray, margin: float = 1.08,
+               distance: float = 150.0, view_up=(0.0, 0.0, 1.0)) -> Dict[str, Any]:
+    """Parallel camera looking along -``direction`` that frames ``points``
+    (screen-space bounding box centred, half-size * margin).  Used once to
+    derive the stored cameras in _figstyle.CAMERA (never at render time)."""
+    v = -np.asarray(direction, float)
+    v /= np.linalg.norm(v)
+    up = np.asarray(view_up, float) - v * np.dot(view_up, v)
+    up /= np.linalg.norm(up)
+    r = np.cross(v, up)
+    c0 = points.mean(axis=0)
+    x, y = (points - c0) @ r, (points - c0) @ up
+    fp = c0 + 0.5 * (x.min() + x.max()) * r + 0.5 * (y.min() + y.max()) * up
+    half = 0.5 * max(np.ptp(x), np.ptp(y)) * margin
+    return {"focal_point": tuple(np.round(fp, 1)), "position": tuple(np.round(fp - distance * v, 1)),
+            "view_up": tuple(view_up), "parallel_scale": round(float(half), 1)}
 
 
 def _npz(path: str) -> Dict[str, Any]:
@@ -791,12 +833,20 @@ def f8b_optimized_3d(ctx) -> Dict[str, Any]:
 
 def f4c_phantom_3d(ctx) -> Dict[str, Any]:
     """F4(c): PH8 -- the 32 seeds and the 8 fitted sheets (count-free fit),
-    the crumpled tile highlighted (vermilion, black edge); no mesh."""
+    the crumpled tile highlighted (vermilion, black edge), on the registered
+    tile-less twin's printed wall (translucent grey, cropped to the implant)."""
     d = _npz(dpath("f4c_phantom_implant.npz"))
     tiles, leftover, info = _implant_tiles(d, "auto")
-    img = render_scene(S.CAMERA["phantom"], None, tiles, _seed_groups(d, leftover))
+    wall_p = dpath("f4c_phantom_wall.npz")
+    mesh, mesh_note = None, "none (f4c_phantom_wall.npz missing: run scripts/export_phantom_wall.py)"
+    if os.path.exists(wall_p):
+        w = _npz(wall_p)
+        mesh = (w["wall_crop_vertices"], w["wall_crop_faces"])
+        mesh_note = "registered PH0 wall (phantom_wall_and_cavity), cropped to the implant region"
+    img = render_scene(S.CAMERA["phantom"], mesh, tiles, _seed_groups(d, leftover),
+                       mesh_opacity=S.RENDER["phantom_mesh_opacity"])
     outs = S.save_raster_panel(img, ctx["out"], "f4c_phantom_implant", S.RENDER["panel_in"])
-    info.update({"mode": "auto", "mesh": "none (the PH8 body shell includes the tiles; no cavity mesh in the NPZ)",
+    info.update({"mode": "auto", "mesh": mesh_note,
                  "camera": S.CAMERA["phantom"],
                  "fold_deg": [round(float(x), 1) for x in d["auto_tile_fold_deg"]],
                  "bent_rms_mm": [round(float(x), 2) for x in d["auto_tile_bent_rms_mm"]]})
@@ -1012,7 +1062,7 @@ PANELS: List[Tuple[str, str, Callable, List[str]]] = [
     ("f3c", "F3", f3c_phantom_slice, [dpath("f3c_phantom_slice.npz"), dpath("f4c_phantom_implant.npz")]),
     ("f4a", "F4", f4a_seed_slice, [dpath("clinical_slice.npz"), dpath("clinical_slice_seeds.csv")]),
     ("f4b", "F4", f4b_patient_3d, [dpath("f4b_patient_implant.npz")]),
-    ("f4c", "F4", f4c_phantom_3d, [dpath("f4c_phantom_implant.npz")]),
+    ("f4c", "F4", f4c_phantom_3d, [dpath("f4c_phantom_implant.npz"), dpath("f4c_phantom_wall.npz")]),
     ("f5a", "F5", f5a_isodoses, [dpath("clinical_slice.npz"), dpath("clinical_slice_contours.csv"),
                                  dpath("clinical_table3_rows.csv")]),
     ("f5b", "F5", f5b_dvh, [dpath("clinical_dvh_hrctv.csv"), dpath("f5b_dvh_band.csv"), dpath("uncertainty_d90_v100.csv")]),

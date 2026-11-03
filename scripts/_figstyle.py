@@ -29,7 +29,7 @@ __all__ = [
     "OI", "COL", "TILE_COLOURS", "LW", "MS", "FONT", "SIZE", "DPI",
     "CT_WINDOW", "CLINICAL_CROP", "PHANTOM_CROP", "CAMERA", "RENDER",
     "DVH_AXES", "apply_style", "halo", "add_scale_bar", "save_panel",
-    "image_axes", "chart_axes", "legend", "set_window",
+    "image_axes", "chart_axes", "legend", "legend_below_image", "set_window",
 ]
 
 # ---------------------------------------------------------------- palette
@@ -59,12 +59,12 @@ COL: Dict[str, str] = {
 }
 # tile sheets: one colour per tile, FIXED order, never cycled; the same list
 # for the implanted and the optimized configuration.  Vermilion is the
-# attention colour (leftover seeds; the crumpled phantom tile) and comes
-# last, so a 6-tile implant never uses it.
-TILE_COLOURS: List[str] = [OI["orange"], OI["sky"], OI["green"], OI["blue"],
-                           OI["purple"], OI["yellow"], OI["midgrey"], OI["vermilion"]]
-ALPHA = {"cavity_fill": 0.60, "ctv_fill": 0.45, "band": 0.20, "tile": 0.55,
-         "mesh": 0.45, "legend_box": 0.85}
+# attention colour (leftover seeds; the crumpled phantom tile): it is not in
+# the list and goes only to a degraded tile; grey is reserved for the cavity.
+TILE_COLOURS: List[str] = [OI["orange"], OI["sky"], OI["green"], OI["yellow"], OI["blue"],
+                           OI["purple"], "#882255"]   # 7th: Tol "wine"; no grey (grey is the cavity); vermilion = degraded tile
+ALPHA = {"cavity_fill": 0.60, "ctv_fill": 0.45, "band": 0.20, "tile": 0.75,
+         "mesh": 0.30, "legend_box": 0.85}
 
 # ---------------------------------------------------------------- lines, markers, fonts
 LW = {"data": 1.0, "ref": 0.8, "overlay": 0.9, "spine": 0.6, "tick": 0.6,
@@ -90,8 +90,10 @@ SIZE: Dict[str, Tuple[float, float]] = {
     "s5_dvh3": (3.7, 2.8),
 }
 # 3-D renders: square window, >= 2400 px on the long side (off-screen, SSAA)
-RENDER = {"window_px": (2400, 2400), "panel_in": 3.3, "tile_style": "sheet", "mesh_culling": "front", "mesh_opacity": ALPHA["mesh"],
-          "tile_opacity": ALPHA["tile"], "silhouette_lw": 1.5}
+RENDER = {"window_px": (2400, 2400), "panel_in": 3.3, "mesh_culling": "front",
+          "mesh_opacity": ALPHA["mesh"], "tile_opacity": ALPHA["tile"], "tile_opacity_highlight": 0.92, "tile_edge_lw": 3.0,
+          "silhouette_lw": 2.0, "silhouette_colour": "#7A7A7A",
+          "mesh_smooth_iter": 40, "mesh_smooth_pass_band": 0.05, "phantom_mesh_opacity": 0.25}
 
 # ---------------------------------------------------------------- CT display
 # window / level in HU; vmin = L - W/2, vmax = L + W/2
@@ -109,22 +111,20 @@ SCALE_BAR_MM = 10.0
 # ---------------------------------------------------------------- cameras (RAS mm)
 # One stored camera per cavity: every render of the same cavity uses the same
 # position / focal point / view-up / parallel scale (parallel projection).
-# patient: the implant lines the right (+x) wall of the cavity (seed centroid
-# minus cavity centre = (+5.4, +0.5, -0.3) mm).  The camera looks INTO the
-# cavity from the left-superior side (direction (-0.8, -0.1, 0.6) from the focal
-# point) and the cavity mesh is drawn with its front faces culled, so the
-# implant is seen on the far wall without a layer of mesh in front of it.
-# phantom (F4c): no cavity mesh (the PH8 body shell is the printed object
-# including the tiles, not a cavity); the 8 tiles seen from posterior-superior.
+# Stored cameras, derived once with paper_figures.fit_camera (screen-space
+# bounding box of the tile sheets + seeds, centred; parallel scale = half-size
+# x margin), so the renders are cropped to the IMPLANT, not to the mesh.
+# patient (F4b, F8a, F8b): the camera looks into the cavity from the left
+# (direction (-0.995, 0, 0.10) from the focal point, margin 1.12) at the
+# implant on the right wall; the cavity mesh is display-smoothed, its front
+# faces culled, so the far wall is behind the tiles and nothing is in front.
+# phantom (F4c): posterior-superior view of the tiles on the printed wall
+# (registered PH0 wall, cropped to the implant region; no culling).
 CAMERA: Dict[str, Dict[str, Sequence[float]]] = {
-    # focal points centre the screen-space bounding box of everything drawn
-    # (cavity meshes + sheets + seeds for the patient; sheets + seeds for PH8)
-    "patient": {"focal_point": (26.7, 212.3, -512.7),
-                "position": (-92.7, 197.4, -423.1),     # focal + 150 mm * unit(-0.8, -0.1, 0.6)
-                "view_up": (0.0, 0.0, 1.0), "parallel_scale": 33.0},
-    "phantom": {"focal_point": (-16.8, -193.3, -619.0),
-                "position": (-46.9, -297.2, -515.1),    # focal + 150 mm * unit(-0.2, -0.69, 0.69)
-                "view_up": (0.0, 0.0, 1.0), "parallel_scale": 29.0},
+    "patient": {"focal_point": (26.5, 210.7, -513.2), "position": (-122.8, 210.7, -498.3),
+                "view_up": (0.0, 0.0, 1.0), "parallel_scale": 27.7, "mesh_culling": "front"},
+    "phantom": {"focal_point": (-16.6, -192.7, -619.7), "position": (-46.8, -296.6, -515.8),
+                "view_up": (0.0, 0.0, 1.0), "parallel_scale": 28.3, "mesh_culling": None},
 }
 
 # ---------------------------------------------------------------- DVH axes
@@ -177,13 +177,31 @@ def set_window(kind: str) -> Tuple[float, float]:
     return l - w / 2.0, l + w / 2.0
 
 
-def image_axes(size: Tuple[float, float]):
-    """A figure whose single axes fills it entirely (CT slice panels)."""
-    fig = plt.figure(figsize=size)
-    ax = fig.add_axes([0.0, 0.0, 1.0, 1.0])
+LEGEND_ROW_IN = 0.165      # height of one legend row below a slice image (7 pt text)
+LEGEND_PAD_IN = 0.07
+
+
+def image_axes(size: Tuple[float, float], legend_rows: int = 0):
+    """A figure whose image axes fills its width (CT slice panels); with
+    ``legend_rows`` > 0 a white band below the image holds the legend, so no
+    legend ever overlays the image."""
+    w, h = size
+    band = (LEGEND_ROW_IN * legend_rows + LEGEND_PAD_IN) if legend_rows else 0.0
+    fig = plt.figure(figsize=(w, h + band))
+    ax = fig.add_axes([0.0, band / (h + band), 1.0, h / (h + band)])
     ax.set_axis_off()
     ax.set_aspect("equal")
+    fig._gt_legend_band = band
     return fig, ax
+
+
+def legend_below_image(fig, handles, ncol: int = 2):
+    """One shared layout for the slice panels: legend centred in the band
+    below the image, frameless, at most ``ncol`` entries per row."""
+    labels = [h.get_label() for h in handles]
+    return fig.legend(handles, labels, loc="lower center", bbox_to_anchor=(0.5, 0.0), ncol=min(ncol, len(handles)),
+                      frameon=False, fontsize=FONT["legend"], handlelength=1.6, handletextpad=0.5,
+                      columnspacing=1.2, borderaxespad=0.15, borderpad=0.15, labelspacing=0.25)
 
 
 def chart_axes(size: Tuple[float, float], nrows: int = 1, sharex: bool = False):
