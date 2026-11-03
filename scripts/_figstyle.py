@@ -63,13 +63,13 @@ COL: Dict[str, str] = {
 # last, so a 6-tile implant never uses it.
 TILE_COLOURS: List[str] = [OI["orange"], OI["sky"], OI["green"], OI["blue"],
                            OI["purple"], OI["yellow"], OI["midgrey"], OI["vermilion"]]
-ALPHA = {"cavity_fill": 0.60, "ctv_fill": 0.45, "band": 0.20, "tile": 0.45,
-         "mesh": 0.50, "legend_box": 0.85}
+ALPHA = {"cavity_fill": 0.60, "ctv_fill": 0.45, "band": 0.20, "tile": 0.55,
+         "mesh": 0.45, "legend_box": 0.85}
 
 # ---------------------------------------------------------------- lines, markers, fonts
 LW = {"data": 1.0, "ref": 0.8, "overlay": 0.9, "spine": 0.6, "tick": 0.6,
       "grid": 0.3, "halo_extra": 0.9, "rx": 0.6}
-MS = {"chart": 3.5, "tps_circle": 6.5, "gtcore_x": 5.5, "uncontoured": 6.0,
+MS = {"chart": 3.5, "tps_circle": 8.0, "gtcore_x": 4.5, "uncontoured": 6.0,
       "phantom_circle": 7.0}
 FONT = {"family": "Arial", "fallback": ["Liberation Sans", "DejaVu Sans"],
         "axis": 8, "tick": 8, "legend": 7, "title": 9, "scalebar": 7}
@@ -90,7 +90,7 @@ SIZE: Dict[str, Tuple[float, float]] = {
     "s5_dvh3": (3.7, 2.8),
 }
 # 3-D renders: square window, >= 2400 px on the long side (off-screen, SSAA)
-RENDER = {"window_px": (2400, 2400), "panel_in": 3.3, "mesh_opacity": ALPHA["mesh"],
+RENDER = {"window_px": (2400, 2400), "panel_in": 3.3, "tile_style": "sheet", "mesh_culling": "front", "mesh_opacity": ALPHA["mesh"],
           "tile_opacity": ALPHA["tile"], "silhouette_lw": 1.5}
 
 # ---------------------------------------------------------------- CT display
@@ -98,8 +98,9 @@ RENDER = {"window_px": (2400, 2400), "panel_in": 3.3, "mesh_opacity": ALPHA["mes
 CT_WINDOW = {"clinical": (400.0, 40.0), "phantom": (1000.0, 0.0)}
 # the one crop shared by F4a, F5a, F6 (square, RAS mm, centred on the cavity:
 # Cav_Post bbox on slice k = 117 is x 7..55, y 188..229; the 30 Gy isodose and
-# the full rind reach y ~ 243 / x ~ -2, so the half-width is 38 mm).
-CLINICAL_CROP = {"center_xy": (31.0, 208.5), "half_mm": 38.0}
+# the full rind reach y ~ 243 / x ~ -2; half-width 42 mm leaves the corners
+# free for the legend and the scale bar).
+CLINICAL_CROP = {"center_xy": (31.0, 209.5), "half_mm": 42.0}
 # phantom slice crop (F3c): centred on the PH8 seed centroid (x, y); set by
 # the export helper from the seeds and stored in the NPZ, this is the fallback
 PHANTOM_CROP = {"half_mm": 36.0}
@@ -108,16 +109,22 @@ SCALE_BAR_MM = 10.0
 # ---------------------------------------------------------------- cameras (RAS mm)
 # One stored camera per cavity: every render of the same cavity uses the same
 # position / focal point / view-up / parallel scale (parallel projection).
-# patient: the implant sits on the right-anterior wall (seed centroid minus
-# cavity centre = (+5.4, +0.5, -0.3)); the camera looks at that wall from
-# outside, slightly from above (the surgeon's side is the craniotomy).
+# patient: the implant lines the right (+x) wall of the cavity (seed centroid
+# minus cavity centre = (+5.4, +0.5, -0.3) mm).  The camera looks INTO the
+# cavity from the left-superior side (direction (-0.8, -0.1, 0.6) from the focal
+# point) and the cavity mesh is drawn with its front faces culled, so the
+# implant is seen on the far wall without a layer of mesh in front of it.
+# phantom (F4c): no cavity mesh (the PH8 body shell is the printed object
+# including the tiles, not a cavity); the 8 tiles seen from posterior-superior.
 CAMERA: Dict[str, Dict[str, Sequence[float]]] = {
-    "patient": {"focal_point": (28.5, 208.0, -511.0),
-                "position": (28.5 + 120.0 * 0.68, 208.0 + 120.0 * 0.62, -511.0 + 120.0 * 0.39),
-                "view_up": (0.0, 0.0, 1.0), "parallel_scale": 38.0},
-    "phantom": {"focal_point": (-15.0, -198.0, -623.0),
-                "position": (-15.0 + 150.0 * 0.80, -198.0 + 150.0 * 0.40, -623.0 + 150.0 * 0.45),
-                "view_up": (0.0, 0.0, 1.0), "parallel_scale": 36.0},
+    # focal points centre the screen-space bounding box of everything drawn
+    # (cavity meshes + sheets + seeds for the patient; sheets + seeds for PH8)
+    "patient": {"focal_point": (26.7, 212.3, -512.7),
+                "position": (-92.7, 197.4, -423.1),     # focal + 150 mm * unit(-0.8, -0.1, 0.6)
+                "view_up": (0.0, 0.0, 1.0), "parallel_scale": 33.0},
+    "phantom": {"focal_point": (-16.8, -193.3, -619.0),
+                "position": (-46.9, -297.2, -515.1),    # focal + 150 mm * unit(-0.2, -0.69, 0.69)
+                "view_up": (0.0, 0.0, 1.0), "parallel_scale": 29.0},
 }
 
 # ---------------------------------------------------------------- DVH axes
@@ -217,7 +224,8 @@ def legend(ax, handles=None, labels=None, loc: str = "lower left", on_image: boo
     it sits on a CT slice (so it stays legible on grey)."""
     args = dict(loc=loc, fontsize=FONT["legend"], frameon=on_image, borderpad=0.5)
     if on_image:
-        args.update(framealpha=ALPHA["legend_box"], facecolor="white", edgecolor="none",
+        args.update(framealpha=0.92, facecolor="white", edgecolor="none", handlelength=1.4,
+                    borderaxespad=0.15, borderpad=0.4,
                     fancybox=False)
     args.update(kw)
     if handles is not None:

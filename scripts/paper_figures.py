@@ -64,6 +64,7 @@ F5_BAND = ("residual", "gtcore32")       # f5b_dvh_band.csv: the primary band
 F4_TILE_MODE_DEFAULT = "auto"            # F4(b)/F8(a): 'auto' = 6 sheets + 8 leftover seeds; 'count_6full_4half'
 F2C_CONFIGS = (("flat", 0.0, 0.0), ("conformed", 1.0 / 17.0, 1.0 / 17.0), ("folded", 0.35, 0.0))
 F3C_NEAR_MM = 1.5
+F6_MIN_OUTLINE_MM = 4.0                  # F6: rind outline islands shorter than this (voxel specks at the clip) not drawn
 F4A_NEAR_MM = 3.0
 GAMMA_MAP_FILE = "gamma_map_slice_gtcore_3pct_2mm_global.npz"
 S4_FILE = os.path.join(OPT_DATA_DIR, "v2_summary.csv")
@@ -254,9 +255,12 @@ def ct_panel(size, hu: np.ndarray, x_ras: np.ndarray, y_ras: np.ndarray, window:
 
 
 def draw_polylines(ax, polys: Sequence[np.ndarray], colour: str, lw: float, ls: str = "-",
-                   halo_colour: str = "black", zorder: int = 5, closed: bool = True):
+                   halo_colour: str = "black", zorder: int = 5, closed: bool = True,
+                   min_length_mm: float = 0.0):
     for p in polys:
         if len(p) < 2:
+            continue
+        if min_length_mm > 0 and np.sum(np.linalg.norm(np.diff(p, axis=0), axis=1)) < min_length_mm:
             continue
         q = np.vstack([p, p[:1]]) if closed and not np.allclose(p[0], p[-1]) else p
         ax.plot(q[:, 0], q[:, 1], color=colour, lw=lw, ls=ls, zorder=zorder,
@@ -284,43 +288,39 @@ def f2c_deform(ctx) -> Dict[str, Any]:
     from gtcore.tiles.model import TilePose6
 
     n_grid = 11
-    spacing = 32.0
     fig = plt.figure(figsize=S.SIZE["f2c"])
-    ax = fig.add_axes([0, 0, 1, 1], projection="3d")
-    ax.set_proj_type("ortho")
-    ax.view_init(elev=26, azim=-62)
-    ax.set_axis_off()
     pose = TilePose6(R=np.eye(3), t=np.zeros(3), kind="full")
     key_numbers: Dict[str, Any] = {}
     half_len = float(G.SEED_LENGTH_MM) / 2.0
     for idx, (name, k1, k2) in enumerate(F2C_CONFIGS):
+        ax = fig.add_axes([idx / 3.0, 0.0, 1.0 / 3.0, 1.0], projection="3d")
+        ax.set_proj_type("ortho")
+        ax.view_init(elev=28, azim=-60)
+        ax.set_axis_off()
         params = DeformParams(kappa1=k1, kappa2=k2, psi=0.0)
-        off = np.array([(idx - 1) * spacing, 0.0, 0.0])
-        tissue = deformed_surface_grid(pose, params, n=n_grid, offset_mm=-G.SEED_PLANE_OFFSET_MM) + off
+        tissue = deformed_surface_grid(pose, params, n=n_grid, offset_mm=-G.SEED_PLANE_OFFSET_MM)
         G3 = tissue.reshape(n_grid, n_grid, 3)
-        ax.plot_surface(G3[..., 0], G3[..., 1], G3[..., 2], color=S.COL["sheet"], alpha=0.22,
+        ax.plot_surface(G3[..., 0], G3[..., 1], G3[..., 2], color=S.COL["sheet"], alpha=0.25,
                         linewidth=0, antialiased=True, shade=False, zorder=1)
         for r in range(n_grid):
-            ax.plot(G3[r, :, 0], G3[r, :, 1], G3[r, :, 2], color=S.COL["sheet"], lw=0.55, zorder=2)
-            ax.plot(G3[:, r, 0], G3[:, r, 1], G3[:, r, 2], color=S.COL["sheet"], lw=0.55, zorder=2)
-        seeds = deformed_seed_points(pose, params) + off
+            ax.plot(G3[r, :, 0], G3[r, :, 1], G3[r, :, 2], color=S.COL["sheet"], lw=0.5, zorder=2)
+            ax.plot(G3[:, r, 0], G3[:, r, 1], G3[:, r, 2], color=S.COL["sheet"], lw=0.5, zorder=2)
+        seeds = deformed_seed_points(pose, params)
         axes = deformed_seed_axes(pose, params)
         for c, a in zip(seeds, axes):
             p0, p1 = c - half_len * a, c + half_len * a
-            ax.plot([p0[0], p1[0]], [p0[1], p1[1]], [p0[2], p1[2]], color=S.COL["seed"], lw=3.2,
+            ax.plot([p0[0], p1[0]], [p0[1], p1[1]], [p0[2], p1[2]], color=S.COL["seed"], lw=2.6,
                     solid_capstyle="round", zorder=10)
-        # side chords of the 2 x 2 seed grid (what the bent sheet contracts)
-        sp = seeds - off
-        d = np.linalg.norm(sp[:, None] - sp[None], axis=2)
+        ax.set_xlim(-11, 11)
+        ax.set_ylim(-11, 11)
+        ax.set_zlim(-7, 9)
+        ax.set_box_aspect((22, 22, 16), zoom=1.02)
+        d = np.linalg.norm(seeds[:, None] - seeds[None], axis=2)
         sides = sorted(d[np.triu_indices(4, 1)])[:4]
         key_numbers[name] = {"kappa1_per_mm": k1, "kappa2_per_mm": k2,
                              "fold_deg": params.fold_deg, "bending_energy": params.bending_energy,
-                             "seed_chords_mm": [round(float(s), 2) for s in sides],
+                             "seed_chords_mm": [round(float(x), 2) for x in sides],
                              "chord_formula_mm": round(10.0 / (1.0 + G.SEED_PLANE_OFFSET_MM * max(k1, k2)), 2)}
-    ax.set_xlim(-spacing - 14, spacing + 14)
-    ax.set_ylim(-14, 14)
-    ax.set_zlim(-6, 10)
-    ax.set_box_aspect((2 * spacing + 28, 28, 16), zoom=2.1)
     outs = S.save_panel(fig, ctx["out"], "f2c_tile_model")
     return {"outputs": outs, "key_numbers": key_numbers,
             "note": "gtcore.tiles.deform on an ideal pose; tissue-face wireframe at -3 mm, seeds on the seed sheet; "
@@ -372,9 +372,11 @@ def f4a_seed_slice(ctx) -> Dict[str, Any]:
     gt_u = [r for r in gt if r["contoured"] != "True"]
     handles = []
     if tps:
-        h, = ax.plot([fnum(r["x_ras"]) for r in tps], [fnum(r["y_ras"]) for r in tps], ls="none", marker="o",
-                     mfc="none", mec=S.COL["tps"], mew=S.LW["overlay"], ms=S.MS["tps_circle"], zorder=7,
-                     path_effects=S.halo(S.LW["overlay"], "white", 0.8), label="TPS seed contour")
+        xs, ys = [fnum(r["x_ras"]) for r in tps], [fnum(r["y_ras"]) for r in tps]
+        ax.plot(xs, ys, ls="none", marker="o", mfc="none", mec="white", mew=S.LW["overlay"] + 1.0,
+                ms=S.MS["tps_circle"], zorder=6, alpha=0.9)
+        h, = ax.plot(xs, ys, ls="none", marker="o", mfc="none", mec=S.COL["tps"], mew=S.LW["overlay"],
+                     ms=S.MS["tps_circle"], zorder=7, label="TPS seed contour")
         handles.append(h)
     if gt_c:
         h, = ax.plot([fnum(r["x_ras"]) for r in gt_c], [fnum(r["y_ras"]) for r in gt_c], ls="none", marker="x",
@@ -414,7 +416,7 @@ def f5a_isodoses(ctx) -> Dict[str, Any]:
     handles = [Line2D([], [], color=S.COL["tps"], lw=S.LW["ref"], ls=(0, (3.2, 1.8)), label="TPS 30 / 60 Gy"),
                Line2D([], [], color=S.COL["gtcore"], lw=S.LW["overlay"], label="gtcore 30 / 60 Gy"),
                Line2D([], [], color=S.COL["ctv_gt"], lw=S.LW["overlay"], label="CTV_GT")]
-    S.legend(ax, handles, [h.get_label() for h in handles], loc="lower left", on_image=True)
+    S.legend(ax, handles, [h.get_label() for h in handles], loc="upper right", on_image=True)
     outs = S.save_panel(fig, ctx["out"], "f5a_isodoses")
     d = clinical_slice()
     kn = {"slice_k": int(d["slice_k"]), "levels_cgy": [3000, 6000], "gtcore_field": F5_GTCORE_FIELD,
@@ -434,7 +436,7 @@ def f6_targets(ctx) -> Dict[str, Any]:
     mask_overlay(ax, np.asarray(d["mask_ctv_gt"], bool), S.COL["ctv_gt"], S.ALPHA["ctv_fill"], ext, zorder=3)
     con = clinical_contours()
     draw_polylines(ax, con.get(("rind5_cavpost_outline", "nan"), []), S.COL["rind"], S.LW["ref"],
-                   ls=(0, (3.2, 1.8)), halo_colour="white", zorder=6)
+                   ls=(0, (3.2, 1.8)), halo_colour="white", zorder=6, min_length_mm=F6_MIN_OUTLINE_MM)
     handles = [Patch(facecolor=S.COL["cavity"], alpha=S.ALPHA["cavity_fill"], edgecolor="none", label="cavity (Cav_Post)"),
                Patch(facecolor=S.COL["ctv_gt"], alpha=S.ALPHA["ctv_fill"], edgecolor="none", label="physician's CTV_GT"),
                Line2D([], [], color=S.COL["rind"], lw=S.LW["ref"], ls=(0, (3.2, 1.8)), label="full 5 mm rind")]
@@ -557,6 +559,15 @@ def _slab(pv, tissue: np.ndarray, cavity: np.ndarray, n: int):
     return _polydata(pv, verts, np.array(faces))
 
 
+def _grid_faces(n: int) -> np.ndarray:
+    f = []
+    for r in range(n - 1):
+        for c in range(n - 1):
+            a, b, cc, d = r * n + c, r * n + c + 1, (r + 1) * n + c + 1, (r + 1) * n + c
+            f += [[a, b, cc], [a, cc, d]]
+    return np.array(f, np.int64)
+
+
 def _sheet_edges(pv, tissue: np.ndarray, n: int):
     t = np.asarray(tissue, float).reshape(n, n, 3)
     loop = np.vstack([t[0, :], t[1:, -1], t[-1, -2::-1], t[-2:0:-1, 0]])
@@ -624,14 +635,20 @@ def render_scene(camera: Dict[str, Sequence[float]], mesh: Optional[Tuple[np.nda
             pd.cell_data["eligible"] = np.asarray(eligible, float)
             pl.add_mesh(pd, scalars="eligible", cmap=[S.COL["mesh"], S.COL["mesh_eligible"]], clim=[0, 1],
                         opacity=mesh_opacity, smooth_shading=True, show_scalar_bar=False, specular=0.15,
+                        culling=S.RENDER["mesh_culling"],
                         silhouette={"color": "#606060", "line_width": S.RENDER["silhouette_lw"]})
         else:
             pl.add_mesh(pd, color=S.COL["mesh"], opacity=mesh_opacity, smooth_shading=True, specular=0.15,
+                        culling=S.RENDER["mesh_culling"],
                         silhouette={"color": "#606060", "line_width": S.RENDER["silhouette_lw"]})
     for t in tiles:
-        slab = _slab(pv, t["tissue"], t["cavity"], t["n"])
-        pl.add_mesh(slab, color=t["colour"], opacity=t.get("opacity", S.RENDER["tile_opacity"]),
-                    smooth_shading=False, specular=0.1)
+        if S.RENDER.get("tile_style", "sheet") == "slab":
+            surf = _slab(pv, t["tissue"], t["cavity"], t["n"])
+        else:   # one translucent sheet: the tile's tissue face (the collagen on the wall)
+            surf = _polydata(pv, t["tissue"], _grid_faces(t["n"]))
+        op = t.get("opacity", 0.85 if t.get("highlight") else S.RENDER["tile_opacity"])
+        pl.add_mesh(surf, color=t["colour"], opacity=op,
+                    smooth_shading=True, specular=0.1, ambient=0.25)
         edges = _sheet_edges(pv, t["tissue"], t["n"])
         pl.add_mesh(edges, color="black" if t.get("highlight") else t["colour"],
                     line_width=4.0 if t.get("highlight") else 2.0, render_lines_as_tubes=True)
@@ -639,7 +656,8 @@ def render_scene(camera: Dict[str, Sequence[float]], mesh: Optional[Tuple[np.nda
         L, D = float(sd.get("length", 4.5)), float(sd.get("diameter", 0.8))
         for c, a in zip(sd["centers"], sd["axes"]):
             cap = pv.Capsule(center=c, direction=a, radius=D / 2.0, cylinder_length=max(L - D, 0.1), resolution=24)
-            pl.add_mesh(cap, color=sd["colour"], smooth_shading=True, specular=0.3, specular_power=20)
+            pl.add_mesh(cap, color=sd["colour"], smooth_shading=True, specular=0.15, specular_power=20,
+                        ambient=0.3, diffuse=0.8)
     pl.camera.position = tuple(camera["position"])
     pl.camera.focal_point = tuple(camera["focal_point"])
     pl.camera.up = tuple(camera["view_up"])
@@ -774,14 +792,13 @@ def f8b_optimized_3d(ctx) -> Dict[str, Any]:
 
 def f4c_phantom_3d(ctx) -> Dict[str, Any]:
     """F4(c): PH8 -- the 32 seeds and the 8 fitted sheets (count-free fit),
-    the crumpled tile highlighted (vermilion, black edge); the printed
-    object's shell faint for context."""
+    the crumpled tile highlighted (vermilion, black edge); no mesh."""
     d = _npz(dpath("f4c_phantom_implant.npz"))
     tiles, leftover, info = _implant_tiles(d, "auto")
-    mesh = (d["wall_mesh_vertices"], d["wall_mesh_faces"])
-    img = render_scene(S.CAMERA["phantom"], mesh, tiles, _seed_groups(d, leftover), mesh_opacity=ctx.get("phantom_mesh_opacity", 0.18))
+    img = render_scene(S.CAMERA["phantom"], None, tiles, _seed_groups(d, leftover))
     outs = S.save_raster_panel(img, ctx["out"], "f4c_phantom_implant", S.RENDER["panel_in"])
-    info.update({"mode": "auto", "mesh": "wall_mesh (printed object shell, gtcore:body)", "camera": S.CAMERA["phantom"],
+    info.update({"mode": "auto", "mesh": "none (the PH8 body shell includes the tiles; no cavity mesh in the NPZ)",
+                 "camera": S.CAMERA["phantom"],
                  "fold_deg": [round(float(x), 1) for x in d["auto_tile_fold_deg"]],
                  "bent_rms_mm": [round(float(x), 2) for x in d["auto_tile_bent_rms_mm"]]})
     return {"outputs": outs, "key_numbers": info, "note": ""}
@@ -805,7 +822,9 @@ def s2a_spacing(ctx) -> Dict[str, Any]:
             rv = np.array([fnum(r["recall"]) for r in sub])
             ev = np.array([fnum(r["err_mean"]) for r in sub])
             rec.append((rv.mean(), rv.std(ddof=1) if rv.size > 1 else 0.0))
-            err.append((np.nanmean(ev), np.nanstd(ev, ddof=1) if np.isfinite(ev).sum() > 1 else 0.0))
+            fin = ev[np.isfinite(ev)]          # no matched seed (recall 0) -> no error point
+            err.append((float(fin.mean()) if fin.size else float("nan"),
+                        float(fin.std(ddof=1)) if fin.size > 1 else 0.0))
         off = (i - 0.5) * 0.04
         xs = np.array(dzs) + off
         ax1.errorbar(xs, [m for m, _ in rec], yerr=[s for _, s in rec], color=col, marker=mk, ls=ls,
@@ -1033,7 +1052,9 @@ def list_panels() -> None:
         src = "; ".join("%s%s" % (r["path"], "" if r["exists"] else " [missing]") +
                         (" @ %s" % r["header_commit"] if r["header_commit"] else "") +
                         (" / git %s" % r["git_commit"] if r["git_commit"] else "") for r in recs) or "(geometry only)"
-        print("%-9s %-13s %s" % (pid, fig, describe(fn).split(":")[0] if ":" in describe(fn) else describe(fn)[:40]))
+        desc = describe(fn)
+        desc = desc.split(": ", 1)[1] if ": " in desc[:30] else desc
+        print("%-9s %-13s %s" % (pid, fig, (desc[:100] + "...") if len(desc) > 100 else desc))
         print("%-9s %-13s   %s" % ("", "", src))
 
 
@@ -1047,7 +1068,6 @@ def main(argv=None) -> int:
     ap.add_argument("--tile-mode", default=F4_TILE_MODE_DEFAULT, choices=["auto", "count_6full_4half", "count8", "prior8"],
                     help="F4(b)/F8(a) tile fit to draw (default auto: 6 sheets + 8 leftover seeds)")
     ap.add_argument("--no-3d", action="store_true", help="skip the PyVista renders")
-    ap.add_argument("--phantom-mesh-opacity", type=float, default=0.18)
     args = ap.parse_args(argv)
 
     if args.list:
@@ -1057,7 +1077,7 @@ def main(argv=None) -> int:
     S.apply_style()
     S.DPI = args.dpi
     os.makedirs(args.out, exist_ok=True)
-    ctx: Dict[str, Any] = {"out": args.out, "tile_mode": args.tile_mode, "phantom_mesh_opacity": args.phantom_mesh_opacity}
+    ctx: Dict[str, Any] = {"out": args.out, "tile_mode": args.tile_mode}
     manifest: Dict[str, Any] = {}
     if os.path.exists(args.manifest):
         try:
