@@ -1,0 +1,42 @@
+{
+ "dataset": "PH8",
+ "command": "python scripts/leftover_seeds.py \"$GT_DATA_ROOT/<PH8>\" --dataset PH8 --n-full 8 --out docs/figures/data",
+ "commit": "afb96ea",
+ "modes": {
+  "auto": {
+   "n_tiles": 8,
+   "n_degraded": 1,
+   "n_tentative": 0,
+   "leftovers": []
+  },
+  "count8": {
+   "n_tiles": 8,
+   "n_degraded": 1,
+   "n_tentative": 0,
+   "leftovers": []
+  },
+  "prior8": {
+   "n_tiles": 8,
+   "n_degraded": 1,
+   "n_tentative": 0,
+   "leftovers": []
+  }
+ },
+ "leftovers": [],
+ "best_quad": null,
+ "cluster_finding": {
+  "link_mm": 16.5,
+  "clusters": [],
+  "n_clusters": 0,
+  "n_quads": 0,
+  "n_quads_standard": 0,
+  "n_quads_loose": 0,
+  "n_quads_cover": 0,
+  "n_quads_completion": 0,
+  "n_disjoint_passing": 0,
+  "disjoint_passing": [],
+  "verdict": "no leftover seeds"
+ },
+ "n_pairs_pass": 0,
+ "n_triplets_pass": 0
+}

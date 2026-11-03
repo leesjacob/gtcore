@@ -1,0 +1,10 @@
+# script: scripts/leftover_seeds.py
+# command: python scripts/leftover_seeds.py "$GT_DATA_ROOT/<PH8>" --dataset PH8 --n-full 8 --out docs/figures/data
+# commit: afb96ea
+# dataset: PH8
+# generated: 2026-11-03 02:05
+# gtcore imported from tree: p2-leftovers
+# strict_mode: True
+# n_seeds: 32; n_full requested: 8
+# every (leftover seed, fitted tile) pair of the count-free fit: u/v in-plane and h along the normal (+ toward the cavity) in the tile's bent-tile frame, distance to the tile's seed sheet, overhang beyond the 20 mm footprint, layer_class as in layer_rows()
+

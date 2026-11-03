@@ -1,0 +1,10 @@
+# script: scripts/leftover_seeds.py
+# command: python scripts/leftover_seeds.py "$GT_DATA_ROOT/<PH8>" --dataset PH8 --n-full 8 --out docs/figures/data
+# commit: afb96ea
+# dataset: PH8
+# generated: 2026-11-03 02:05
+# gtcore imported from tree: p2-leftovers
+# strict_mode: True
+# n_seeds: 32; n_full requested: 8
+# one row per leftover seed of the count-free fit; nearest_tile = fitted tile whose seed sheet is closest (dist_sheet_mm); tile_u/v/h_mm = position in that tile's bent-tile frame (h > 0 toward the cavity); layer_class: sheet / stacked / edge / far (see layer_rows); dist_*_mm unsigned distance to the wall mesh / Cav_Post mesh; blob_* from detection (split_k > 1 = from a k-means split of a merged blob, n_fragments > 1 = rejoined fragments); peak_hu_1mm = max HU within 1 mm of the centre on the raw volume
+

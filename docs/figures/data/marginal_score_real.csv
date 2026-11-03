@@ -1,0 +1,35 @@
+# script: scripts/validation_autogen.py
+# command: python scripts/validation_autogen.py --no-synthetic --phantom8 "$GT_DATA_ROOT/<PH8>" --ct1mm "$GT_DATA_ROOT/<PT-CT1mm>" --marginal-csv docs/figures/data/marginal_score_real.csv
+# commit: e977540
+# datasets: PH8, PT-CT1mm
+# generated: 2026-11-03 01:59
+# count-free fit (reconstruct n_full_tiles='auto'): per feasible tile count n, score = best total unpenalised bent-tile score with exactly n tiles, marginal = score(n) - score(n-1), penalized = score - lambda_full * n_full - lambda_half * n_half; the fit selects n_selected = argmax penalized; lambda_full is the penalty line (gtcore.tiles.auto.LAMBDA_FULL)
+# n_seeds = seeds after the vault filter; n_true_tiles = implanted full tiles (8 for PH8 and PT-CT1mm); spacing_mm = max voxel dimension
+dataset,n,n_full,n_half,score,marginal,penalized,feasible,lambda_full,n_selected,n_true_tiles,n_seeds,n_tentative,n_unassigned,spacing_mm
+PH8,0,0,0,0.0000,0.0000,0.0000,True,3.50,8,8,32,0,0,1.000
+PH8,1,1,0,7.4862,7.4862,3.9862,True,3.50,8,8,32,0,0,1.000
+PH8,2,2,0,14.8667,7.3805,7.8667,True,3.50,8,8,32,0,0,1.000
+PH8,3,3,0,22.0729,7.2062,11.5729,True,3.50,8,8,32,0,0,1.000
+PH8,4,4,0,29.0784,7.0054,15.0784,True,3.50,8,8,32,0,0,1.000
+PH8,5,5,0,35.9496,6.8713,18.4496,True,3.50,8,8,32,0,0,1.000
+PH8,6,6,0,42.6996,6.7500,21.6996,True,3.50,8,8,32,0,0,1.000
+PH8,7,7,0,48.3951,5.6955,23.8951,True,3.50,8,8,32,0,0,1.000
+PH8,8,8,0,54.0668,5.6718,26.0668,True,3.50,8,8,32,0,0,1.000
+PH8,9,0,0,nan,nan,nan,False,3.50,8,8,32,0,0,1.000
+PH8,10,0,0,nan,nan,nan,False,3.50,8,8,32,0,0,1.000
+PH8,11,0,0,nan,nan,nan,False,3.50,8,8,32,0,0,1.000
+PH8,12,0,0,nan,nan,nan,False,3.50,8,8,32,0,0,1.000
+PH8,13,0,0,nan,nan,nan,False,3.50,8,8,32,0,0,1.000
+PH8,14,0,0,nan,nan,nan,False,3.50,8,8,32,0,0,1.000
+PH8,15,0,0,nan,nan,nan,False,3.50,8,8,32,0,0,1.000
+PT-CT1mm,0,0,0,0.0000,0.0000,0.0000,True,3.50,6,8,32,0,8,1.000
+PT-CT1mm,1,1,0,7.6328,7.6328,4.1328,True,3.50,6,8,32,0,8,1.000
+PT-CT1mm,2,2,0,15.2228,7.5899,8.2228,True,3.50,6,8,32,0,8,1.000
+PT-CT1mm,3,3,0,22.6483,7.4256,12.1483,True,3.50,6,8,32,0,8,1.000
+PT-CT1mm,4,4,0,29.7171,7.0688,15.7171,True,3.50,6,8,32,0,8,1.000
+PT-CT1mm,5,5,0,36.6963,6.9793,19.1963,True,3.50,6,8,32,0,8,1.000
+PT-CT1mm,6,6,0,43.3518,6.6554,22.3518,True,3.50,6,8,32,0,8,1.000
+PT-CT1mm,7,0,0,nan,nan,nan,False,3.50,6,8,32,0,8,1.000
+PT-CT1mm,8,0,0,nan,nan,nan,False,3.50,6,8,32,0,8,1.000
+PT-CT1mm,9,0,0,nan,nan,nan,False,3.50,6,8,32,0,8,1.000
+PT-CT1mm,10,0,0,nan,nan,nan,False,3.50,6,8,32,0,8,1.000
