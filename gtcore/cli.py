@@ -5,6 +5,8 @@
     gt plan <dicom-folder-or-file>   pipeline + interactive tile planner
     gt plan                          same, on the synthetic phantom
     gt optimize <scan> --tiles N     pipeline + opt-in placement optimizer -> JSON/CSV
+    gt optimize <PH8> --phantom-ref <PH0>   same on the printed phantom: wall + cavity
+                                     from the registered tile-less twin
     gt demo                          full phantom demo (writes output/ files)
     gt test                          run the test suite
 
@@ -114,6 +116,80 @@ def _rind5_inputs(result, wall_label):
     return out
 
 
+def _eligibility(args, result, vol, mesh, label):
+    """The optimizer's eligible wall for ``gt optimize --eligible``:
+    ``auto`` keeps the historical choice (every face of a cavity wall; on a
+    phantom shell the faces seen from the implant), ``all`` / ``visible`` /
+    ``craniotomy`` are :func:`gtcore.plan.candidates.eligible_faces` rules
+    (``craniotomy`` derives the skull opening from the pipeline masks and the
+    cavity, Paper 2 F8(b)).  Returns ``(mask_or_None, EligibleFaces)``; the
+    mask is None for ``all`` so the historical call is unchanged."""
+    import numpy as np
+
+    from .plan import candidates as _cand
+
+    mode = str(getattr(args, "eligible", "auto") or "auto").lower()
+    if mode == "auto":
+        mode = "all" if label == "cavity wall" else "visible"
+    centre = _implant_center(result, mesh)
+    opening = None
+    if mode == "craniotomy":
+        cav = getattr(result, "cavity_mask", None)
+        opening = _cand.craniotomy_opening(result.masks, vol.affine, cavity_mask=cav)
+        print(opening.describe())
+    elig = _cand.eligible_faces(mesh, mode, implant_center_ras=centre, opening=opening,
+                                **({"cone_deg": float(args.eligible_cone)}
+                                   if mode == "craniotomy" else {}))
+    if mode == "visible":
+        print("eligible faces (visible from the implant): %d of %d"
+              % (elig.n_eligible, elig.mask.size))
+    else:
+        print(elig.describe())
+    if mode == "craniotomy":
+        i = elig.info
+        print("  facing the opening (cone %.0f deg): %d; line of sight through the opening: "
+              "%d (clear %d, one crossing in the footprint %d, outside %d, blocked %d); "
+              "visible from the implant: %d"
+              % (i["cone_deg"], i["n_facing"], i["n_line_of_sight"], i["n_sight_clear"],
+                 i["n_sight_one_hit_in_footprint"], i["n_sight_one_hit_outside"],
+                 i["n_sight_blocked"], i["n_visible_from_implant"]))
+    mask = None if mode == "all" else np.asarray(elig.mask, dtype=bool)
+    return mask, elig
+
+
+def _phantom_reference(ref_path, vol, result):
+    """``gt optimize --phantom-ref``: wall, label and RIND5 inputs from the
+    tile-less twin registered into this scan
+    (:func:`gtcore.segment.cavity.phantom_wall_and_cavity`)."""
+    import numpy as np
+
+    from .io import load_volume
+    from .segment.cavity import phantom_wall_and_cavity
+
+    print("loading the tile-less twin", ref_path)
+    ref = load_volume(ref_path)
+    seeds = getattr(result, "seeds", None)
+    centers = (np.asarray(seeds.centers_ras, dtype=float)
+               if seeds is not None and len(seeds) else None)
+    wall, cav_mask, cav_aff, info = phantom_wall_and_cavity(
+        vol, ref, masks_ph8=getattr(result, "masks", None), seed_centers_ras=centers)
+    reg = info["registration"]
+    res = info["residual_mm"]
+    print("phantom twin registered (rigid, Dice %.3f, %d it, %.1f s): cavity %.1f cc (%s, "
+          "reach %g mm, %d/%d seeds inside); wall %d faces, %.0f mm^2; residual to this "
+          "scan's body surface median %.2f mm (p95 %.2f; far from the seeds %.2f)"
+          % (reg["dice_masks"], reg["iterations"], reg["seconds"], info["lumen"]["volume_ml"],
+             info["lumen"]["rule"], info["lumen"]["hull_reach_mm"],
+             info["lumen"]["seeds_inside"], info["lumen"]["n_seeds"],
+             info["wall"]["n_faces_wall"], info["wall"]["area_wall_mm2"],
+             res["all"].get("median", float("nan")), res["all"].get("p95", float("nan")),
+             res.get("far_from_seeds", {}).get("median", float("nan"))))
+    rind_kw = dict(cavity_mask=cav_mask, cavity_affine=cav_aff, clip_mask=info["shell_mask"],
+                   clip_affine=cav_aff, cavity_source="PH0:lumen(registered)",
+                   clip_source="PH0:shell(registered)")
+    return wall, "phantom wall (tile-less twin, registered)", rind_kw, info
+
+
 def cmd_optimize(args):
     """``gt optimize``: pipeline -> wall -> tile-count recommendation ->
     gtcore.plan.optimize (or sweep_n with --min-n) -> JSON + CSV + seed CSV."""
@@ -130,15 +206,26 @@ def cmd_optimize(args):
     vol, title = _load(args.path, args.spacing)
     print("volume %s @ %s mm" % (vol.array.shape, tuple(round(s, 2) for s in vol.spacing)))
     result = reconstruct(vol)
-    mesh, label = wall_mesh_for(result)
+    phantom_info = None
+    if getattr(args, "phantom_ref", None):
+        # printed phantom: the wall and the cavity come from the tile-less twin
+        # registered into this scan (Phase 4; the body mask here includes the tiles)
+        mesh, label, rind_kw, phantom_info = _phantom_reference(args.phantom_ref, vol, result)
+    else:
+        mesh, label = wall_mesh_for(result)
+        # the report's HR-CTV is the volumetric RIND5 of the pipeline's cavity mask
+        # on the final 1 mm grid; the S5 shell numbers are a surrogate (Phase 2 D)
+        rind_kw = _rind5_inputs(result, label)
     if mesh is None or not len(getattr(mesh, "vertices", ())):
         print("no cavity or body surface in this scan -- nothing to optimize on")
         return 2
     print("wall: %s (%d faces)" % (label, len(mesh.faces)))
-    # the report's HR-CTV is the volumetric RIND5 of the pipeline's cavity mask
-    # on the final 1 mm grid; the S5 shell numbers are a surrogate (Phase 2 D)
-    rind_kw = _rind5_inputs(result, label)
-    if rind_kw["cavity_mask"] is None:
+    if phantom_info is not None:
+        print("HR-CTV: RIND5 of the phantom cavity (PH0 lumen registered into this scan, "
+              "%.1f cc; clip %s), scored on the final 1 mm dose grid; shell rows are S5 "
+              "coverage (surrogate)" % (phantom_info["lumen_volume_ml_ph8_grid"],
+                                        rind_kw["clip_source"]))
+    elif rind_kw["cavity_mask"] is None:
         print("HR-CTV: no cavity mask on this wall (%s) -- the report carries S5 "
               "coverage (surrogate) only, no RIND5" % label)
     else:
@@ -147,14 +234,7 @@ def cmd_optimize(args):
               % (rind_kw["clip_source"] or "none"))
 
     try:
-        eligible = None
-        if label != "cavity wall":
-            # a closed printed shell has an inner and an outer surface: only
-            # the faces seen from the implant are eligible (plan section 10)
-            eligible = np.asarray(plan.visible_faces(mesh, _implant_center(result, mesh)),
-                                  dtype=bool)
-            print("eligible faces (visible from the implant): %d of %d"
-                  % (int(eligible.sum()), eligible.size))
+        eligible, elig = _eligibility(args, result, vol, mesh, label)
         rec = plan.recommend_tile_count(mesh, eligible_faces=eligible)
         print(rec.describe())
         n_tiles = args.tiles
@@ -188,7 +268,7 @@ def cmd_optimize(args):
 
         kw = dict(rx_cgy=args.rx, solver=args.solver, seed=args.seed, h_mm=args.h,
                   n_spins=args.spins, eligible_faces=eligible,
-                  time_budget_s=float(args.budget))
+                  time_budget_s=float(args.budget), eligible=elig)
         if args.lambda_tail is not None:
             kw["lambda_tail"] = float(args.lambda_tail)
         n_full = n_tiles
@@ -196,7 +276,8 @@ def cmd_optimize(args):
             from .plan.api import default_target
             target = default_target(mesh, eligible)   # +5 mm shell of the eligible wall
             # sweep_n forwards **kw to the discrete solvers, which take no budget
-            kw_sweep = {k: v for k, v in kw.items() if k != "time_budget_s"}
+            # and no eligibility record (the mask is in eligible_faces)
+            kw_sweep = {k: v for k, v in kw.items() if k not in ("time_budget_s", "eligible")}
             # P2 asks for the smallest N that meets the criterion, so sweep up
             # to what fits at this grid (the sweep stops by itself at the
             # first N that cannot be packed), not just up to --tiles
@@ -232,6 +313,9 @@ def cmd_optimize(args):
     print(rep.summary())
     rep.to_json(os.path.join(out_dir, "report.json"))
     rep.to_csv(os.path.join(out_dir, "report.csv"))
+    if elig is not None:
+        # the face mask for the renderer (F8b), next to the report
+        np.save(os.path.join(out_dir, "eligible_faces.npy"), np.asarray(elig.mask, dtype=bool))
     seeds_csv = os.path.join(out_dir, "plan_seeds.csv")
     n_seeds = export_plan_csv(seeds_csv, tiles, result.seeds.centers_ras,
                               result.seeds.axes_ras, rx_cgy=args.rx)
@@ -334,6 +418,19 @@ def main(argv=None):
                    help="continuous (u, v, theta) polish after the discrete solve")
     o.add_argument("--no-report", action="store_true", dest="no_report",
                    help="skip the dose-grid final report (influence metrics only)")
+    o.add_argument("--eligible", choices=("auto", "all", "visible", "craniotomy"),
+                   default="auto",
+                   help="eligible wall: 'all' faces, 'visible' from the implant centre, "
+                        "'craniotomy' = the wall the surgeon could reach through the skull "
+                        "opening (from the pipeline masks and the cavity; Paper 2 F8b); "
+                        "'auto' (default) = all on a cavity wall, visible on a phantom shell")
+    o.add_argument("--eligible-cone", type=float, default=90.0, dest="eligible_cone",
+                   help="--eligible craniotomy: a face's inward normal must point toward the "
+                        "opening within this angle in degrees (default 90)")
+    o.add_argument("--phantom-ref", default=None, dest="phantom_ref",
+                   help="printed phantom: DICOM folder of the tile-less twin (PH0); its "
+                        "printed wall and cavity, rigidly registered into this scan, replace "
+                        "the body shell and give the RIND5 HR-CTV")
     o.add_argument("--spacing", type=float, default=0.7,
                    help="phantom voxel size in mm (phantom mode only)")
     o.set_defaults(fn=cmd_optimize)

@@ -67,6 +67,10 @@ from gtcore.segment._morph import largest_cc                         # noqa: E40
 from gtcore.segment.head import AIR_BODY_HU                          # noqa: E402
 from gtcore.segment.surface import mask_to_mesh                      # noqa: E402
 from gtcore.volume import Volume, apply_affine                       # noqa: E402
+from gtcore.preprocess.register import (                            # noqa: E402
+    RAS_TO_LPS, _FLIP, crop_mask, crop_volume as _crop_volume, euler_as_matrix,
+    mask_centroid_ras as _centroid_ras, register_rigid, spacing_of as _spacing, to_sitk,
+    transform_points_ras)
 
 FINE_MM = 0.5             # anti-aliasing target spacing for the signed EDT
 CROP_MARGIN_MM = 15.0     # the field is exact for |distance| < this margin
@@ -75,40 +79,9 @@ BAND_MM = tuple(float(x) for x in _geom.SEED_PLANE_OFFSET_RANGE_MM)  # (2.25, 3.
 HIST_EDGES_MM = np.round(np.arange(-6.0, 12.0 + 1e-9, 0.5), 2)
 RTDOSE_SOURCE_GY = 200.0  # validation_clinical.py rule: maxima above this ...
 RTDOSE_MERGE_MM = 3.0     # ... merged within this radius
-RAS_TO_LPS = np.diag([-1.0, -1.0, 1.0, 1.0])
-_FLIP = np.array([-1.0, -1.0, 1.0])
 
 
 # ----------------------------------------------------------------- geometry
-def _spacing(affine) -> np.ndarray:
-    """Per-axis voxel spacing (si, sj, sk) in mm of a (4, 4) affine."""
-    return np.linalg.norm(np.asarray(affine, float)[:3, :3], axis=0)
-
-
-def crop_mask(mask, affine, margin_mm: float, points_ras=None):
-    """Crop ``mask`` to its bounding box (union with ``points_ras``) plus
-    ``margin_mm``; returns ``(sub_mask, sub_affine, (lo_kji, hi_kji))``.  The
-    affine is adjusted so voxel (0, 0, 0) of the crop keeps its RAS position
-    (works for any direction cosines, flipped axes included)."""
-    mask = np.asarray(mask, bool)
-    affine = np.asarray(affine, float)
-    if not mask.any():
-        raise ValueError("crop_mask: empty mask")
-    kji = np.argwhere(mask)
-    lo, hi = kji.min(axis=0).astype(float), kji.max(axis=0).astype(float)
-    if points_ras is not None and len(points_ras):
-        ijk = apply_affine(np.linalg.inv(affine), np.atleast_2d(points_ras))
-        lo = np.minimum(lo, np.floor(ijk[:, ::-1]).min(axis=0))
-        hi = np.maximum(hi, np.ceil(ijk[:, ::-1]).max(axis=0))
-    pad = np.ceil(margin_mm / _spacing(affine)[::-1])
-    lo = np.maximum(lo - pad, 0).astype(int)
-    hi = np.minimum(hi + pad, np.asarray(mask.shape) - 1).astype(int)
-    sub = mask[lo[0]:hi[0] + 1, lo[1]:hi[1] + 1, lo[2]:hi[2] + 1]
-    A = affine.copy()
-    A[:3, 3] = apply_affine(affine, np.array([lo[2], lo[1], lo[0]], float))
-    return sub, A, (lo, hi)
-
-
 def upsample_mask(mask, affine, fine_mm: float = FINE_MM):
     """Linearly upsample a binary mask by integer factors so every spacing is
     <= about ``fine_mm`` (edge-aligned, ``grid_mode=True``), threshold the
@@ -224,115 +197,13 @@ def match_one_to_one(a, b) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
 
 
 # ------------------------------------------------------------ phantom twin
+# (to_sitk, euler_as_matrix, transform_points_ras, register_rigid, crop_mask and
+#  the grid helpers live in gtcore.preprocess.register since Phase 4; imported above)
 def body_mask_from_hu(arr, threshold_hu: float = AIR_BODY_HU) -> np.ndarray:
     """gtcore's body rule (``segment_head``): largest component above the
     air/body threshold, holes filled."""
     body = largest_cc(np.asarray(arr, np.float32) > float(threshold_hu))
     return ndimage.binary_fill_holes(body)
-
-
-def to_sitk(arr_kji, affine):
-    """A SimpleITK image (LPS) with exactly the geometry of a gtcore affine."""
-    import SimpleITK as sitk
-    img = sitk.GetImageFromArray(np.ascontiguousarray(arr_kji))
-    A = RAS_TO_LPS @ np.asarray(affine, float)
-    sp = np.linalg.norm(A[:3, :3], axis=0)
-    D = A[:3, :3] / sp[None, :]
-    img.SetSpacing(tuple(float(s) for s in sp))
-    img.SetOrigin(tuple(float(o) for o in A[:3, 3]))
-    img.SetDirection(tuple(float(x) for x in D.ravel()))
-    return img
-
-
-def euler_as_matrix(tx) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """``(R, c, t)`` of a SimpleITK Euler3DTransform: ``y = R (x - c) + c + t`` (LPS)."""
-    R = np.asarray(tx.GetMatrix(), float).reshape(3, 3)
-    return R, np.asarray(tx.GetCenter(), float), np.asarray(tx.GetTranslation(), float)
-
-
-def transform_points_ras(tx, points_ras, inverse: bool = False) -> np.ndarray:
-    """Apply a SimpleITK Euler3D transform (fixed -> moving, LPS) to RAS
-    points; ``inverse=True`` maps moving -> fixed."""
-    R, c, t = euler_as_matrix(tx)
-    p = np.atleast_2d(np.asarray(points_ras, float)) * _FLIP
-    if inverse:
-        q = (p - c - t) @ R + c          # R orthonormal: R^-1 = R^T
-    else:
-        q = (p - c) @ R.T + c + t
-    return q * _FLIP
-
-
-def _centroid_ras(mask, affine) -> np.ndarray:
-    kji = np.argwhere(mask).mean(axis=0)
-    return apply_affine(affine, kji[::-1])
-
-
-def _crop_volume(vol: Volume, mask, margin_mm: float):
-    sub_mask, A, (lo, hi) = crop_mask(mask, vol.affine, margin_mm)
-    sub = np.asarray(vol.array)[lo[0]:hi[0] + 1, lo[1]:hi[1] + 1, lo[2]:hi[2] + 1]
-    return Volume(sub, A, dict(vol.meta)), sub_mask
-
-
-def register_rigid(fixed: Volume, fixed_mask, moving: Volume, moving_mask,
-                   margin_mm: float = 10.0, hu_range=(-1000.0, 500.0), bins: int = 50,
-                   sampling: float = 0.25, seed: int = 1234, verbose: bool = False):
-    """Rigid (Euler3D) registration moving -> fixed with SimpleITK: Mattes
-    mutual information on HU clamped to ``hu_range``, random sampling
-    (seeded), three resolution levels, regular-step gradient descent, centred
-    on the fixed mask's centroid and initialised by the mask centroids.
-    Returns ``(transform, info)``; the transform maps fixed physical points to
-    moving physical points (SimpleITK's resampling convention).  ``info``
-    carries the final metric, the Euler angles / translation, the Dice of the
-    resampled moving mask against the fixed one and the stop condition."""
-    import SimpleITK as sitk
-    t0 = time.time()
-    f_vol, f_mask = _crop_volume(fixed, fixed_mask, margin_mm)
-    m_vol, m_mask = _crop_volume(moving, moving_mask, margin_mm)
-    lo, hi = float(hu_range[0]), float(hu_range[1])
-    fi = to_sitk(np.clip(np.asarray(f_vol.array, np.float32), lo, hi), f_vol.affine)
-    mi = to_sitk(np.clip(np.asarray(m_vol.array, np.float32), lo, hi), m_vol.affine)
-    cf = _centroid_ras(f_mask, f_vol.affine) * _FLIP
-    cm = _centroid_ras(m_mask, m_vol.affine) * _FLIP
-    tx = sitk.Euler3DTransform()
-    tx.SetCenter(tuple(float(x) for x in cf))
-    tx.SetTranslation(tuple(float(x) for x in (cm - cf)))
-    reg = sitk.ImageRegistrationMethod()
-    reg.SetMetricAsMattesMutualInformation(numberOfHistogramBins=int(bins))
-    reg.SetMetricSamplingStrategy(reg.RANDOM)
-    reg.SetMetricSamplingPercentage(float(sampling), int(seed))
-    reg.SetInterpolator(sitk.sitkLinear)
-    reg.SetOptimizerAsRegularStepGradientDescent(learningRate=1.0, minStep=1e-4,
-                                                 numberOfIterations=300, relaxationFactor=0.5,
-                                                 gradientMagnitudeTolerance=1e-6)
-    reg.SetOptimizerScalesFromPhysicalShift()
-    reg.SetShrinkFactorsPerLevel(shrinkFactors=[4, 2, 1])
-    reg.SetSmoothingSigmasPerLevel(smoothingSigmas=[2.0, 1.0, 0.0])
-    reg.SmoothingSigmasAreSpecifiedInPhysicalUnitsOn()
-    reg.SetInitialTransform(tx, inPlace=True)
-    if verbose:
-        reg.AddCommand(sitk.sitkIterationEvent,
-                       lambda: print("    it %3d  metric %.5f" % (reg.GetOptimizerIteration(), reg.GetMetricValue())))
-    reg.Execute(fi, mi)
-    # Dice of the moving mask carried into the fixed grid
-    mm = to_sitk(np.asarray(m_mask, np.uint8), m_vol.affine)
-    carried = sitk.Resample(mm, fi, tx, sitk.sitkNearestNeighbor, 0, sitk.sitkUInt8)
-    carried = sitk.GetArrayFromImage(carried).astype(bool)
-    dice = 2.0 * float((carried & f_mask).sum()) / max(1.0, float(carried.sum() + f_mask.sum()))
-    ang = np.degrees(np.asarray(tx.GetParameters()[:3], float))
-    tr = np.asarray(tx.GetParameters()[3:6], float)
-    info = {
-        "metric_final": float(reg.GetMetricValue()),
-        "stop_condition": str(reg.GetOptimizerStopConditionDescription()),
-        "iterations": int(reg.GetOptimizerIteration()),
-        "euler_angles_deg": [float(a) for a in ang],
-        "translation_lps_mm": [float(v) for v in tr],
-        "initial_translation_lps_mm": [float(v) for v in (cm - cf)],
-        "dice_masks": float(dice),
-        "fixed_crop_shape": [int(n) for n in f_vol.array.shape],
-        "moving_crop_shape": [int(n) for n in m_vol.array.shape],
-        "seconds": float(time.time() - t0),
-    }
-    return tx, info
 
 
 def surface_points(mesh, max_points: int = 60000, seed: int = 0) -> np.ndarray:

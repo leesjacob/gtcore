@@ -343,8 +343,11 @@ class TargetSet:
         n_rest = m_max - int(certain.sum())
         chosen = np.flatnonzero(certain)
         out_w = w[chosen].copy()
-        if n_rest > 0:
-            rest_idx = np.flatnonzero(~certain & (w > 0))
+        rest_idx = np.flatnonzero(~certain & (w > 0))
+        # fewer positive-weight points than m_max (an eligible-wall target
+        # whose other shell points carry weight 0): every positive point is
+        # already a certainty point and nothing is left to draw
+        if n_rest > 0 and rest_idx.size:
             rest_w = w[rest_idx]
             total_rest = float(rest_w.sum())
             step = total_rest / n_rest

@@ -4058,3 +4058,309 @@ tests pass explicit `n_sweeps` / `n_restarts`, and the `solver="sa"` calls in
   `tests/test_packing_capacity.py` (new), `tests/test_plan_interface.py`
   (CONSTANTS), `tests/test_validation_optimize_smoke.py` (+11),
   `docs/optimize-notes.md` (parameter table rows, V6 alias note), this section.
+
+## 2026-11-03 — Phase 4 — craniotomy-side eligibility; phantom wall and cavity from the registered tile-less twin (task `opt-eligibility-phantom`, branch `p2/opt-eligibility-phantom`)
+
+Requirements rev 3 §3 F8 (b), (c); `docs/paper2-decisions.md` entries "F8(c)
+conditions" (eligibility restricted to the craniotomy-side wall) and
+"seed-plane model confirmed in vivo; phantom wall reference" (phantom arms
+conform and optimise on the registered PH0 wall, scored on `RIND5(phantom
+cavity)`); Phase 4 plan row `opt-eligibility-phantom`. Branched from
+`paper2/integration` at `00ba59f`. Code commit **`4cd9891`**; these notes in
+the follow-up commit. **Every real-data number below is calibration-set**
+(one clinical case; the printed cavity is the same patient's intra-operative
+cavity). Hardware as in the Phase 1 sections; other agents ran concurrently,
+so every timing is an upper bound. No solver / objective change, no planner
+UI change, no parameter re-tuned on PT-CT1mm or PH8.
+
+### What changed
+
+| File | Change |
+|---|---|
+| `gtcore/plan/candidates.py` | `craniotomy_opening(masks, affine, cavity_mask)` -> `Opening` (centroid, outward normal, voxel centres, area, record); `craniotomy_faces(mesh, opening, implant_center_ras, cone_deg, footprint_tol_mm, view_offset_mm)` -> `EligibleFaces` (mask, rule, area fraction, criterion counts); `eligible_faces(mesh, rule \| mask \| EligibleFaces, ...)` dispatcher for `"all"` / `"visible"` / `"craniotomy"` / explicit; `hits_before` (+ `hits_before_trimesh` reference) counting the crossings of each view-point -> face segment; `pack_face_mask` / `unpack_face_mask` (`'0'/'1'` string for the report); `_forward_hits_angular` is the angular broad phase of `visible_faces` factored out and shared (`visible_faces` bit-identical, test_plan_candidates unchanged). Constants `CRANIOTOMY_MARGIN_MM` 3, `OPENING_MIN_AREA_MM2` 100, `CONE_DEG` 90, `FOOTPRINT_TOL_MM` 5, `VIEW_OFFSET_MM` 10 with one-line justifications. |
+| `gtcore/plan/api.py` | `optimize(..., eligible=None, implant_center_ras=None, opening=None)`: one option (string rule, face mask or precomputed `EligibleFaces`), resolved by `candidates.eligible_faces`; `eligible_faces` (legacy) still accepted and recorded as rule `"explicit"`, both together must agree. Report `parameters` gain `eligible` (rule, fraction, counts, opening summary), `eligible_rule`, `eligible_fraction`, `eligible_mask` (packed string) so a renderer can show the eligible wall. |
+| `gtcore/plan/__init__.py` (shared; 3 lines) | `TargetSet.subsample`: guard when fewer positive-weight points than `m_max` remain (an eligible-wall target has weight 0 on the other shell points): every positive point is a certainty point and nothing is left to draw. Without it `build_influence` raised `IndexError` on the craniotomy-eligible PT-CT1mm target (1 566 mm² of wall, < `M_OPT_MAX` vertices on a 12 k-vertex shell) -- the campaign's N = 8 run would have crashed. |
+| `gtcore/preprocess/register.py` (new) | `register_rigid`, `to_sitk`, `euler_as_matrix`, `transform_points_ras`, `crop_mask`, `crop_volume`, `mask_centroid_ras`, `spacing_of` moved out of `scripts/seed_wall_distance.py` unchanged, plus `transform_mesh_ras` and `resample_mask_into_fixed` (moving-grid mask -> fixed grid with the transform, nearest neighbour). The script imports them (`tests/test_seed_wall_distance.py` 6 passed, unchanged); `gtcore.preprocess` exports `register_rigid`, `transform_points_ras`. |
+| `gtcore/segment/cavity.py` | `phantom_wall_and_cavity(vol_ph8, vol_ph0, masks_ph8, seed_centers_ras)` -> `(wall_mesh, cavity_mask, cavity_affine, info)`; `printed_body_mask`, `printed_lumen` (the cavity rule, below), `_lumen_wall_mesh` (the wall rule), `_wall_residual`. The clinical `segment_cavity` is untouched (called, not changed). |
+| `gtcore/cli.py` | `gt optimize --eligible {auto,all,visible,craniotomy}` (`auto` = the historical choice: all faces on a cavity wall, visible from the implant on a phantom shell), `--eligible-cone DEG`, `--phantom-ref <PH0 dir>`; prints the opening and the criterion counts; writes `eligible_faces.npy` next to `report.json`; with `--phantom-ref` the wall is the registered twin's and the report's RIND5 is `RIND5(PH0 lumen, clip = PH0 shell)` with sources `PH0:lumen(registered)` / `PH0:shell(registered)`. `--min-n` keeps `eligible` out of `sweep_n`'s kwargs (the solvers reject unknown keywords). |
+| tests | `tests/test_plan_eligibility.py` (9), `tests/test_phantom_cavity.py` (5), `tests/test_cli_eligibility.py` (5). |
+
+### Craniotomy-side eligibility (Methods-quotable)
+
+**The opening.** Candidate voxels are the boundary voxels of the sealed
+cranial interior (`cranial_interior` minus its one-voxel erosion) that are
+(i) the *skull defect* -- farther than 3 mm from any `skull` voxel (the
+sealed vault sits 1-2 mm inside the true inner table, so 1-2 mm flags most
+of the surface; 3 mm flags a defect, burr holes and thin skull-base bone) --
+or (ii) the *cavity mouth* -- adjacent to the cavity mask. Their
+26-connected components of at least 1 cm² are ranked: the one with the most
+mouth voxels when a cavity is given, else the one nearest the cavity /
+reference point, else the largest. The opening's outward normal is the
+smallest principal axis of the chosen voxels, signed away from the interior
+centroid. The mouth term is what makes the rule work when the bone flap has
+been put back: the flap reads as skull again, and the cavity touching the
+vault is the only trace of where the surgeon went in.
+
+**The eligible wall.** With the view point `v` = opening centroid + 10 mm
+along its outward normal (the surgeon looks in from outside the skull), a
+wall face is eligible when (a) *line of sight*: the segment `v` -> face
+centroid crosses the cavity mesh at most once before the face and, when
+once, the crossing lies within 5 mm (in the opening's plane) of the
+opening's voxels -- the ray enters the lumen through the cavity's lid under
+the opening, not through tissue elsewhere; zero crossings count only on an
+open (non-watertight) mesh, since on a closed one a facing face reached
+without a crossing is a grazing silhouette hit; (b) *facing*: the face's
+inward normal makes at most 90° with the direction to `v` (the lid and any
+undercut facing away from the surgeon are out); (c) *visible from the
+implant centre* (the existing rule, `visible_faces` from the seed mean).
+Crossings are counted with the angular broad phase of `visible_faces`
+(rays share one origin) and trimesh's narrow phase; a ray through a shared
+edge is counted once (unique distance per ray); bit-identical to the
+chunked `mesh.ray.intersects_location` reference on 2 000 clinical faces and
+on the test meshes. The eligible *fraction* is the eligible share of the
+wall AREA; the face mask is stored packed in the report.
+
+### PT-CT1mm — the opening and the eligible fraction (commit `4cd9891`; candidate stage only, no solve)
+
+Inputs: `reconstruct` 23 s, 32 seeds, gtcore cavity 41.3 cc, cavity wall
+mesh 24 736 faces (marching cubes step 2, watertight), area 13 261 mm² (a
+41 cc sphere has 5 800 mm²: the wall is convoluted, Phase 1/2 known state),
+masks `body` 4 069 mL, `skull` 711 mL (ONE bone component > 1 mL: the bone
+flap is back and connected), `cranial_interior` 1 340 mL.
+
+| opening rule | area | voxels (mouth / defect) | centroid RAS (mm) | outward normal | candidates >= 1 cm² |
+|---|---|---|---|---|---|
+| mouth ∪ defect, margin 3 mm (**used**) | **28.7 cm²** | 6 880 (5 730 / 1 150) | (37.5, 214.3, -516.5) | (0.86, 0.50, -0.07) | 15 (next: 37.3 cm² skull-base strip 33 mm away, 0 mouth voxels) |
+| mouth ∪ defect, margin 4 mm | 26.1 cm² | 6 254 (5 727 / 527) | (38.1, 213.5, -516.4) | (0.87, 0.49, -0.08) | 7 |
+| defect only (no cavity), nearest the seed mean | 19.0 cm² | 4 553 (0 / 4 553) | (36.3, 214.5, -516.9) | (0.88, 0.47, -0.02) | 15 |
+
+The pure skull-defect rule of the task brief does find the craniotomy (the
+flap outline reads as uncovered at 3 mm) 1.2 mm from the mouth-based one;
+the mouth-based rule is the robust one (it does not depend on how the flap
+was fixed) and is the default. Opening 2-3 s (EDT on the interior's
+bounding box).
+
+| cone (deg) | eligible faces | eligible area fraction | facing | line of sight | visible from the implant | time (s) |
+|---|---|---|---|---|---|---|
+| **90 (default)** | **2 937 of 24 736** | **0.118** (1 566 mm²) | 18 045 (0.725) | 7 919 (0.322; 0 clear -- watertight mesh --, 7 919 one crossing inside the footprint, 7 outside, 15 132 blocked) | 7 616 (0.313) | 12.1 |
+| 75 | 2 272 | 0.090 | 14 173 | 7 919 | 7 616 | 12.1 |
+| 60 | 1 612 | 0.065 | 10 663 | 7 919 | 7 616 | 12.1 |
+| facing AND line of sight, no implant term (`implant_center_ras=None`) | 6 508 | 0.265 | | | | |
+| visible from the implant only (`--eligible visible`) | 7 616 | 0.313 | | | | |
+
+Reading. (i) The craniotomy-side wall is **11.8 % of the gtcore cavity's
+area** (2 937 faces, 1 566 mm²). The strongest single term is the implant
+visibility (31 %): the gtcore cavity leaks into oedema and is bumpy, so only
+a third of its faces are first hits from the seed mean, and 61 % of the faces
+(15 132) are behind other wall as seen from the opening (blocked). The two
+geometric terms alone (facing AND line of sight) keep 26.5 %. (ii) The
+implant sits on the eligible wall: 27 of 32 seeds lie within 6 mm of an
+eligible face (32/32 within 6 mm of any face). (iii) The N = 8 run is
+feasible on it: `packing_capacity(h 2.5, 6 spins)` on the craniotomy-eligible
+wall = **10 tiles** (290 candidates; 974 hanging, 386 detached; 25 s), 13
+tiles without the implant term (453 candidates, 43 s); the manufacturer rule
+on the eligible area says 4 tiles (34 on the whole wall). (iv) Cost: one
+rule evaluation is 12 s on the 24 736-face mesh (`hits_before` + the visible
+test), `build_candidates` on the eligible wall 16 s at h 2.5.
+
+### Phantom — wall and cavity from the registered tile-less twin (commit `4cd9891`)
+
+**Registration** (fixed PH8, moving PH0, `preprocess.register.register_rigid`,
+parameters of Phase 3): 23 iterations, metric -1.417, Euler angles (-0.01,
+-3.54, -0.06)°, translation (-12.90, -2.67, -141.99) mm LPS, Dice of the body
+masks **0.979**, 2.8-4.4 s -- identical to the Phase 3 seed-wall section.
+
+**Finding: there is no implant-independent printed lumen.** The brief's
+rule (body mask -> fill holes -> lumen = filled minus body) finds nothing: the
+printed cavity's mouth is as wide as the craniotomy it reproduces, and the
+object is a partial head section with an irregular exterior (the cavity opens
+into the printed defect, a V-shaped notch). Measured on PH0 (scratch probe
+at `4cd9891`, exact Euclidean closing of the body on its bounding box, then
+hole fill): the enclosed air is 36 / 54 / 71 / 83 / 94 / 109 / 118 mL at
+closing radii 6 / 8 / 10 / 12 / 14 / 20 / 28 mm with 3 / - / 15 / - / 27 / 32
+/ - of the 32 carried seeds inside -- no plateau, the exterior concavities
+seal progressively, and at 14 mm the closing has already filled the cavity
+around 27 of the 32 seeds (the cavity is thinner than the ball that bridges
+its mouth), so a flood from the implant through the unfilled air leaks to
+the outside at every radius; `close_mm`'s 2 mm working grid adds a further
+~54 mL skin around the whole exterior (540 cm² of surface). The 2-D hole fill
+of the coronal slices (the plane facing the mouth) gives a 28 mL lower bound.
+**Rule used:** the phantom cavity is gtcore's cavity -- `segment_cavity`'s
+seed-sheet rule, unchanged, on a volume rendered from the PH0 body mask
+(plastic 100 HU, air -1000 HU) with `interior` = air, `brain` = plastic and
+the 32 PH8 seeds carried into PH0 by the registration: air grown
+geodesically from the seed hull within `HULL_REACH_MM` = 14 mm, clipped
+`SHEET_TOL_MM` = 3 mm beyond the seed sheet, closed and filled. One
+definition of "the cavity" for the patient and the phantom; the mouth is
+capped where the reach from the implant ends. The wall is the plastic
+surface (marching cubes of the PH0 body on the cavity's bounding box + 10 mm,
+Taubin 10) restricted to the faces within 1.5 mm of a cavity voxel centre
+(largest connected patch), each face wound so its normal points into the
+plastic (the cropped surface is open, so trimesh cannot orient it globally;
+107 of 42 627 faces re-wound). Both are carried into the PH8 frame
+(`transform_mesh_ras`, `resample_mask_into_fixed`).
+
+| quantity | value |
+|---|---|
+| phantom cavity (PH0 grid 0.68 × 0.68 × 1 mm) | **55.3 cc**, 32/32 seeds inside, 56 % of its surface voxels touch plastic (the rest is the reach cap across the mouth) |
+| phantom cavity carried into the PH8 grid (0.59 × 0.59 × 1 mm) | 55.2 cc |
+| PH0 shell (plastic) carried into the PH8 grid | 468.8 cc (PH0 body 468.0, PH8 body 473.6 mL -- the tiles) |
+| wall mesh | 42 627 faces, **8 443 mm²**, open (no cap), normals into the plastic |
+| registration residual: wall vertices -> PH8 body surface (EDT, 20 000 vertices) | all: median 0.35 mm, p90 2.74, p95 3.56 (the tiles: the PH8 body surface is the tile face there); > 15 mm from any seed (2 945 vertices): **median 0.23 mm**, p90 0.53, p95 0.64, max 1.25 (Phase 3: 0.34 / 0.33) |
+| `RIND5(phantom cavity, clip = PH0 shell)` on the PH8 grid (`targets.rind5`) | **47.72 cc** (136 266 voxels) |
+| visible from the implant centre (seed mean) | 27 594 of 42 627 faces, 64.8 % of the wall area, 2.4 s |
+| `build_candidates(wall, h 4, 3 spins, eligible = visible)` | 72 candidates (632 hanging, 16 detached), 5.2 s |
+| `phantom_wall_and_cavity` wall time | 13-31 s after a 22-27 s `reconstruct` of PH8 |
+
+**Acceptance -- PH8 seeds vs the returned wall (signed, positive towards
+the lumen; all four at `4cd9891`):**
+
+| seed set | reference | method | median | 10-90 % | min | max | mean ± sd | in band 2.25-3.75 | negative |
+|---|---|---|---|---|---|---|---|---|---|
+| PH8 seeds (32) | **returned wall mesh (PH8 frame)** | mesh (`trimesh.proximity`, sign from the face normal) | **+2.89** | +2.19 … +3.77 | +1.25 | +4.34 | +2.95 ± 0.68 | 24/32 | 0 |
+| PH8 seeds | Phase 3 reference: PH0 body EDT at the carried seeds (`scripts/seed_wall_distance.py` estimator, same registration) | EDT | **+3.05** | +2.35 … +3.77 | +1.36 | +4.36 | +3.03 ± 0.66 | 26/32 | 0 |
+| PH8 seeds | returned cavity mask (PH8 grid) | EDT (hollow convention) | +2.92 | +2.54 … +3.31 | +1.54 | +3.40 | +2.86 ± 0.37 | 30/32 | 0 |
+| PH8 seeds | PH0 cavity mask at the carried seeds | EDT | +2.94 | +2.35 … +3.08 | +1.36 | +3.29 | +2.78 ± 0.41 | 30/32 | 0 |
+
+Reading. The returned wall reproduces the Phase 3 **mesh** row to the digit
+(Phase 3: +2.89, +2.19 … +3.77, +1.25 … +4.34, 24/32 -- the same Taubin
+surface of the same body mask under the same transform), and the Phase 3
+EDT reference (+3.05, +2.35 … +3.77) is reproduced exactly by the script's
+estimator on the returned registration: **acceptance met**; the 0.16 mm
+mesh-vs-EDT offset is the estimator difference documented in Phase 3 (the
+mesh under-reads by 0.07-0.1 mm, the EDT over-reads by ~0.1 mm). The
+cavity-mask rows are **circular** exactly as the clinical gtcore-cavity rows
+of Phase 3 are: the seed-sheet rule ends 3 mm beyond the seed sheet, so the
+upper tail is compressed to 3.3-3.4 mm by construction; they are reported
+for completeness, not as evidence.
+
+`gt optimize --phantom-ref` (PH8 + PH0, `--tiles 2 --solver greedy --h 4
+--spins 3 --seed 0`, with the report; format example, not a paper number):
+`reconstruct` 16 s, twin registered in 3.4 s (Dice 0.979; cavity 55.3 cc,
+32/32 seeds; wall 42 627 faces, 8 443 mm²; residual 0.35 / 0.23 mm), wall
+`phantom wall (tile-less twin, registered)`, eligible = visible from the
+implant 27 594 of 42 627 faces, manufacturer rule 14 tiles on the 5 473 mm²
+eligible area; target `shell+5mm (eligible wall)` 22 150 points; 72
+candidates in 6.1 s, greedy 0.1 s, report 7.7 s, 14.3 s in all; the report's
+HR-CTV row reads `RIND5 (volumetric, 1x1x1 mm grid; cavity
+PH0:lumen(registered), clip PH0:shell(registered), depth 5.0 mm): D90 491 cGy
+V100 0.043 V150 0.013 V200 0.005 46.6 cc (46 600 voxels)` (46.6 cc on the
+1 mm report grid vs 47.7 cc on the 0.59 × 0.59 × 1 mm PH8 grid: the grid
+sensitivity of the Phase 2 D section), S5 rows labelled surrogate, and
+`eligible_faces.npy`, `report.json/csv`, `plan_seeds.csv` are written.
+
+### Tests
+
+`tests/test_plan_eligibility.py` (9): toy head (ball interior, skull shell
+with a 40° conical hole, body) -> opening from the defect (centroid on the
+hole axis within 2 mm, normal within 8° of the axis, 120-450 mm²); with a
+cavity touching the vault under the hole the mouth component is chosen; a
+sealed skull without a cavity fails loudly, with a cavity touching the vault
+it yields the mouth (the PT-CT1mm situation); input validation; sphere
+cavity under the hole: floor > 95 % eligible, roof (above the silhouette
+from the view point, z > 19.5) none, a 60° cone keeps a subset; two-lobe
+cavity (balls joined through a neck, mesh from `mask_to_mesh`): the hidden
+lobe's far wall is never eligible, the floor under the hole > 90 %;
+`hits_before` == `hits_before_trimesh` (counts and first crossing) from
+outside, inside and off-axis, `visible_faces` still equals its reference;
+the `eligible_faces` rules, errors and the packed mask; `optimize(eligible=...)`
+with the `test_plan_api` fakes records rule / fraction / mask, legacy
+`eligible_faces` recorded as explicit, conflicting inputs and a missing
+opening are `ValueError`s.
+`tests/test_phantom_cavity.py` (5): printed block (plastic ball with two
+flat cuts, spherical cavity R 15, 10 mm channel to the outside) at 1 mm:
+`printed_lumen` around a 24-seed implant has Dice > 0.94 with the cavity
+ball with the mouth open or closed, needs >= 4 seeds, rejects seeds in the
+air outside the shell (< 20 % of the grown surface touches plastic) and an
+empty body; the wall is plastic bordering the cavity (plastic 1 mm along the
+normal, cavity 1 mm against it, no face in the channel's air, < 3 % of faces
+at the block's exterior, area within 15 % of the ball's, seeds 3 mm off the
+true wall read 3.0 ± 0.3 mm median); the registration round trip
+(`register_rigid` on a copy under a known 4°/-3°/6°, (3, -2.5, 4) mm
+transform: Dice > 0.97, probes < 0.3 mm, mesh carried and back to 1e-9,
+mask carried into the fixed grid Dice > 0.95, `crop_mask` geometry);
+`phantom_wall_and_cavity` end to end on the transformed copy with
+collagen-like tiles painted on the lower wall (part of the PH8 body mask):
+seeds 3 mm off the true wall read 3.0 ± 0.4 mm median off the returned wall
+(every seed within 1.5 mm of 3.0) although the PH8 body surface is < 1.5 mm
+from them, cavity volume within 10 %, shell = plastic, `rind5` of it with
+the shell clip is non-empty and inside the plastic, residual far from the
+seeds < 1 mm, normals into the plastic, missing seeds are a `ValueError`.
+`tests/test_cli_eligibility.py` (5): option parsing (`--eligible` choices,
+`--eligible-cone` type); `--eligible craniotomy --eligible-cone 75` on the
+synthetic head phantom (the real opening finder and face rule on the
+pipeline masks; the mask forwarded to `optimize` equals the direct call,
+`eligible_faces.npy` written, the recommendation runs on the eligible
+wall); `--eligible visible` / `all` / default on a cavity wall and a shell;
+a missing opening -> `optimize failed`, return code 1, no solve;
+`--phantom-ref` (helper faked): the twin is loaded, the wall label and
+RIND5 line printed, `cavity_source` / `clip_source` = `PH0:lumen(registered)`
+/ `PH0:shell(registered)`, the shell is the clip, eligibility `visible`.
+
+### Commands
+
+```
+# from the p2-opt-eligibility-phantom worktree root, GTCORE_STRICT=1, PYTHONPATH=<worktree>;
+# every driver printed gtcore.__file__ = <worktree>\gtcore\__init__.py and the commit first
+python -m gtcore.cli optimize "$GT_DATA_ROOT/<PT-CT1mm>" --tiles 8 --solver sa --eligible craniotomy      # the F8(b) run (campaign; not run here)
+python -m gtcore.cli optimize "$GT_DATA_ROOT/<PH8>" --phantom-ref "$GT_DATA_ROOT/<PH0>" --tiles 2 --solver greedy --h 4 --spins 3 --seed 0   # see below
+# scratch drivers (scratchpad, not committed): run_patient.py = reconstruct + craniotomy_opening + craniotomy_faces at cones 90/75/60
+#   + packing_capacity + build_candidates on the eligible wall (175 s); run_phantom.py = reconstruct(PH8) + phantom_wall_and_cavity
+#   + the four seed-to-wall rows + rind5 + visible_faces + build_candidates (45-56 s)
+GTCORE_STRICT=1 python -m pytest -q tests/test_plan_eligibility.py tests/test_phantom_cavity.py tests/test_cli_eligibility.py   # 19 passed in 25 s
+GTCORE_STRICT=1 python -m pytest -q tests/test_plan_candidates.py tests/test_plan_api.py tests/test_planner_optimize.py \
+    tests/test_plan_report.py tests/test_seed_wall_distance.py tests/test_plan_review.py                           # 114 passed, 1 skipped (GT_E2E)
+GTCORE_STRICT=1 python -m pytest -q      # full suite, line below
+```
+
+Full suite at `4cd9891` (`GTCORE_STRICT=1 python -m pytest -q -p no:cacheprovider`
+from the worktree root; two real-data drivers and other agents ran
+concurrently, so the wall time is an upper bound): **1043 passed, 15 skipped**,
+15259 warnings in 530.71 s (0:08:50), no failures. The skips: the 13 interface
+placeholders, the `GT_E2E`-gated run, and `tests/test_dose_engine_qa.py`'s
+`GT_PAPER1_ENGINE`-gated live cross-check (Phase 3 engine-qa, merged after the
+14-skip baseline) -- none in the three new files (checked with `-rs`).
+
+### Notes for the coordinator / open points
+
+- **Shared file touched:** `gtcore/plan/__init__.py`, `TargetSet.subsample`
+  only (3 lines + comment): the guard above. Not a constant, not a
+  docstring, so it should merge cleanly with `opt-constants-bound`; without
+  it the campaign's craniotomy-eligible N = 8 run crashes in
+  `build_influence`. Also `gtcore/preprocess/__init__.py` (two exports).
+  `pyproject.toml`, `tests/conftest.py`, `README.md` untouched. Nothing
+  installed.
+- **The phantom cavity is implant-informed, not an implant-independent
+  lumen** (reach 14 mm from the seed hull, sheet clip 3 mm): the brief's
+  "lumen = filled minus body" cannot exist for this print (above). The
+  F3 caption / Table 1 "intra-op cavity volume at print time" is therefore
+  **55.3 cc under the gtcore cavity rule** (state the rule; the 2-D
+  coronal-fill lower bound is 28 mL, the clinical `Cav_Post` 35.1 cc, the
+  gtcore cavity on PT-CT1mm 41.3 cc). If an implant-independent number is
+  wanted, Jacob would have to cap the mouth by hand (a plane) or supply the
+  print's STL (none exists). Candidate for a decisions-log entry.
+- **The opening on PT-CT1mm is the cavity mouth** (the flap is back; the
+  defect-only rule agrees within 1.2 mm). Candidate for the decisions log
+  too: "craniotomy opening = skull defect ∪ cavity mouth on the sealed
+  vault, component with the most mouth voxels".
+- **Eligible fraction 11.8 %** with all three terms, as the task specifies
+  (craniotomy line of sight AND facing AND visible from the implant centre);
+  26.5 % without the implant term. The CLI applies all three; the campaign
+  can drop the implant term with `candidates.craniotomy_faces(mesh, opening,
+  implant_center_ras=None)` and pass the `EligibleFaces` as
+  `optimize(eligible=...)`. Capacity 10 (13) tiles at h 2.5, so N = 8 is
+  feasible either way. Coordinator's call which one the F8(b) run uses; the
+  numbers above let the caption say "x % of the cavity wall".
+- `validation_optimize.py` (V6, other agent's file) still builds the phantom
+  arm on `meshes["body"]`; it should call
+  `segment.cavity.phantom_wall_and_cavity(vol_ph8, vol_ph0,
+  masks_ph8=res.masks, seed_centers_ras=res.seeds.centers_ras)` and score on
+  `rind5(cavity_mask, cavity_affine, clip_mask=info["shell_mask"],
+  clip_affine=cavity_affine)` -- exactly what `gt optimize --phantom-ref`
+  does. The campaign's "as placed" arm = the pipeline's recovered tiles on
+  that wall.
+- The renderer (F8b) gets the mask from `eligible_faces.npy` (written by
+  `gt optimize`) or `candidates.unpack_face_mask(report.parameters["eligible_mask"])`.
+- Runtime of the craniotomy rule on the clinical mesh (12 s) is dominated by
+  the per-face visible test + hits_before on 24 736 faces; fine for one run,
+  not for a sweep; the opening is 2-3 s.
