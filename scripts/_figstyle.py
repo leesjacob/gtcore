@@ -93,7 +93,10 @@ SIZE: Dict[str, Tuple[float, float]] = {
 RENDER = {"window_px": (2400, 2400), "panel_in": 3.3, "mesh_culling": "front",
           "mesh_opacity": ALPHA["mesh"], "tile_opacity": ALPHA["tile"], "tile_opacity_highlight": 0.92, "tile_edge_lw": 3.0,
           "silhouette_lw": 2.0, "silhouette_colour": "#7A7A7A",
-          "mesh_smooth_iter": 40, "mesh_smooth_pass_band": 0.05, "phantom_mesh_opacity": 0.25}
+          "mesh_smooth_iter": 80, "mesh_smooth_pass_band": 0.02, "phantom_mesh_opacity": 0.25,
+          "remesh_pitch_mm": 0.4, "remesh_sigma_mm": (0.7, 0.7, 1.0),
+          "context_hole_mm": 15.0, "context_clip_margin_mm": 15.0,
+          "context_smooth_iter": 120, "context_smooth_pass_band": 0.01, "context_border_trim_mm": 2.5}
 
 # ---------------------------------------------------------------- CT display
 # window / level in HU; vmin = L - W/2, vmax = L + W/2

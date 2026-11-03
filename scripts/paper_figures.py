@@ -626,15 +626,83 @@ def _darken(colour: str, f: float = 0.55) -> Tuple[float, float, float]:
     return (r * f, g * f, b * f)
 
 
-def smooth_mesh(pv, vertices: np.ndarray, faces: np.ndarray, n_iter: int = S.RENDER["mesh_smooth_iter"],
-                pass_band: float = S.RENDER["mesh_smooth_pass_band"]):
-    """Display smoothing of a marching-cubes mesh: Taubin (windowed-sinc
-    low-pass, volume-preserving), then point normals for soft shading.  The
-    committed geometry is not changed; only what is drawn."""
+def _drop_small_pieces(pv, pd, min_frac: float = 0.02, min_cells: int = 50):
+    """Keep the connected pieces of a surface with >= min_frac of the largest
+    piece's faces (drops voxel specks / tiny inner shells that render as
+    star-shaped artefacts)."""
+    conn = pd.connectivity("all")
+    rid = np.asarray(conn.cell_data["RegionId"])
+    counts = np.bincount(rid)
+    keep = np.flatnonzero(counts >= max(min_cells, min_frac * counts.max()))
+    out = conn.extract_cells(np.isin(rid, keep)).extract_surface(algorithm="dataset_surface")
+    return out.triangulate().clean()
+
+
+def smooth_mesh(pv, vertices: np.ndarray, faces: np.ndarray, pitch_mm: float = S.RENDER["remesh_pitch_mm"],
+                sigma_mm: Sequence[float] = S.RENDER["remesh_sigma_mm"]):
+    """Display surface of a closed cavity mesh: voxelise (trimesh, pitch
+    ``pitch_mm``, interior filled), Gaussian-smooth the mask (``sigma_mm`` per
+    RAS axis; z larger, the RTSTRUCT planes are 1 mm apart), marching cubes at
+    the iso-level that preserves the original enclosed volume (within 0.5 %),
+    a light Taubin pass, consistent outward normals.  Only what is drawn
+    changes; the committed geometry is untouched.  Falls back to Taubin
+    smoothing of the mesh itself if the mesh is not closed."""
+    import trimesh
+    from scipy.ndimage import binary_fill_holes, gaussian_filter
+    from skimage.measure import marching_cubes
+
+    raw = _drop_small_pieces(pv, _polydata(pv, vertices, faces).clean())
+    tm = trimesh.Trimesh(np.asarray(raw.points), np.asarray(raw.faces).reshape(-1, 4)[:, 1:], process=True)
+    if not tm.is_watertight:
+        pd = raw.smooth_taubin(n_iter=S.RENDER["mesh_smooth_iter"], pass_band=S.RENDER["mesh_smooth_pass_band"])
+        return pd.compute_normals(consistent_normals=True, auto_orient_normals=True, split_vertices=False)
+    target = abs(tm.volume)
+    vg = tm.voxelized(pitch_mm)
+    pad = int(np.ceil(3.0 * max(sigma_mm) / pitch_mm)) + 2
+    mask = np.pad(binary_fill_holes(vg.matrix), pad).astype(np.float32)
+    field = gaussian_filter(mask, [sg / pitch_mm for sg in sigma_mm])
+    best = None
+    for level in np.arange(0.40, 0.86, 0.025):
+        v, f, _, _ = marching_cubes(field, float(level), spacing=(pitch_mm,) * 3)
+        vol = abs(trimesh.Trimesh(v, f, process=False).volume)
+        err = abs(vol / target - 1.0)
+        if best is None or err < best[0]:
+            best = (err, v, f)
+        if vol < target:
+            break
+    _err, v, f = best
+    v = trimesh.transform_points(v / pitch_mm - pad, vg.transform)
+    pd = _polydata(pv, v, f).clean().smooth_taubin(n_iter=20, pass_band=0.05)
+    return pd.compute_normals(consistent_normals=True, auto_orient_normals=True, split_vertices=False)
+
+
+def context_surface(pv, vertices: np.ndarray, faces: np.ndarray, center: np.ndarray, radius: float,
+                    hole_mm: float = S.RENDER["context_hole_mm"], min_component_frac: float = 0.02):
+    """A clean display surface from a printed-wall mesh: small holes filled,
+    small disconnected pieces dropped, Taubin-smoothed, then clipped by a
+    sphere (centre, radius) on an interpolated distance field so the
+    boundary is a smooth curve, not a jagged box edge."""
     pd = _polydata(pv, vertices, faces).clean()
-    if n_iter > 0:
-        pd = pd.smooth_taubin(n_iter=n_iter, pass_band=pass_band, boundary_smoothing=False)
-    return pd.compute_normals(auto_orient_normals=False, consistent_normals=True, split_vertices=False)
+    pd = _drop_small_pieces(pv, pd.fill_holes(hole_mm), min_frac=min_component_frac)
+    pd = pd.smooth_taubin(n_iter=S.RENDER["context_smooth_iter"], pass_band=S.RENDER["context_smooth_pass_band"],
+                          boundary_smoothing=True)
+    # the face-selected wall has saw-tooth borders: trim them along a smooth
+    # contour of the distance to the border (interpolated clip), then clip by
+    # the sphere the same way, so every visible boundary is a clean curve
+    from scipy.spatial import cKDTree
+    pts = np.asarray(pd.points)
+    edges = pd.extract_feature_edges(boundary_edges=True, feature_edges=False, manifold_edges=False,
+                                     non_manifold_edges=False)
+    if edges.n_points:
+        dist, _ = cKDTree(np.asarray(edges.points)).query(pts)
+        pd.point_data["from_border"] = dist
+        pd = pd.clip_scalar(scalars="from_border", value=S.RENDER["context_border_trim_mm"], invert=False)
+        pd = pd.extract_surface(algorithm="dataset_surface").triangulate().clean()
+    d = radius - np.linalg.norm(np.asarray(pd.points) - np.asarray(center)[None, :], axis=1)
+    pd.point_data["inside"] = d
+    pd = pd.clip_scalar(scalars="inside", value=0.0, invert=False)
+    pd = pd.extract_surface(algorithm="dataset_surface").triangulate().clean()
+    return pd.compute_normals(consistent_normals=True, split_vertices=False)
 
 
 def render_scene(camera: Dict[str, Sequence[float]], mesh: Optional[Tuple[np.ndarray, np.ndarray]],
@@ -654,12 +722,15 @@ def render_scene(camera: Dict[str, Sequence[float]], mesh: Optional[Tuple[np.nda
     except Exception:
         pass
     pl.enable_parallel_projection()
-    sil = {"color": S.RENDER["silhouette_colour"], "line_width": S.RENDER["silhouette_lw"]}
     if mesh is not None:
-        pd = smooth_mesh(pv, *mesh) if smooth else _polydata(pv, *mesh)
-        kw = dict(opacity=mesh_opacity, smooth_shading=True, specular=0.05, ambient=0.35, diffuse=0.7,
-                  culling=camera.get("mesh_culling", S.RENDER["mesh_culling"]) if culling == "default" else culling,
-                  silhouette=sil)
+        if hasattr(mesh, "n_cells"):            # an already prepared pyvista surface
+            pd = mesh
+        else:
+            pd = smooth_mesh(pv, *mesh) if smooth else _polydata(pv, *mesh)
+        # no edge lines of any kind on the context surface: shading only
+        kw = dict(opacity=mesh_opacity, smooth_shading=True, specular=0.2, specular_power=15, ambient=0.25,
+                  diffuse=0.75,
+                  culling=camera.get("mesh_culling", S.RENDER["mesh_culling"]) if culling == "default" else culling)
         if eligible is not None and len(eligible) == pd.n_cells:
             pd.cell_data["eligible"] = np.asarray(eligible, float)
             pl.add_mesh(pd, scalars="eligible", cmap=[S.COL["mesh"], S.COL["mesh_eligible"]], clim=[0, 1],
@@ -841,8 +912,13 @@ def f4c_phantom_3d(ctx) -> Dict[str, Any]:
     mesh, mesh_note = None, "none (f4c_phantom_wall.npz missing: run scripts/export_phantom_wall.py)"
     if os.path.exists(wall_p):
         w = _npz(wall_p)
-        mesh = (w["wall_crop_vertices"], w["wall_crop_faces"])
-        mesh_note = "registered PH0 wall (phantom_wall_and_cavity), cropped to the implant region"
+        sc = np.asarray(d["seed_centers_ras"], float)
+        lo, hi = sc.min(axis=0), sc.max(axis=0)
+        centre, radius = 0.5 * (lo + hi), 0.5 * float(np.linalg.norm(hi - lo)) + S.RENDER["context_clip_margin_mm"]
+        mesh = context_surface(_pv(), w["wall_vertices"], w["wall_faces"], centre, radius)
+        mesh_note = ("registered PH0 wall (phantom_wall_and_cavity): holes <= %g mm filled, small pieces dropped, "
+                     "Taubin-smoothed, clipped by a sphere r = %.1f mm (seed half-diagonal + %g mm) around the implant"
+                     % (S.RENDER["context_hole_mm"], radius, S.RENDER["context_clip_margin_mm"]))
     img = render_scene(S.CAMERA["phantom"], mesh, tiles, _seed_groups(d, leftover),
                        mesh_opacity=S.RENDER["phantom_mesh_opacity"])
     outs = S.save_raster_panel(img, ctx["out"], "f4c_phantom_implant", S.RENDER["panel_in"])
