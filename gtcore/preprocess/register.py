@@ -133,45 +133,90 @@ def resample_mask_into_fixed(mask, affine, tx, fixed_affine, fixed_shape_kji) ->
 
 
 # ------------------------------------------------------------ registration
+_SAME = object()   # sentinel: "the same range as hu_range"
+
+
+def _clamp(arr, rng):
+    """``arr`` as float32, clamped to ``rng`` (a pair) or untouched (``None``)."""
+    a = np.asarray(arr, np.float32)
+    if rng is None:
+        return a
+    return np.clip(a, float(rng[0]), float(rng[1]))
+
+
 def register_rigid(fixed: Volume, fixed_mask, moving: Volume, moving_mask,
                    margin_mm: float = 10.0, hu_range=(-1000.0, 500.0), bins: int = 50,
-                   sampling: float = 0.25, seed: int = 1234, verbose: bool = False):
+                   sampling: float = 0.25, seed: int = 1234, verbose: bool = False,
+                   moving_range=_SAME, fixed_metric_mask=None,
+                   initial_rotation=None, initial_translation_lps=None, center_lps=None,
+                   shrink_factors=(4, 2, 1), smoothing_sigmas_mm=(2.0, 1.0, 0.0),
+                   iterations: int = 300, learning_rate: float = 1.0):
     """Rigid (Euler3D) registration moving -> fixed with SimpleITK: Mattes
-    mutual information on HU clamped to ``hu_range``, random sampling
+    mutual information on intensities clamped to ``hu_range``, random sampling
     (seeded), three resolution levels, regular-step gradient descent, centred
     on the fixed mask's centroid and initialised by the mask centroids.
     Returns ``(transform, info)``; the transform maps fixed physical points to
     moving physical points (SimpleITK's resampling convention).  ``info``
-    carries the final metric, the Euler angles / translation, the Dice of the
-    resampled moving mask against the fixed one and the stop condition."""
+    carries the initial and final metric, the Euler angles / translation, the
+    Dice of the resampled moving mask against the fixed one and the stop
+    condition.
+
+    CT-CT is the default (both images clamped to ``hu_range``).  For a CT-MR
+    pair give ``moving_range`` (the MR's display range, e.g. ``(0, p99.5)``;
+    ``None`` = no clamping) -- mutual information needs no intensity
+    correspondence, the clamp only keeps outliers out of the histogram.
+    ``fixed_metric_mask`` (bool, fixed grid) restricts the metric samples
+    (e.g. a partial object and a rim of its surroundings).
+    ``initial_rotation`` (3 x 3 proper rotation, LPS), ``center_lps`` and
+    ``initial_translation_lps`` override the centroid initialisation (a
+    multi-start caller's hook); ``shrink_factors`` / ``smoothing_sigmas_mm``
+    / ``iterations`` / ``learning_rate`` are the optimiser schedule.  Defaults
+    are the Phase 3 parameters (``docs/paper2-phase-notes.md``, seed-to-wall:
+    PH0 -> PH8 Dice 0.979, 0.34 mm residual); nothing is tuned.
+    """
     import SimpleITK as sitk
     t0 = time.time()
     f_vol, f_mask = crop_volume(fixed, fixed_mask, margin_mm)
     m_vol, m_mask = crop_volume(moving, moving_mask, margin_mm)
-    lo, hi = float(hu_range[0]), float(hu_range[1])
-    fi = to_sitk(np.clip(np.asarray(f_vol.array, np.float32), lo, hi), f_vol.affine)
-    mi = to_sitk(np.clip(np.asarray(m_vol.array, np.float32), lo, hi), m_vol.affine)
+    m_range = hu_range if moving_range is _SAME else moving_range
+    fi = to_sitk(_clamp(f_vol.array, hu_range), f_vol.affine)
+    mi = to_sitk(_clamp(m_vol.array, m_range), m_vol.affine)
     cf = mask_centroid_ras(f_mask, f_vol.affine) * _FLIP
     cm = mask_centroid_ras(m_mask, m_vol.affine) * _FLIP
+    c0 = cf if center_lps is None else np.asarray(center_lps, float)
+    t_init = (cm - cf) if initial_translation_lps is None else np.asarray(initial_translation_lps, float)
     tx = sitk.Euler3DTransform()
-    tx.SetCenter(tuple(float(x) for x in cf))
-    tx.SetTranslation(tuple(float(x) for x in (cm - cf)))
+    tx.SetCenter(tuple(float(x) for x in c0))
+    if initial_rotation is not None:
+        R0 = np.asarray(initial_rotation, float).reshape(3, 3)
+        if abs(np.linalg.det(R0) - 1.0) > 1e-6 or not np.allclose(R0 @ R0.T, np.eye(3), atol=1e-6):
+            raise ValueError("register_rigid: initial_rotation must be a proper rotation matrix")
+        tx.SetMatrix(tuple(float(x) for x in R0.ravel()))
+    tx.SetTranslation(tuple(float(x) for x in t_init))
     reg = sitk.ImageRegistrationMethod()
     reg.SetMetricAsMattesMutualInformation(numberOfHistogramBins=int(bins))
     reg.SetMetricSamplingStrategy(reg.RANDOM)
     reg.SetMetricSamplingPercentage(float(sampling), int(seed))
+    if fixed_metric_mask is not None:
+        _fm, _A, (lo, hi) = crop_mask(fixed_mask, fixed.affine, margin_mm)   # the same box as f_vol
+        sub = np.asarray(fixed_metric_mask, bool)[lo[0]:hi[0] + 1, lo[1]:hi[1] + 1, lo[2]:hi[2] + 1]
+        reg.SetMetricFixedMask(to_sitk(sub.astype(np.uint8), f_vol.affine))
     reg.SetInterpolator(sitk.sitkLinear)
-    reg.SetOptimizerAsRegularStepGradientDescent(learningRate=1.0, minStep=1e-4,
-                                                 numberOfIterations=300, relaxationFactor=0.5,
+    reg.SetOptimizerAsRegularStepGradientDescent(learningRate=float(learning_rate), minStep=1e-4,
+                                                 numberOfIterations=int(iterations), relaxationFactor=0.5,
                                                  gradientMagnitudeTolerance=1e-6)
     reg.SetOptimizerScalesFromPhysicalShift()
-    reg.SetShrinkFactorsPerLevel(shrinkFactors=[4, 2, 1])
-    reg.SetSmoothingSigmasPerLevel(smoothingSigmas=[2.0, 1.0, 0.0])
+    reg.SetShrinkFactorsPerLevel(shrinkFactors=[int(f) for f in shrink_factors])
+    reg.SetSmoothingSigmasPerLevel(smoothingSigmas=[float(s) for s in smoothing_sigmas_mm])
     reg.SmoothingSigmasAreSpecifiedInPhysicalUnitsOn()
     reg.SetInitialTransform(tx, inPlace=True)
     if verbose:
         reg.AddCommand(sitk.sitkIterationEvent,
                        lambda: print("    it %3d  metric %.5f" % (reg.GetOptimizerIteration(), reg.GetMetricValue())))
+    try:
+        metric_initial = float(reg.MetricEvaluate(fi, mi))
+    except Exception:            # e.g. no sample inside the moving image at the start
+        metric_initial = float("nan")
     reg.Execute(fi, mi)
     # Dice of the moving mask carried into the fixed grid
     mm = to_sitk(np.asarray(m_mask, np.uint8), m_vol.affine)
@@ -181,22 +226,38 @@ def register_rigid(fixed: Volume, fixed_mask, moving: Volume, moving_mask,
     ang = np.degrees(np.asarray(tx.GetParameters()[:3], float))
     tr = np.asarray(tx.GetParameters()[3:6], float)
     info: Dict[str, Any] = {
+        "metric_initial": metric_initial,
         "metric_final": float(reg.GetMetricValue()),
         "stop_condition": str(reg.GetOptimizerStopConditionDescription()),
         "iterations": int(reg.GetOptimizerIteration()),
         "euler_angles_deg": [float(a) for a in ang],
         "translation_lps_mm": [float(v) for v in tr],
-        "initial_translation_lps_mm": [float(v) for v in (cm - cf)],
+        "initial_translation_lps_mm": [float(v) for v in t_init],
+        "center_lps_mm": [float(v) for v in c0],
         "dice_masks": float(dice),
         "fixed_crop_shape": [int(n) for n in f_vol.array.shape],
         "moving_crop_shape": [int(n) for n in m_vol.array.shape],
+        "fixed_range": None if hu_range is None else [float(hu_range[0]), float(hu_range[1])],
+        "moving_range": None if m_range is None else [float(m_range[0]), float(m_range[1])],
         "seconds": float(time.time() - t0),
     }
     return tx, info
 
 
+def compose_points_ras(points_ras, steps):
+    """Carry RAS points through a chain of registrations.  ``steps`` is a
+    list of ``(tx, inverse)``: each ``tx`` is a :func:`register_rigid`
+    transform (fixed -> moving); ``inverse=False`` maps a point of that
+    registration's FIXED image into its MOVING image, ``inverse=True`` the
+    other way.  Returns the carried ``(N, 3)`` array."""
+    p = np.atleast_2d(np.asarray(points_ras, float))
+    for tx, inverse in steps:
+        p = transform_points_ras(tx, p, inverse=bool(inverse))
+    return p
+
+
 __all__ = [
     "RAS_TO_LPS", "spacing_of", "crop_mask", "crop_volume", "mask_centroid_ras",
     "to_sitk", "euler_as_matrix", "transform_points_ras", "transform_mesh_ras",
-    "resample_mask_into_fixed", "register_rigid",
+    "resample_mask_into_fixed", "register_rigid", "compose_points_ras",
 ]
