@@ -2078,18 +2078,23 @@ class _PlannerApp:
         cav = getattr(res, "cavity_mask", None)
         inside = cav if (on_cavity and cav is not None and np.any(cav)) else None
         keep = None
+        keep_source = None
         masks = getattr(res, "masks", {}) or {}
         for key in (("cranial_interior", "brain") if on_cavity else ("body",)):
             m = masks.get(key)
             if m is not None and np.any(m):
                 keep = m
+                keep_source = "gtcore:%s" % key
                 break
+        # with the pipeline's cavity mask this is RIND5(cavity, clip) on the
+        # rind grid (gtcore.dose.targets); without one (phantom shell) the
+        # flagged mesh-offset fallback
         self._hrctv = build_hrctv(
             self.cavity, depth_mm=WALL_DEPTH_MM, spacing_mm=HRCTV_SPACING_MM,
             side=+1 if on_cavity else -1,
             inside_mask=inside, inside_affine=aff if inside is not None else None,
             keep_mask=keep, keep_affine=aff if keep is not None else None,
-            source=self._surface_label)
+            source=self._surface_label, keep_source=keep_source)
         return self._hrctv
 
     def _toggle_hrctv(self):

@@ -122,23 +122,48 @@ def dose_metrics(dose_volume: Volume, mask, rx_cgy: float) -> Dict[str, float]:
 
 
 # ------------------------------------------------------------- structures
-def resample_mask_to(dose_volume: Volume, mask, affine):
+RESAMPLE_CHUNK_VOXELS = 4_000_000   # ~100 MB of float64 points per chunk
+
+
+def resample_mask_to(dose_volume: Volume, mask, affine,
+                     chunk_voxels: int = RESAMPLE_CHUNK_VOXELS):
     """Nearest-neighbour resample of a bool mask (``[k, j, i]`` with its own
-    ``affine``) onto the dose grid. Returns bool ``[k, j, i]`` on the grid."""
+    ``affine``) onto the dose grid. Returns bool ``[k, j, i]`` on the grid.
+
+    Every output voxel centre is mapped to RAS and looked up (order 0) in the
+    source mask; the work is done in slabs of at most ``chunk_voxels`` so a
+    full clinical CT grid (204 x 512 x 512) stays within a few hundred MB.
+    """
     src = Volume(np.asarray(mask, dtype=np.uint8), np.asarray(affine, float))
     nk, nj, ni = dose_volume.array.shape
-    kk, jj, ii = np.meshgrid(np.arange(nk), np.arange(nj), np.arange(ni),
-                             indexing="ij")
-    ijk = np.stack([ii.ravel(), jj.ravel(), kk.ravel()], axis=1).astype(float)
-    pts = dose_volume.index_to_ras(ijk)
-    vals = src.sample_ras(pts, order=0, fill=0.0)
-    return (np.asarray(vals) > 0.5).reshape(nk, nj, ni)
+    out = np.zeros((nk, nj, ni), dtype=bool)
+    if nk == 0 or nj == 0 or ni == 0:
+        return out
+    per_slab = max(1, int(chunk_voxels) // max(1, nj * ni))
+    jj, ii = np.meshgrid(np.arange(nj), np.arange(ni), indexing="ij")
+    jj = jj.ravel().astype(float)
+    ii = ii.ravel().astype(float)
+    for k0 in range(0, nk, per_slab):
+        k1 = min(nk, k0 + per_slab)
+        n_slab = k1 - k0
+        kk = np.repeat(np.arange(k0, k1, dtype=float), nj * ni)
+        ijk = np.stack([np.tile(ii, n_slab), np.tile(jj, n_slab), kk], axis=1)
+        pts = dose_volume.index_to_ras(ijk)
+        vals = src.sample_ras(pts, order=0, fill=0.0)
+        out[k0:k1] = (np.asarray(vals) > 0.5).reshape(n_slab, nj, ni)
+    return out
 
 
 def rind_mask(dose_volume: Volume, structure_mask, structure_affine,
               depth_mm=5.0, exclude_mask=None):
     """Shell of tissue within ``depth_mm`` outside a structure, on the dose
     grid -- the GammaTile target volume for a resection cavity.
+
+    Thin wrapper (kept for its callers) around :func:`gtcore.dose.targets.rind5`,
+    the one ``RIND5`` definition: ``rind5(structure_mask, structure_affine,
+    clip_mask=~exclude_mask, grid_affine=dose_volume.affine,
+    grid_shape=dose_volume.array.shape, depth_mm=depth_mm).mask``.  New code
+    should call ``rind5`` directly and keep the ``Target`` (provenance).
 
     Parameters
     ----------
@@ -154,16 +179,16 @@ def rind_mask(dose_volume: Volume, structure_mask, structure_affine,
     """
     if depth_mm <= 0.0:
         raise ValueError("depth_mm must be positive")
-    inside = resample_mask_to(dose_volume, structure_mask, structure_affine)
-    if not inside.any():
-        return np.zeros_like(inside)
-    # Distance from every voxel to the nearest structure voxel, in mm.
-    dist = ndimage.distance_transform_edt(~inside,
-                                          sampling=dose_volume.spacing[::-1])
-    rind = (dist <= float(depth_mm)) & ~inside
-    if exclude_mask is not None:
-        rind &= ~np.asarray(exclude_mask, dtype=bool)
-    return rind
+    from .targets import rind5                   # lazy: targets imports this module
+    clip = None if exclude_mask is None else ~np.asarray(exclude_mask, dtype=bool)
+    target = rind5(structure_mask, structure_affine,
+                   clip_mask=clip,
+                   clip_affine=dose_volume.affine if clip is not None else None,
+                   depth_mm=float(depth_mm),
+                   grid_affine=dose_volume.affine,
+                   grid_shape=dose_volume.array.shape,
+                   clip_source="exclude_mask" if clip is not None else None)
+    return target.mask
 
 
 # ------------------------------------------------------------- wall dose

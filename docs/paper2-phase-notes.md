@@ -776,3 +776,250 @@ end point 60 px / 15 px asserted on the wall. Three consecutive module runs:
 32 passed each. Full-suite reference at the Phase 1 merge d063c23:
 875 passed, 14 skipped, 1 failed (this test); the four-merge tree 2630550:
 876 passed, 14 skipped.
+
+## 2026-11-03 — Phase 2 — targets (HRCTV_PHYS, RIND5, IMPLANT_REACH, S5) (task `targets`)
+
+Branch `p2/targets`, code commit `56651ba` (then `32234a4` = merge of
+`paper2/integration` d1de921, test-only). Requirements rev 3 §2 "Targets",
+§3 F6, §6 Phase 2 second checkbox; Phase 2 contract section B. Hardware as
+above; other agents ran concurrently, so timings are upper bounds.
+
+### Definitions (Methods-quotable)
+
+**HRCTV_PHYS.** The physician's planning high-risk clinical target volume as
+contoured in the treatment-planning system (RTSTRUCT ROI `CTV_GT`),
+rasterised onto the CT grid and used unchanged
+(`gtcore.dose.targets.hrctv_phys`). It is the reference structure for every
+dose comparison with the TPS (F5); `CTV_GT` is a hand-trimmed partial rind
+(19.0 cc on the 1 mm CT grid), covering 53 % of the full 5 mm rind of
+`Cav_Post` on this case.
+
+**RIND5(cavity, clip).** The implant-independent HR-CTV: the set of voxels
+whose centre lies within 5 mm (Euclidean distance in physical millimetres,
+`scipy.ndimage.distance_transform_edt` with the grid spacing as `sampling`)
+of the nearest cavity voxel centre, outside the cavity, intersected with a
+clip mask (the TPS `Brain` contour when present, gtcore's cranial interior or
+brain otherwise). The cavity may be the TPS `Cav_Post` contour or gtcore's
+automatic segmentation; every output table states which, together with the
+clip mask, the grid (spacing, shape) and the depth (`Target.provenance`).
+When a target is requested on a grid other than the cavity's, both masks are
+first resampled nearest-neighbour to that grid and the distance transform
+runs there (`gtcore.dose.targets.rind5`). RIND5 is the planner's HR-CTV
+(`build_hrctv`), the optimizer's volumetric target (`metrics.rind_mask`,
+Phase 2 D), and the structure of F8 and Table 3.
+
+**IMPLANT_REACH(r).** `RIND5` restricted to the voxels whose centre lies
+within r mm of the nearest *seed centre* (exact Euclidean distance to the
+detected seed positions; seeds, not tile footprints, because with 6 of 8
+tiles fitted a footprint rule would exclude the wall under the unfitted
+tiles). It reproduces the physician's partial-rind contouring convention for
+F6 only, with r calibrated on this case against `CTV_GT` (Dice) and stated
+as such. It is never a planning or optimizer target: a target defined by the
+seed placement cannot score that placement
+(`gtcore.dose.targets.implant_reach`).
+
+**S5.** The cavity-wall mesh pushed 5 mm outward along its vertex normals,
+each vertex weighted by its area on the offset shell
+(`gtcore.plan.TargetSet.from_shell`, wrapped by `gtcore.dose.targets.s5`).
+It is the optimizer's internal surrogate for the HR-CTV and is reported only
+as "S5 coverage" (area fraction at or above the prescription), never as a
+D90 of the HR-CTV.
+
+**Distance convention (state in Methods).** The RIND5 distance is measured
+from voxel centre to the nearest cavity voxel *centre*; the cavity's
+boundary voxel centres lie inside the analytic surface, so the rind is
+systematically thin by a fraction of a voxel. On a digital sphere (R = 12 mm,
+5 mm rind) the volume deficit against the analytic shell is -4.8 % on a
+0.5 x 0.5 x 2 mm grid, -4.4 % on the clinical 0.52 x 0.52 x 1 mm grid,
+-5.2 % at 1 mm isotropic, -2.2 % at 0.5 mm isotropic; along each grid axis
+the band is exactly the centres in (R, R + 5] (so a unit error of the old
+voxel-step kind would be caught), and the Dice against the exactly
+voxelised continuous rind is 0.969. The same convention applies to every
+structure in a comparison, so Dice and D90 comparisons are unaffected; the
+absolute rind volume is quoted with this caveat.
+
+### What changed
+
+- `gtcore/dose/targets.py` (new): `Target` dataclass (`name`, `mask`,
+  `affine`, `points`, `weights`, `provenance`; properties `n`,
+  `voxel_volume_mm3`, `volume_cc`, `voxel_centers_ras()`, `as_volume()`,
+  `describe()`); builders `rind5`, `hrctv_phys`, `implant_reach`, `s5`;
+  `dice(a, b)` / `coverage(a, b)` (b resampled nearest-neighbour onto a's
+  grid when the grids differ; tables name the grid), `volume_cc`;
+  `target_doses_exact` (exact engine at the sample points),
+  `target_doses_from_grid` (trilinear), `target_stats` -> one private
+  `_stats` seam that calls `metrics.dose_stats` when it exists (Phase 2 A)
+  and the pre-Phase-2 `hrctv_stats` / `plan.report.weighted_stats`
+  otherwise. Provenance keys: `cavity_source`, `clip_source`, `grid`
+  (`spacing_mm` per (i, j, k), `shape` in array order (k, j, i),
+  `origin_ras`), `depth_mm`, `r_mm` + `n_seeds` (IMPLANT_REACH), `roi_name`
+  (HRCTV_PHYS), `builder`, `git_commit`, `name`; all JSON-serialisable.
+- `gtcore/dose/hrctv.py`: `build_hrctv` keeps its signature and return type.
+  With `inside_mask` (the cavity) the mask **is**
+  `rind5(cavity, clip=keep_mask)` on the isotropic rind grid the mesh bounds
+  define; the mesh-offset construction (`_mesh_offset_rind`) remains for the
+  display shell's far-surface trim and as the fallback when no cavity mask
+  exists, flagged by `provenance["cavity_source"] == "mesh"` and
+  `HRCTV.source` "... (mesh-offset fallback: no cavity mask)". `HRCTV.target`
+  (a `Target`) and `HRCTV.provenance` added; optional `cavity_source` /
+  `keep_source` labels. An empty cavity on the rind grid raises instead of
+  silently falling back. `hrctv_stats` untouched (byte-identical; owned by
+  `dose-stats`).
+- `gtcore/dose/metrics.py`: `rind_mask` is a wrapper returning
+  `rind5(...).mask` (old signature; `exclude_mask` becomes the clip);
+  `resample_mask_to` is chunked (4 M voxels per slab) so a full CT grid stays
+  within a few hundred MB -- same per-voxel computation, bit-identical result.
+  Stats functions and `DVH` untouched.
+- `gtcore/dose/__init__.py` exports the public names; `gtcore/planner.py`
+  passes `keep_source` ("gtcore:cranial_interior" / "gtcore:brain" /
+  "gtcore:body") so the planner's HR-CTV is a labelled RIND5 (it already
+  passed the pipeline's cavity mask). `gtcore/cli.py`, `gtcore/plan/report.py`,
+  `scripts/validation_clinical.py`, `scripts/strict_pipeline_check.py`
+  unchanged and still working (checked by the tests / the driver below).
+
+### Unit tests (`tests/test_targets.py`, 11 tests)
+
+`GTCORE_STRICT=1 python -m pytest -q tests/test_targets.py tests/test_hrctv.py tests/test_dose_metrics.py tests/test_strict_mode.py`
+at `56651ba`: 49 passed. The digital-sphere test on 0.5 x 0.5 x 2 mm asserts
+the axis-exact band, nothing inside the cavity, clip removal, output on
+another grid (= resample first, then EDT, bit-identical), volume within 6 %
+of the analytic shell with the one-sided bias above (**the task's 3 %
+figure is not reachable with the contract's centre-to-centre distance
+transform on that grid; see "Notes for the coordinator"**); IMPLANT_REACH
+is a subset of RIND5, equals RIND5 for r -> inf, is empty for r -> 0, is
+brute-force equal to the nearest-seed-centre rule and to the union over
+single seeds; S5 == `TargetSet.from_shell`; Dice/coverage on known boxes
+across grids; provenance JSON round trip with the contract keys;
+`build_hrctv` with a cavity mask equals `rind5` on the rind grid
+(`cavity_source "gtcore:cavity"`) and without one is the flagged `"mesh"`
+fallback; `rind_mask` wrapper equals `rind5(...).mask`; doses/stats paths
+incl. the weighted S5 path and the empty target.
+
+### Real data -- JD-1mm (204 slices, 0.52 x 0.52 x 1.0 mm) with the RTSTRUCT
+
+Driver: a scratch script (not committed) that runs `load_volume` +
+`reconstruct(vol, verbose=False)` on `$GT_DATA_ROOT/<JD-1mm>`, rasterises
+`Cav_Post`, `CTV_GT` and `Brain` from `$GT_DATA_ROOT/<JD RT RTSTRUCT>` with
+the rasteriser of `scripts/validation_clinical.py` (copied verbatim; the
+module belongs to `rt-io`), and calls the `targets` API; run with
+`PYTHONPATH` = the worktree, `gtcore.__file__` printed and checked, at
+`32234a4` (identical numbers at the uncommitted `d063c23` tree). Pipeline:
+32 seeds (Phase 1 vault filter), gtcore cavity 41.3 cc, cranial interior
+1340 mL, 21 s; `Cav_Post` 35.10 cc, `CTV_GT` 19.02 cc, `Brain` 1384 cc on
+the CT grid. `rind5` on the full CT grid: 5.6 s.
+
+| Target (CT grid) | Volume [cc] | Dice vs `CTV_GT` | covers `CTV_GT` | inside `CTV_GT` |
+|---|---|---|---|---|
+| `HRCTV_PHYS` = `CTV_GT` | 19.02 | 1 | 100 % | 100 % |
+| `RIND5(Cav_Post, clip=Brain)` | 35.35 | **0.692** | 99 % | 53 % |
+| `RIND5(Cav_Post, clip=gtcore cranial interior)` | 33.88 | 0.666 | 93 % | 52 % |
+| `RIND5(Cav_Post, no clip)` | 45.00 | 0.588 | 99 % | 42 % |
+| `RIND5(gtcore cavity, clip=gtcore cranial interior)` | 53.82 | **0.284** | 54 % | 19 % |
+| `RIND5(gtcore cavity, clip=Brain)` | 60.27 | 0.291 | 61 % | 19 % |
+
+Dice `RIND5(Cav_Post, Brain)` vs `RIND5(gtcore cavity, cranial interior)`:
+**0.443**; `RIND5(Cav_Post, Brain)` vs `RIND5(Cav_Post, cranial interior)`:
+0.963 (the TPS `Brain` clip keeps the rind under the craniotomy that the
+gtcore cranial interior cuts -- hence 99 % vs 93 % coverage of `CTV_GT`).
+gtcore cavity vs `Cav_Post`: Dice 0.665. The 33.88 cc / 0.666 row reproduces
+the Phase 1 inline computation in `validation_clinical.py` ("rind(Cav_Post)
+33.9 cc"), i.e. `rind5` is that definition. The gtcore rind is large because
+the gtcore cavity (41.3 cc) leaks beyond `Cav_Post` (known Phase 1 state,
+not touched here).
+
+**F6 calibration -- `IMPLANT_REACH(r)` from the 32 gtcore seeds on
+`RIND5(Cav_Post, clip=Brain)`** (nothing else tuned; the rev 3 sketch quoted
+12 mm / Dice 0.80):
+
+| r [mm] | Volume [cc] | Dice vs `CTV_GT` | covers `CTV_GT` | inside `CTV_GT` |
+|---|---|---|---|---|
+| 6 | 2.40 | 0.214 | 12 % | 95 % |
+| 8 | 8.48 | 0.578 | 42 % | 94 % |
+| **10** | 16.83 | **0.881** | 83 % | 94 % |
+| 12 | 25.29 | 0.846 | 98.5 % | 74 % |
+| 14 | 31.79 | 0.740 | 99 % | 59 % |
+| (4 / 16 / 18 / 20, context) | 0.20 / 34.64 / 35.31 / 35.35 | 0.020 / 0.701 / 0.692 / 0.692 | | |
+
+Dice peaks at r = 10 mm (0.881), not 12 mm; 12 mm gives 0.846 and covers
+98.5 % of `CTV_GT` (10 mm covers 83 %). The curve is flat-topped between 10
+and 12 mm; the choice is Jacob's (Table 2 states "calibrated on this case").
+Context, `IMPLANT_REACH(r)` on `RIND5(gtcore cavity, cranial interior)`:
+Dice vs `CTV_GT` 0.088 / 0.305 / 0.523 / 0.520 / 0.440 for r = 6 / 8 / 10 /
+12 / 14 (volumes 3.4 / 8.7 / 14.5 / 20.8 / 28.0 cc).
+
+**Planner path.** `build_hrctv(cavity mesh, inside_mask=gtcore cavity,
+keep_mask=cranial interior, keep_source="gtcore:cranial_interior")`: 0.6 s;
+52.7 cc on the 1 mm rind grid (70 x 73 x 76); provenance `builder rind5`,
+`cavity_source gtcore:cavity`, `clip_source gtcore:cranial_interior`,
+`depth_mm 5`; display shell 34,575 faces. Dice vs `RIND5(gtcore cavity,
+cranial interior)` on the CT grid 0.936 (the 1 mm rind grid resampled onto
+the 0.52 mm CT grid -- the residual is the two voxelisations); Dice vs
+`CTV_GT` 0.288 (CT-grid value 0.284). Phase 1 quoted 49.3 cc for the
+mesh-offset HR-CTV with the same masks: RIND5 is 7 % larger because the
+mesh-offset band started at the smoothed marching-cubes surface.
+
+**RTDOSE on each target (trilinear, rx 60 Gy) -- preview only, Phase 3
+regenerates with `io/rt.py` and `dose_stats`:** `HRCTV_PHYS` D90 6365 cGy /
+V100 0.937 (identical to the Phase 1 value); `RIND5(Cav_Post, Brain)`
+4646 / 0.678; `RIND5(gtcore, cranial interior)` 2725 / 0.383;
+`IMPLANT_REACH(12)` on `RIND5(Cav_Post)` 5859 / 0.880.
+
+**PH8 (157 slices, 0.59 x 0.59 x 1.0 mm).** `reconstruct`: 26 s, 32 seeds,
+cavity mask empty (the phantom pipeline segments no cavity), wall =
+"phantom shell (no cavity segmented)". `build_hrctv(body shell, side=-1,
+keep_mask=body)` runs in 1.2 s on the **fallback path**: 225.7 cc,
+`cavity_source "mesh"`, `clip_source "gtcore:body"`, `side -1`, source label
+"... (mesh-offset fallback: no cavity mask)", display shell 107,087 faces.
+As before, this is the whole printed body minus its 5 mm skin -- the phantom
+has no cavity mask to build a RIND5 from (the printed cavity is a hollow in
+the body; a cavity segmentation for the phantom is stop-list work).
+
+### Commands
+
+```
+# from the p2-targets worktree root
+GTCORE_STRICT=1 python -m pytest -q tests/test_targets.py
+GTCORE_STRICT=1 python -m pytest -q   # full suite at 32234a4: 888 passed, 14 skipped in 594 s (0:09:54)
+# real-data check (scratch driver; PYTHONPATH must point at the worktree)
+PYTHONPATH=. GT_DATA_ROOT=... python <scratch>/targets_realdata.py
+#   reads $GT_DATA_ROOT/<JD-1mm>, $GT_DATA_ROOT/<JD RT RTSTRUCT>, $GT_DATA_ROOT/<JD RT RTDOSE>,
+#   $GT_DATA_ROOT/<PH8>; the API calls it makes are, in order:
+#   rind5(Cav_Post, aff, clip_mask=Brain, clip_affine=aff,
+#         cavity_source="RTSTRUCT:Cav_Post", clip_source="RTSTRUCT:Brain")
+#   rind5(res.cavity_mask, aff, clip_mask=res.masks["cranial_interior"], clip_affine=aff,
+#         cavity_source="gtcore:cavity", clip_source="gtcore:cranial_interior")
+#   implant_reach(rind, res.seeds.centers_ras, r) for r in 6, 8, 10, 12, 14
+#   dice(hrctv_phys(CTV_GT, aff), target); coverage(...)
+#   build_hrctv(res.meshes["cavity"], inside_mask=res.cavity_mask, inside_affine=aff,
+#               keep_mask=res.masks["cranial_interior"], keep_affine=aff,
+#               keep_source="gtcore:cranial_interior")
+```
+
+### Full suite
+
+`GTCORE_STRICT=1 python -m pytest -q` from the worktree root at `32234a4`
+(code `56651ba` + the integration's deterministic planner-drag test):
+**888 passed, 14 skipped** in 594.27 s (0:09:54), other agents running
+concurrently. Baseline before this task: 876 passed, 14 skipped (d1de921);
+the 12 new tests are `tests/test_targets.py` (11) and the merged
+integration test change.
+
+### Notes for the coordinator
+
+- **Acceptance 1(a) conflict.** The task asks for the digital-sphere rind
+  volume within 3 % of the analytic shell on a 0.5 x 0.5 x 2 mm grid; the
+  contract's definition (centre-to-centre EDT) gives -4.8 % there
+  (one-sided, independent of the sphere radius: the deficit is about 0.2 mm
+  x rind area). I kept the contract definition (it is also what `rind_mask`
+  and the Phase 1 validation numbers used) and asserted 6 % plus the
+  axis-exact band; a sub-voxel surface placement would be a model change
+  for Jacob to decide, not a Phase 2 fix.
+- **F6 r.** Dice vs `CTV_GT` peaks at 10 mm (0.881); 12 mm is 0.846.
+  Reported, not chosen.
+- `metrics.py` keeps a now-unused `from scipy import ndimage` (the
+  `dose-stats` agent is editing the same file; drop it at the merge).
+- `targets._stats` picks up `metrics.dose_stats` automatically once section
+  A merges (try-import seam); until then it uses `hrctv_stats` /
+  `weighted_stats`. No other code in the tree calls it yet.
+- Not committed: the scratch driver and its copy of the
+  `validation_clinical.py` rasteriser (owned by `rt-io`).
