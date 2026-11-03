@@ -1,8 +1,8 @@
 {
  "script": "scripts/paper_figures.py",
  "style": "scripts/_figstyle.py",
- "script_commit": "049add2",
- "generated": "2026-11-03 08:38",
+ "script_commit": "c61c05f",
+ "generated": "2026-11-03 08:42",
  "dpi_png": 600,
  "out_dir": "output/figures",
  "tile_mode": "auto",
@@ -194,8 +194,8 @@
    "figure": "F2",
    "description": "F2(c): one tile as the bent-sheet model: flat, wall-conformed (kappa = 1/17 mm^-1 on both axes) and folded (kappa1 = 0.35 mm^-1), the collagen sheet (tissue face) as a wireframe with the 2 x 2 seeds.",
    "sources": [],
-   "script_commit": "049add2",
-   "rendered": "2026-11-03 08:38",
+   "script_commit": "c61c05f",
+   "rendered": "2026-11-03 08:42",
    "status": "ok",
    "outputs": [
     "output/figures/f2c_tile_model.png",
@@ -213,8 +213,7 @@
       10.0,
       10.0,
       10.0
-     ],
-     "chord_formula_mm": 10.0
+     ]
     },
     "conformed": {
      "kappa1_per_mm": 0.058823529411764705,
@@ -226,8 +225,7 @@
       8.41,
       8.41,
       8.41
-     ],
-     "chord_formula_mm": 8.5
+     ]
     },
     "folded": {
      "kappa1_per_mm": 0.35,
@@ -239,8 +237,7 @@
       4.31,
       10.0,
       10.0
-     ],
-     "chord_formula_mm": 4.88
+     ]
     }
    },
    "note": "gtcore.tiles.deform on an ideal pose; tissue-face wireframe at -3 mm, seeds on the seed sheet; kappa values in key_numbers (titles are Inkscape's)"
@@ -253,7 +250,7 @@
      "path": "docs/figures/data/f3c_phantom_slice.npz",
      "exists": true,
      "header_commit": "049add2",
-     "git_commit": null
+     "git_commit": "bdaa073"
     },
     {
      "path": "docs/figures/data/f4c_phantom_implant.npz",
@@ -262,8 +259,8 @@
      "git_commit": "6f6c80b"
     }
    ],
-   "script_commit": "049add2",
-   "rendered": "2026-11-03 08:38",
+   "script_commit": "c61c05f",
+   "rendered": "2026-11-03 08:42",
    "status": "ok",
    "outputs": [
     "output/figures/f3c_phantom_slice.png",
@@ -302,8 +299,8 @@
      "git_commit": "d36db1d"
     }
    ],
-   "script_commit": "049add2",
-   "rendered": "2026-11-03 08:38",
+   "script_commit": "c61c05f",
+   "rendered": "2026-11-03 08:42",
    "status": "ok",
    "outputs": [
     "output/figures/f4a_seed_slice.png",
@@ -343,8 +340,8 @@
      "git_commit": "d36db1d"
     }
    ],
-   "script_commit": "049add2",
-   "rendered": "2026-11-03 08:38",
+   "script_commit": "c61c05f",
+   "rendered": "2026-11-03 08:42",
    "status": "ok",
    "outputs": [
     "output/figures/f4b_patient_implant.png",
@@ -414,8 +411,8 @@
      "git_commit": "6f6c80b"
     }
    ],
-   "script_commit": "049add2",
-   "rendered": "2026-11-03 08:39",
+   "script_commit": "c61c05f",
+   "rendered": "2026-11-03 08:42",
    "status": "ok",
    "outputs": [
     "output/figures/f4c_phantom_implant.png",
@@ -508,8 +505,8 @@
      "git_commit": "d36db1d"
     }
    ],
-   "script_commit": "049add2",
-   "rendered": "2026-11-03 08:39",
+   "script_commit": "c61c05f",
+   "rendered": "2026-11-03 08:42",
    "status": "ok",
    "outputs": [
     "output/figures/f5a_isodoses.png",
@@ -559,8 +556,8 @@
      "git_commit": "1104fcb"
     }
    ],
-   "script_commit": "049add2",
-   "rendered": "2026-11-03 08:39",
+   "script_commit": "c61c05f",
+   "rendered": "2026-11-03 08:42",
    "status": "ok",
    "outputs": [
     "output/figures/f5b_dvh.png",
@@ -618,8 +615,8 @@
      "git_commit": "d36db1d"
     }
    ],
-   "script_commit": "049add2",
-   "rendered": "2026-11-03 08:39",
+   "script_commit": "c61c05f",
+   "rendered": "2026-11-03 08:42",
    "status": "ok",
    "outputs": [
     "output/figures/f6_target_definition.png",
@@ -672,8 +669,8 @@
      "git_commit": "d36db1d"
     }
    ],
-   "script_commit": "049add2",
-   "rendered": "2026-11-03 08:39",
+   "script_commit": "c61c05f",
+   "rendered": "2026-11-03 08:42",
    "status": "ok",
    "outputs": [
     "output/figures/f8a_patient_implant.png",
@@ -754,8 +751,8 @@
      "git_commit": null
     }
    ],
-   "script_commit": "049add2",
-   "rendered": "2026-11-03 08:39",
+   "script_commit": "c61c05f",
+   "rendered": "2026-11-03 08:42",
    "status": "skipped",
    "note": "campaign output docs/figures/data/f8b_patient_optimized.npz not committed yet (scripts/patient_optimize.py)"
   },
@@ -767,11 +764,11 @@
      "path": "docs/figures/data/validation_spacing.csv",
      "exists": true,
      "header_commit": "4748ccb",
-     "git_commit": null
+     "git_commit": "bdaa073"
     }
    ],
-   "script_commit": "049add2",
-   "rendered": "2026-11-03 08:39",
+   "script_commit": "c61c05f",
+   "rendered": "2026-11-03 08:42",
    "status": "ok",
    "outputs": [
     "output/figures/s2a_recall_error_vs_spacing.png",
@@ -828,7 +825,7 @@
       0.2,
       0.413,
       0.468,
-      NaN
+      null
      ],
      "err_sd_mm": [
       0.025,
@@ -851,8 +848,8 @@
      "git_commit": null
     }
    ],
-   "script_commit": "049add2",
-   "rendered": "2026-11-03 08:39",
+   "script_commit": "c61c05f",
+   "rendered": "2026-11-03 08:42",
    "status": "pending",
    "outputs": [
     "output/figures/s2b_axis_boxplot.PENDING.md"
@@ -871,8 +868,8 @@
      "git_commit": "cca2120"
     }
    ],
-   "script_commit": "049add2",
-   "rendered": "2026-11-03 08:39",
+   "script_commit": "c61c05f",
+   "rendered": "2026-11-03 08:42",
    "status": "skipped",
    "note": "docs/figures/optimize/data/v2_summary.csv is not the Phase 4 campaign output yet (no '# commit' header)"
   },
@@ -905,8 +902,8 @@
      "git_commit": "d36db1d"
     }
    ],
-   "script_commit": "049add2",
-   "rendered": "2026-11-03 08:39",
+   "script_commit": "c61c05f",
+   "rendered": "2026-11-03 08:42",
    "status": "ok",
    "outputs": [
     "output/figures/s3_gamma_map.png",
@@ -935,8 +932,8 @@
      "git_commit": "d36db1d"
     }
    ],
-   "script_commit": "049add2",
-   "rendered": "2026-11-03 08:39",
+   "script_commit": "c61c05f",
+   "rendered": "2026-11-03 08:42",
    "status": "skipped",
    "note": "only docs/figures/data/clinical_dvh_hrctv.csv is committed; validation_clinical.py exports no per-target DVH for the rind / reach (their D90s are F6 caption numbers)"
   }

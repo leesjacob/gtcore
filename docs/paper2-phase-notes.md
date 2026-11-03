@@ -4364,3 +4364,111 @@ placeholders, the `GT_E2E`-gated run, and `tests/test_dose_engine_qa.py`'s
 - Runtime of the craniotomy rule on the clinical mesh (12 s) is dominated by
   the per-face visible test + hits_before on 24 736 faces; fine for one run,
   not for a sweep; the opening is 2-3 s.
+
+## 2026-11-03 — Phase 5 — paper_figures.py (task `paper-figures`, branch `p2/paper-figures`)
+
+Base `paper2/integration` 4748ccb. Commits: `6a2da91` (coordinator WIP save), `049add2`
+(`scripts/paper_figures.py` rewrite, `scripts/_figstyle.py`, `scripts/export_phantom_slice.py`,
+`tests/test_paper_figures.py`), `bdaa073` (data: `f3c_phantom_slice.npz`, `validation_spacing*.csv`,
+first `manifest.json`), `4ec461d` (strict-JSON manifest), then the final render commit with this
+section (`git log -1 -- docs/figures/manifest.json`). The draft in the main checkout was read for
+structure only; its panel list is not used.
+
+### What the script does
+
+`python scripts/paper_figures.py` renders the authoritative render list (AGENT_COMMON, Jacob
+2026-11-03) from the committed data only: no pipeline re-run; the only computation is the F2(c)
+deform geometry (`gtcore.tiles.deform` on an ideal pose) and the off-screen PyVista renders of the
+committed NPZ files. Every panel: PNG 600 dpi (3-D renders 2400 x 2400 px, SSAA) + PDF + SVG
+(text editable: `pdf.fonttype 42`, `svg.fonttype none`; the 3-D PDF/SVG embed the render).
+Panels carry data, axes and legends only. `docs/figures/manifest.json` records per panel: the
+source files with their header commit and last git commit, the script commit, the outputs, the
+key numbers, a status (`ok` / `skipped` / `pending`) and a note.
+
+```
+python scripts/paper_figures.py                       # every panel -> output/figures/, docs/figures/manifest.json
+python scripts/paper_figures.py --list                # panels, sources, header commits
+python scripts/paper_figures.py --only f5b,f4         # ids or prefixes
+python scripts/paper_figures.py --tile-mode count_6full_4half   # F4(b)/F8(a) with the 4 half tiles (pair geometry)
+python scripts/paper_figures.py --no-3d --out <dir> --manifest <file>
+# one-off, already done and committed (the only step that reads DICOM):
+PYTHONPATH=. python scripts/export_phantom_slice.py "$GT_DATA_ROOT/<PH8>"   # -> docs/figures/data/f3c_phantom_slice.npz
+# S2(a) data (synthetic, deterministic), committed with a header comment:
+python scripts/validation_spacing.py --realizations 5   # validation_spacing_binary-none*.csv -> docs/figures/data/validation_spacing*.csv
+```
+
+### Panels and sources
+
+| Panel | File stem | Sources (header commit) | Status | Key numbers in the manifest |
+|---|---|---|---|---|
+| F2(c) | `f2c_tile_model` | `gtcore.tiles.deform` (geometry) | ok | flat kappa 0 (chords 10.0 mm); conformed kappa1 = kappa2 = 1/17 mm^-1 (seed chords 8.41 mm); folded kappa1 = 0.35 mm^-1 (chords 4.31 / 10.0 mm) |
+| F3(c) | `f3c_phantom_slice` | `f3c_phantom_slice.npz` (049add2; seeds from `f4c_phantom_implant.npz` afb96ea) | ok | PH8 slice k = 68 (z -613.8 mm), 6 of 32 seeds within 1.5 mm circled; W 1000 / L 0 |
+| F4(a) | `f4a_seed_slice` | `clinical_slice.npz`, `clinical_slice_seeds.csv` (378b819) | ok | slice k = 117: 6 TPS contours (open circles), 6 gtcore seeds (x); **0 uncontoured sources on the slice** (they are at dz -18.3 / +14.0 mm; not drawn, no diamond in the legend) |
+| F4(b) | `f4b_patient_implant` | `f4b_patient_implant.npz` (378b819) | ok | mode `auto`: 6 sheets, 8 leftover seeds {0, 2, 5, 8, 11, 13, 16, 21} vermilion; mesh = `Cav_Post` |
+| F4(c) | `f4c_phantom_implant` | `f4c_phantom_implant.npz` (afb96ea) | ok | 8 sheets, crumpled tile 7 (fold 288 deg) vermilion with black edge; no mesh |
+| F5(a) | `f5a_isodoses` | `clinical_slice.npz`, `clinical_slice_contours.csv`, `clinical_table3_rows.csv` (378b819) | ok | TPS (RTDOSE) 30/60 Gy dashed black vs gtcore @ 32 gtcore seeds solid vermilion; CTV_GT green |
+| F5(b) | `f5b_dvh` | `clinical_dvh_hrctv.csv` (378b819), `f5b_dvh_band.csv`, `uncertainty_d90_v100.csv` (c557cf4) | ok | D90 TPS 63.6 Gy, gtcore@32 61.7 Gy [95 % 61.3, 62.1], gtcore@30 contoured 57.9 Gy; V100 0.937 / 0.917 / 0.873; band = `residual / gtcore32` |
+| F6 | `f6_target_definition` | `clinical_slice.npz`, `clinical_slice_contours.csv`, `clinical_table3_rows.csv` (378b819) | ok | Cav_Post 35.1 cc; CTV_GT 19.0 cc (D90 RTDOSE 6365 cGy); full RIND5(Cav_Post) 35.4 cc (D90 RTDOSE 4646 cGy); IMPLANT_REACH(10) 16.8 cc (6881 cGy) |
+| F8(a) | `f8a_patient_implant` | `f4b_patient_implant.npz` (378b819); numbers from `clinical_table3_rows.csv` until the campaign's `f8_patient_summary.csv` lands | ok | as implanted, gtcore @ 32 gtcore seeds: RIND5(gtcore) V100 0.387 / D90 2653 cGy; CTV_GT 0.917 / 6167 cGy; mesh = gtcore cavity |
+| F8(b) | `f8b_optimized[_<arm>]` | `f8b_patient_optimized.npz`, `optimize/data/f8_patient_summary.csv` | **skipped** (campaign) | one render per `opt*_sheet_*` prefix in the NPZ (the RIND5 and CTV_GT arms), eligible wall tinted darker |
+| S2(a) | `s2a_recall_error_vs_spacing` | `validation_spacing.csv` (4748ccb) | ok | adaptive recall 1.00 / 1.00 / 0.97 / 0.98, 3-D error 0.20 / 0.29 / 0.50 / 0.70 mm at 0.7 / 1.4 / 2.1 / 2.8 mm; fixed thresholds recall 1.00 / 0.88 / 0.17 / 0.00 |
+| S2(b) | `s2b_axis_boxplot` | `s2b_axis_residuals.csv` (pair, seed_id, dx/dy/dz) | **pending** | no per-seed table is committed (PT-CT2mm missing; the two substitutes of the decisions log are not exported); the script writes `s2b_axis_boxplot.PENDING.md`, never a stand-in |
+| S4 | `s4_v100_vs_n` | `optimize/data/v2_summary.csv` | **skipped** (campaign) | renders once the file carries the campaign's `# commit` header |
+| S3 (opt.) | `s3_gamma_map` | `gamma_map_slice_gtcore_3pct_2mm_global.npz`, `gamma_pass_rates.csv` (378b819) | ok | 3 %/2 mm global 99.33 % (30-200 Gy), 98.71 % (>= 30 Gy); > 200 Gy grey; viridis 0-2 |
+| S5 (opt.) | `s5_dvh_three_targets` | `clinical_dvh_*.csv` | skipped | only the CTV_GT DVH is exported; the rind / reach D90s are F6 caption numbers |
+
+### Style constants (`scripts/_figstyle.py`)
+
+- Arial 8 pt labels and ticks, 7 pt legends; spines left/bottom 0.6 pt; ticks outward 3 pt; no grid
+  except the DVH's 0.3 pt grey horizontal grid; data lines 1.0 pt, reference 0.8 pt, image overlays
+  0.9 pt with a dark halo; legends frameless on charts, white 92 % box on CT slices.
+- Okabe-Ito, one meaning per colour: TPS black, gtcore vermilion, gtcore@30 blue dashed, CTV_GT
+  bluish green, cavity grey #BBBBBB 60 %, rind black dashed, band vermilion 20 %, leftover seeds
+  vermilion; tile sheets in a fixed order (orange, sky, green, blue, purple, yellow, grey; vermilion
+  goes to a degraded/crumpled tile first); gamma map viridis.
+- Sizes (in): F2c 4.2 x 1.7, F3c 2.6 sq, F4a 2.2 sq, F5a 2.8 sq, F5b 3.7 x 2.8, F6 3.35 sq,
+  S2a 3.35 x 3.2, S2b 3.35 x 2.4, S4 3.35 x 2.5; 3-D renders 2400 px square (3.3 in in PDF/SVG).
+- CT: clinical W 400 / L 40, phantom W 1000 / L 0; radiological orientation (patient right on the
+  viewer's left); 10 mm bar bottom-right, white with a dark outline. Shared clinical crop (F4a, F5a,
+  F6, S3): centre (31.0, 209.5) RAS mm, half-width 42 mm, slice k = 117 (z -511.2 mm).
+- Cameras (parallel projection, view-up +z): patient (F4b, F8a, F8b) focal (26.7, 212.3, -512.7),
+  position (-92.7, 197.4, -423.1) = focal + 150 mm x unit(-0.8, -0.1, 0.6), parallel scale 33 mm;
+  phantom (F4c) focal (-16.8, -193.3, -619.0), position (-46.9, -297.2, -515.1) = focal + 150 mm x
+  unit(-0.2, -0.69, 0.69), scale 29 mm. The patient camera looks into the cavity from the
+  left-superior side; the cavity mesh (light grey, 45 %, silhouette) is drawn with its front faces
+  culled, so the implant on the right wall is seen without a mesh layer in front of it.
+- Tiles: one translucent sheet each (the tissue face, 55 %), outline in the tile colour (black for a
+  degraded tile, drawn at 85 %); seeds as capsules 4.5 x 0.8 mm (dark grey; leftovers vermilion).
+  Half tiles (`--tile-mode count_6full_4half`) are drawn from the pair geometry (20 x 10 mm along the
+  pair, 3 mm toward the wall), not from the template sheet (decisions log, half-tile orientation).
+
+### Decisions / deviations for the coordinator
+
+- F4(a): the two uncontoured sources are 14-18 mm off the shared slice, so the panel shows no
+  diamond. Options: accept (the caption says where they are), or give F4(a) its own slice (it then
+  no longer shares the slice with F5a/F6; needs a re-export from `validation_clinical.py`).
+- F4(c): no mesh. The PH8 wall mesh in the NPZ is the printed object's body shell including the
+  tiles (not a cavity) and hides the tiles; the registered PH0 wall is not in the NPZ.
+- F6: the 9 rind-outline islands shorter than 4 mm (voxel specks where the rind meets the Brain
+  clip) are not drawn; the 14.3 mm sliver along the bone and the main outline are.
+- F4(b)/F8(a) show sheets that leave the cavity (the large flat tile): that is the free bent-tile
+  fit, the pre-existing "inconsistent" surface verdict of the `leftovers` notes; nothing re-fitted.
+- F8 (decisions 2026-11-03, three arms): F8(a) = as implanted; F8(b) renders every optimized arm the
+  NPZ carries (`opt_*` and any further `opt<arm>_*` prefix) with the same camera; the arm numbers
+  come from `f8_patient_summary.csv` when present. The trial NPZ on `p2/campaign` was not used.
+- S2(a) data: `validation_spacing.py` was run once at 4748ccb (synthetic, deterministic, 7 s) and
+  its CSVs committed with a header comment, because no committed S2 CSV existed.
+
+### Tests
+
+`tests/test_paper_figures.py` (4 tests): `--list` names every panel and prints header commits;
+F5(b), F4(a), S2(a) rendered into tmp (PNG > 20 kB at 600 dpi, PDF, SVG with `<text>`; manifest D90s
+6364.65 / 6167.48 cGy, every source with a header commit); a 200 px off-screen render of F4(c)
+(skipped if off-screen rendering is unavailable); the half-tile pair geometry.
+`GTCORE_STRICT=1 python -m pytest -q tests/test_paper_figures.py` -> 4 passed (16 s).
+
+Full suite (`GTCORE_STRICT=1 python -m pytest -q -p no:cacheprovider` from the worktree root, tree at
+`4ec461d`; `c61c05f` changes only a manifest key; other agents ran concurrently, so the wall time is an
+upper bound): **`1098 passed, 15 skipped, 15532 warnings in 1028.09s (0:17:08)`**, exit 0. The final
+render (`docs/figures/manifest.json`, `script_commit` c61c05f): 11 panels ok, S2(b) pending, F8(b) / S4
+skipped until the campaign commits, optional S5 skipped.
