@@ -1058,6 +1058,19 @@ def list_panels() -> None:
         print("%-9s %-13s   %s" % ("", "", src))
 
 
+def _json_clean(o):
+    """Strict JSON: NaN / inf -> null, numpy scalars / arrays -> Python."""
+    if isinstance(o, dict):
+        return {str(k): _json_clean(v) for k, v in o.items()}
+    if isinstance(o, (list, tuple)):
+        return [_json_clean(v) for v in o]
+    if hasattr(o, "tolist"):
+        return _json_clean(o.tolist())
+    if isinstance(o, float) and not np.isfinite(o):
+        return None
+    return o
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--only", help="comma list of panel ids or prefixes (f5b, f4, s2a, ...)")
@@ -1123,11 +1136,12 @@ def main(argv=None) -> int:
             print("%-9s FAILED   %s" % (pid, exc))
             traceback.print_exc()
         manifest["panels"][pid] = entry
+    manifest = _json_clean(manifest)
     os.makedirs(os.path.dirname(args.manifest), exist_ok=True)
     with open(args.manifest, "w", encoding="utf-8") as fh:
-        json.dump(manifest, fh, indent=1, default=lambda o: o.tolist() if hasattr(o, "tolist") else str(o))
+        json.dump(manifest, fh, indent=1, allow_nan=False, default=str)
     with open(os.path.join(args.out, "manifest.json"), "w", encoding="utf-8") as fh:
-        json.dump(manifest, fh, indent=1, default=lambda o: o.tolist() if hasattr(o, "tolist") else str(o))
+        json.dump(manifest, fh, indent=1, allow_nan=False, default=str)
     print("\n%d panel(s) rendered to %s; manifest %s" % (n_ok, rel(args.out), rel(args.manifest)))
     if failures:
         print("FAILED: " + ", ".join("%s (%s)" % f for f in failures))
