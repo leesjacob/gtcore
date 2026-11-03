@@ -6,7 +6,7 @@ GammaTile clinical target, ``CTV_Post``, ``Seeds``) and the RTDOSE grid of
 the clinical plan.  The script
 
 1. runs the gtcore pipeline on the CT (seed detection, segmentation),
-2. rasterises the TPS contours onto the CT grid,
+2. rasterises the TPS contours onto the CT grid (``gtcore.io.rt``),
 3. compares the gtcore cavity with ``Cav_Post`` and the gtcore HR-CTV
    (``gtcore.dose.hrctv``) with ``CTV_GT`` / ``CTV_Post`` (Dice, volumes),
 4. matches detected seeds to the TPS ``Seeds`` contours,
@@ -20,12 +20,11 @@ Usage::
     python scripts/validation_clinical.py <ct_dir> <rtstruct.dcm|dir> <rtdose.dcm|dir> [--rx 6000] [--sk 3.5]
 
 Writes nothing; prints the tables that docs/clinical-validation-notes.md
-quotes.  Needs pydicom and scikit-image (both in the project environment).
+quotes.  Needs pydicom (in the project environment).
 """
 from __future__ import annotations
 
 import argparse
-import glob
 import os
 import sys
 
@@ -38,53 +37,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from gtcore.dose import dose_at_points                      # noqa: E402
 from gtcore.dose.hrctv import build_hrctv, hrctv_stats     # noqa: E402
 from gtcore.io import load_volume                           # noqa: E402
+from gtcore.io.rt import load_rtdose, load_rtstruct, rasterize_rois  # noqa: E402
 from gtcore.pipeline import reconstruct                     # noqa: E402
 from gtcore.volume import Volume                            # noqa: E402
-
-
-def _dcm(path):
-    import pydicom
-    if os.path.isdir(path):
-        path = sorted(glob.glob(os.path.join(path, "*.dcm")))[0]
-    return pydicom.dcmread(path)
-
-
-def rasterise(rs, roi_name, vol):
-    """Fill one RTSTRUCT ROI's planar contours onto the CT grid (bool [k,j,i]).
-    DICOM contour points are LPS; gtcore is RAS (x, y negated)."""
-    from skimage.draw import polygon
-    names = {r.ROINumber: r.ROIName for r in rs.StructureSetROISequence}
-    nk, nj, ni = vol.array.shape
-    m = np.zeros(vol.array.shape, dtype=bool)
-    for c in rs.ROIContourSequence:
-        if names[c.ReferencedROINumber] != roi_name:
-            continue
-        for cs in getattr(c, "ContourSequence", []):
-            p = np.array(cs.ContourData, dtype=float).reshape(-1, 3)
-            p[:, :2] *= -1.0
-            ijk = vol.ras_to_index(p)
-            k = int(np.rint(ijk[:, 2].mean()))
-            if 0 <= k < nk:
-                rr, cc = polygon(ijk[:, 1], ijk[:, 0], (nj, ni))
-                m[k, rr, cc] ^= True        # XOR: inner contours are holes
-    return m
-
-
-def rtdose_volume(rd):
-    """RTDOSE as a gtcore Volume in cGy, RAS affine."""
-    dose = rd.pixel_array.astype(np.float64) * float(rd.DoseGridScaling)
-    if str(rd.DoseUnits).upper() == "GY":
-        dose *= 100.0
-    ipp = np.array(rd.ImagePositionPatient, dtype=float)
-    ps = [float(x) for x in rd.PixelSpacing]
-    gz = np.array(rd.GridFrameOffsetVector, dtype=float)
-    A = np.eye(4)
-    A[0, 0] = ps[1]
-    A[1, 1] = ps[0]
-    A[2, 2] = gz[1] - gz[0]
-    A[:3, 3] = ipp
-    A = np.diag([-1.0, -1.0, 1.0, 1.0]) @ A     # LPS -> RAS
-    return Volume(dose, A, {"units": "cGy", "kind": "rtdose"})
 
 
 def dice(a, b):
@@ -163,11 +118,11 @@ def main(argv=None):
     res = reconstruct(vol, verbose=False)
     arr = vol.array
     vmm3 = float(np.prod(vol.spacing))
-    rs = _dcm(args.rtstruct)
-    rd = _dcm(args.rtdose)
-    dv = rtdose_volume(rd)
+    rs = load_rtstruct(args.rtstruct)
+    dv = load_rtdose(args.rtdose)
 
-    S = {n: rasterise(rs, n, vol) for n in ("Cav_Post", "CTV_GT", "CTV_Post", "Seeds")}
+    # supersampled rasteriser with the end-slice rule (gtcore.io.rt, Phase 2)
+    S = rasterize_rois(rs, ("Cav_Post", "CTV_GT", "CTV_Post", "Seeds"), vol)
     print("TPS structures:")
     for n, m in S.items():
         print("  %-9s %7.1f cc" % (n, m.sum() * vmm3 / 1000.0))
