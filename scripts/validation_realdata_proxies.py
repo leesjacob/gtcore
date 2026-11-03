@@ -95,7 +95,7 @@ SCANS = {
     "printed8": "PH8",
     "postop": "PT-CT2mm",
     "printed_blank": "PH0",
-    "doe": "PT-CT1mm",
+    "thincut": "PT-CT1mm",
 }
 DATA_OVERRIDES = {"root": None, "datasets_json": None}   # set from the CLI
 MATCH_MM = 3.0
@@ -654,7 +654,7 @@ def split_half(ctx, vol, ref_centers):
 
 
 # ------------------------------------------------- PostOp vs its thin-cut
-def postop_vs_thincut(postop, doe):
+def postop_vs_thincut(postop, thincut):
     """PostOp seeds (1 mm slabs every 2 mm, gaps interpolated) against the
     seeds of the contiguous 1 mm thin-cut of the SAME acquisition
     (``PT-CT1mm``; docs/localization-notes.md, stage 3).  Same frame,
@@ -666,11 +666,11 @@ def postop_vs_thincut(postop, doe):
     is itself a measurement (~0.2-0.4 mm), not truth.
     """
     A = np.asarray(postop["affine"], float)
-    B = np.asarray(doe["affine"], float)
+    B = np.asarray(thincut["affine"], float)
     sa, sb = np.linalg.norm(A[:3, :3], axis=0), np.linalg.norm(B[:3, :3],
                                                                axis=0)
     da, db = A[:3, :3] / sa, B[:3, :3] / sb
-    off = da.T @ (A[:3, 3] - B[:3, 3])          # PostOp origin in doe axes
+    off = da.T @ (A[:3, 3] - B[:3, 3])          # PostOp origin in thincut axes
     off_vox = off / sb
     grid = dict(direction_equal=bool(np.allclose(da, db, atol=1e-6)),
                 inplane_pixel_equal=bool(np.allclose(sa[:2], sb[:2],
@@ -683,8 +683,8 @@ def postop_vs_thincut(postop, doe):
         and abs(off_vox[0]) < 1e-3 and abs(off_vox[1]) < 1e-3
         and abs(off_vox[2] - round(off_vox[2])) < 1e-3)
     out = dict(grid=grid, n_postop=int(len(postop["centers"])),
-               n_thincut=int(len(doe["centers"])))
-    T = np.asarray(doe.get("centers_raw", doe["centers"]), float)
+               n_thincut=int(len(thincut["centers"])))
+    T = np.asarray(thincut.get("centers_raw", thincut["centers"]), float)
     res = postop["tiles"]
     assigned = sorted({int(i) for p in list(res.tiles)
                        + list(getattr(res, "tentative_tiles", []))
@@ -1239,13 +1239,13 @@ def main(argv=None):
 
     if "negatives" in todo:
         rep["negatives"] = {}
-        for name in ("printed_blank", "doe"):
+        for name in ("printed_blank", "thincut"):
             vol, path = load(name)
             if vol is None:
                 rep["negatives"][name] = dict(loaded=False)
                 continue
             slim = run_pipeline(ctx, name, vol, path, tiles=False)
-            if name == "doe":
+            if name == "thincut":
                 doe_slim = slim
             imp = slim["implant"] or {}
             rep["negatives"][name] = dict(

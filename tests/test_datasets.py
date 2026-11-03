@@ -38,7 +38,7 @@ def test_literal_id_folder_without_json(clean_env, tmp_path, monkeypatch):
     # aliases resolve to the canonical folder
     (tmp_path / "PT-CT1mm").mkdir()
     assert dataset_path("JD-1mm") == tmp_path / "PT-CT1mm"
-    assert dataset_path("doe") == tmp_path / "PT-CT1mm"
+    assert dataset_path("thincut") == tmp_path / "PT-CT1mm"
 
 
 def test_missing_folder_names_what_was_tried(clean_env, tmp_path, monkeypatch):

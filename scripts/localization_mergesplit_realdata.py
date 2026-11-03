@@ -13,7 +13,7 @@ every in-implant unassigned candidate with its nearest neighbour: separation
 segment ("bridge HU"), interpolated-slice status and whether the two came
 from one thresholded blob.
 
-``check`` runs one real scan (postop, phantom8, tilefree, doe) through
+``check`` runs one real scan (postop, phantom8, tilefree, thincut) through
 ``reconstruct`` and prints the numbers the stage gate needs.  Run the real
 scans one at a time (each needs a few GB).  Scan folders come from
 ``GT_DATA_ROOT`` + the optional ``GT_DATASETS_JSON`` map
@@ -38,7 +38,7 @@ SCANS = {
     "postop": "PT-CT2mm",
     "phantom8": "PH8",
     "tilefree": "PH0",
-    "doe": "PT-CT1mm",
+    "thincut": "PT-CT1mm",
 }
 DATA_ROOT_OVERRIDE = None   # set from --data-root
 CACHE = os.path.join("output", "loc_mergesplit", "cache")

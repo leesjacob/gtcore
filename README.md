@@ -20,6 +20,42 @@ pip install -e .                           # without the lock: pip install -e .[
 set GTCORE_STRICT=1 && python -m pytest -q # PowerShell: $env:GTCORE_STRICT=1; bash: GTCORE_STRICT=1 python -m pytest -q
 ```
 
+## Data (`GT_DATA_ROOT`, `GT_DATASETS_JSON`)
+
+No scan path or scan folder name is committed. Scripts name real scans by
+**dataset id** and resolve them through `gtcore.io.datasets.dataset_path`:
+
+| Id | Scan |
+|---|---|
+| `PH8` | CT of the 3-D-printed phantom (cavity printed from the patient's intra-op MRI), 8 tiles / 32 seeds placed by hand |
+| `PH0` | CT of the tile-less printed twin: the only negative control |
+| `PT-CT1mm` | the clinical post-implant CT, contiguous 1 mm thin-cut (the series the RTSTRUCT references) |
+| `PT-CT2mm` | the same acquisition as a gapped export (1 mm slabs at 2 mm pitch); currently not on disk |
+| `PT-CT-s3` | a second reconstruction of the same acquisition |
+| `PT-RTSTRUCT`, `PT-RTDOSE`, `PT-RTPLAN` | the TPS exports (`PT-RT` together; RTPLAN not on hand) |
+| `PT-preMRI`, `PT-intraMRI`, `PT-postMRI` | the same patient's MRIs (shown, not segmented) |
+
+1. `GT_DATA_ROOT` = the folder that holds the scans (required; nothing is guessed).
+2. `GT_DATASETS_JSON` = optional path to a **user-local, never committed** JSON
+   object mapping ids to folder names relative to `GT_DATA_ROOT` (or absolute
+   paths); if unset, `<GT_DATA_ROOT>/datasets.json` is read when present. Keys
+   starting with `_` are comments; the `JD-*` aliases of the Phase 1-3 notes are
+   accepted. Template with placeholders: `docs/datasets.example.json`.
+3. An id with no entry resolves to the folder literally named after the id.
+
+```
+GT_DATA_ROOT=/path/to/scans GT_DATASETS_JSON=/private/datasets.json python -m gtcore.io.datasets   # show how every id resolves
+python scripts/validation_realdata_proxies.py --data-root /path/to/scans --datasets-json /private/datasets.json
+```
+
+CLI arguments (positional scan paths, `--phantom`, `--data-root`,
+`--datasets-json`) override the environment; a missing configuration stops with
+a message naming the variable to set. Commands in the notes are written as
+`python scripts/x.py "$GT_DATA_ROOT/<PT-CT1mm>"`, with the dataset id in angle
+brackets. `python scripts/check_no_identifiers.py` (run by the test suite) fails
+on any committed machine path, patient folder name, pseudonym or DICOM header
+value.
+
 ## Quick start
 
 From this folder (`gt.bat` wraps the project venv — no activation needed):
@@ -35,7 +71,7 @@ From this folder (`gt.bat` wraps the project venv — no activation needed):
                                     --tiles omitted = the recommended count; --solver greedy|local|sa|milp|continuous
 .\gt view                           either command, phantom mode (synthetic ground truth)
 .\gt demo                           full phantom demo -> output\ (NRRD, PLY meshes, figures, CSV)
-.\gt test                           run the test suite (805 tests)
+.\gt test                           run the test suite (1140 tests)
 ```
 
 Planner controls (the same legend is on screen; `?` collapses it):
@@ -81,18 +117,23 @@ Planner controls (the same legend is on screen; `?` collapses it):
    Detection parameters adapt to slice spacing (`seed_detection_params`):
    partial volume halves seed peak HU at 2 mm slices, and elongation is
    degenerate when a capsule spans one slice.
-3. **`gtcore.preprocess`** — seed-scale metal inpainting (bloom removal) and
-   isotropic resampling.
+3. **`gtcore.preprocess`** — seed-scale metal inpainting (bloom removal).
+   There is no resampling stage: segmentation runs on the scan's native,
+   usually anisotropic grid, with every radius and reach in physical mm.
+   (`preprocess.register_rigid`, mutual information, aligns a second scan
+   such as the tile-less phantom twin; `resample_iso` is a utility only.)
 4. **`gtcore.segment`** — skull/brain (craniotomy sealed by escalating
    physical-radius closing), then resection cavity using the seed cloud as a
    spatial prior (tiles line the cavity wall by definition). With four or
    more seeds the **seed-sheet rule** applies: the cavity is grown from the
-   convex hull of the seeds through low-density voxels with a 12 mm geodesic
-   reach and clipped 3 mm beyond the seed sheet (the tile's tissue face), then
-   closed by 3 mm and filled. On the first clinical CT the old
+   convex hull of the seeds through low-density voxels with a 14 mm geodesic
+   reach (`HULL_REACH_MM`, a physical-mm distance on every axis) and clipped
+   3 mm beyond the seed sheet (the tile's tissue face), then closed by 3 mm
+   and filled. On the clinical CT the old
    "dark component the seeds touch" rule returned cavity + oedema + both
-   ventricles (193 cc); the sheet rule gives 40 cc against the physician's
-   35 cc contour (Dice 0.65) and 0.85 Dice on the synthetic phantom. The
+   ventricles (193 cc); the sheet rule gives 41.4 cc against the physician's
+   35.1 cc `Cav_Post` (Dice 0.66) and 0.90 Dice on the synthetic phantom
+   (`docs/paper2-phase-notes.md`, "Phase 1 — cavity reach in physical mm"). The
    full validation against the TPS structure set and dose, including why the
    clinical CTV's 63 Gy D90 is a partial-rind figure, is in
    `docs/clinical-validation-notes.md` (`scripts/validation_clinical.py`).
@@ -213,7 +254,7 @@ Per-dataset findings and data-quality caveats: `docs/data-notes.md`.
 | Independent review (A7, written from the problem statement only) | 16/16 adversarial probes pass; influence rows within 0.05 cGy of the exact engine; one real defect found and fixed (optimize() raised for every solver before c74d8e4) |
 | Failure modes (V8, 12 cases) | every degenerate / empty / over-packed case raises with a reason; the > 95 % mask case passes the planner's overlap rule with 6 proxy overlaps → the rule union is required |
 
-Not claimed: TG-43 in water; static cavity; tiles modelled as non-overlapping although collagen may stack; surgeon reachability beyond the eligibility mask; clinical case 2 (not on this machine). Open for Jacob: the planner's footprint fit on strongly curved walls (`docs/optimize-notes.md`, "Open decisions").
+Not claimed: TG-43 in water; static cavity; tiles modelled as non-overlapping although collagen may stack; surgeon reachability beyond the eligibility mask; a second clinical case (the paper has one patient and no held-out scan). Open for Jacob: the planner's footprint fit on strongly curved walls (`docs/optimize-notes.md`, "Open decisions").
 
 ### Seed localization and tile inference upgrade (2026-10-08; `docs/plan-localization.md`, `docs/localization-notes.md`; every stage behind a pre-declared gate)
 
@@ -228,25 +269,60 @@ Synthetic truth comes from a new analytic seed renderer (`gtcore.phantom.seed_re
 | 6 uncertainty outputs | pose covariance + partition margin | normal σ monotone in noise; centre covariance within 1.1–1.3× of empirical scatter (equal-noise rows); clean margins ∞, constructed shared-seed case 4e-6 and flagged; 2–6 ms | margins on in the planner's suggest; `DeformableFit.compute_uncertainty()` |
 | 7 blurred line-source ML fit | sub-voxel fit with saturation/gap handling | error vs centroid G2 0.69×, G4 0.48×, G3 0.94×; covariance over-confident on G1/G2 (NEES 3.6–6.4); 11–26 ms/seed; needs a 4.25 mm effective segment (open question for the with-truth phantom) | `refine_seeds="model"`, experimental, covariance labelled uncalibrated |
 | 8 image check of inferred seeds | triplet-completed 4th seed verified in the image | 2.1 mm missed-seed case recovered to 0.71 mm; erased seed → "no image evidence"; 5–7 ms | on with `refine_seeds`; planner note "4th seed recovered / no image evidence"; never promotes tentative |
-| 2 on real scans (no truth) | refinement must not regress and should tighten repeatability | printed 8-tile phantom: 32/32, 8/8 unchanged, but the estimator engages on 1/32 seeds (an air/plastic phantom has a −40 to −550 HU background with 150–700 HU spread, so the flat-background fallbacks fire); split-half 1 mm→2 mm repeatability 1.01 mm 3-D unchanged (criterion ≥ 15 % better: FAIL); PostOp (gapped 2 mm export): engages on 7/50, moves 5 of them away from the 1 mm reference; DOE 1 mm thin-cut (contiguous tissue scan): engages on 27/31, bent-tile RMS 0.39 → 0.32 mm (−18 %); negative-control verdicts unchanged | hence default off; enable on contiguous thin-slice tissue scans; a tissue-equivalent phantom is needed to measure sub-voxel gains on real data |
+| 2 on real scans (no truth) | refinement must not regress and should tighten repeatability | printed 8-tile phantom: 32/32, 8/8 unchanged, but the estimator engages on 1/32 seeds (an air/plastic phantom has a −40 to −550 HU background with 150–700 HU spread, so the flat-background fallbacks fire); split-half 1 mm→2 mm repeatability 1.01 mm 3-D unchanged (criterion ≥ 15 % better: FAIL); PostOp (gapped 2 mm export): engages on 7/50, moves 5 of them away from the 1 mm reference; PT-CT1mm 1 mm thin-cut (contiguous tissue scan): engages on 27/31, bent-tile RMS 0.39 → 0.32 mm (−18 %); negative-control verdicts unchanged | hence default off; enable on contiguous thin-slice tissue scans; a tissue-equivalent phantom is needed to measure sub-voxel gains on real data |
 | real-data accuracy check: PostOp 2 mm gapped export vs the same patient's 1 mm thin-cut (same frame, 25 matched seeds) | first real accuracy number for a degraded export | detection only: per-axis SD 0.51/0.40/0.63 mm, 3-D median 0.32 mm, P95 1.80, max 2.41; the 22 tile-assigned seeds: SD 0.54/0.36/0.64 mm | reference dataset for the PostOp export (`docs/data-notes.md`) |
 | axis term on coarse slices | drop degenerate PCA axes above 1.2 mm | tile normal error 2–4× better, centres identical, but partition worse on 1–2 of 20 fragment-bearing analytic scans | **off** (`DROP_AXIS_TERM_ON_COARSE = False`); pre-declared gate not met |
 
-Bugs fixed on the way: `reconstruct` dropped `spacing_mm` for automatic tile fitting (coarse scans ran the thin-slice cover tolerance); the counted path reported a plane-fit normal while drawing the bent-tile fit; the `DOEJOHNPOSTCT` scan is the 1 mm thin-cut of the PostOp patient, not a pre-implant control (`docs/data-notes.md`).
+Bugs fixed on the way: `reconstruct` dropped `spacing_mm` for automatic tile fitting (coarse scans ran the thin-slice cover tolerance); the counted path reported a plane-fit normal while drawing the bent-tile fit; the `PT-CT1mm` scan is the 1 mm thin-cut of the same post-implant acquisition as the gapped `PT-CT2mm` export (`docs/data-notes.md`).
 
 
+
+## Paper 2 (Medical Physics): status, scripts, branch
+
+Branch `paper2/integration`; the submission is tagged `v1.0-medphys` (figures
+and tables regenerate from the tag). Every number, with its command and
+commit: `docs/paper2-phase-notes.md`; plan amendments: `docs/paper2-decisions.md`;
+branch and worktree map: `docs/branch-status.md`.
+
+One clinical patient (`PT-*`), so every real-data accuracy row is
+**calibration-set**; there is no held-out scan, and the tile-less printed
+phantom `PH0` is the only negative control. Findings the code takes as given:
+
+- **Half tiles (pending the operative record).** The 32 seeds of `PT-CT1mm`
+  read model-free as **6 full + 4 half tiles**: the 8 seeds the count-free fit
+  leaves over are four two-seed pairs at the manufactured pitch, not crumpled
+  full tiles. The brief says 8 full tiles; which count-known row the paper
+  quotes waits for the operative record (`scripts/leftover_seeds.py --halves 6,4`).
+- **TPS seed-axis convention.** The TPS (MIM) computed the 2D line-source dose
+  with every seed axis along patient S–I. Comparisons with the RTDOSE are
+  reported twice: physical PCA axes (the pipeline result) and S–I axes (the
+  equivalence check, `--axes si`).
+- Seed plane: in vivo median +3.65 mm from `Cav_Post` (the 3.0 mm model holds,
+  not re-tuned); `IMPLANT_REACH` r = 10 mm (Dice 0.88 vs `CTV_GT`); gamma
+  99.3 % / 97.0 % at 3 %/2 mm and 2 %/1 mm (30–200 Gy, global).
+
+| Script | Produces |
+|---|---|
+| `scripts/validation_clinical.py` | structure × dose matrix (`HRCTV_PHYS`, `RIND5`, `IMPLANT_REACH` × RTDOSE / gtcore), seed/source match, F4a/F5/F6 data |
+| `scripts/validation_gamma.py` | gamma pass rates, histograms and map slices (pymedphys) |
+| `scripts/formalism_check.py` | angular-symmetry test on the RTDOSE, seed-axis comparison (`--rtplan` when available) |
+| `scripts/seed_wall_distance.py` | signed seed-to-wall distance (clinical vs `Cav_Post`, `PH8` vs the registered `PH0`) |
+| `scripts/leftover_seeds.py` | leftover-seed diagnostic, count-known rows, F4b/F4c render data |
+| `scripts/validation_error_propagation.py` | Monte Carlo seed-position error → D90/V100 band (F5b) |
+| `scripts/engine_crosscheck.py` | TG-43 engine vs the Paper 1 engine |
+| `scripts/paper_figures.py` | every rendered panel (PNG 600 dpi + PDF + SVG, editable text) and `docs/figures/manifest.json` |
+| `scripts/paper_tables.py` | Tables 1–4 and the supplement tables (CSV + Markdown) |
+| `scripts/cavity_change.py` | the cavity across the loop (registered MRIs, CT, printed phantom; F3) |
 
 ## Paper figures
 
-`python scripts/paper_figures.py` regenerates every data panel of the
-manuscript figures (`output/figures/figN_panelX.png` at 300 dpi and `.pdf`
-with editable text) from the committed tables under `docs/figures/data/` and
-`docs/figures/optimize/data/`; only figure 1 (pipeline stages on the synthetic
-phantom) is computed, once, and cached. Camera, dpi, sizes and colours are
-fixed in the script; the multi-panel figures are assembled in Inkscape.
-`--list` shows panels and sources, `--only fig5` or `--only fig1C` limits the
-run, `--recompute` refreshes the figure-1 cache; `manifest.json` records the
-commit and sources of every panel.
+`python scripts/paper_figures.py` regenerates every rendered data panel of the
+manuscript (PNG at 600 dpi plus PDF and SVG with editable text, under
+`output/figures/`) from the committed tables under `docs/figures/data/` and
+`docs/figures/optimize/data/`. Camera, sizes and colours are fixed in the
+script; panel letters and annotations are added in Inkscape. `--list` shows
+every panel with its sources; `manifest.json` records the command, commit and
+sources of every panel. Table numbers come from `scripts/paper_tables.py`.
 
 ## Layout
 
@@ -257,7 +333,7 @@ gtcore/planner.py  optional PyVista planner
 gtcore/cli.py      the `gt` command
 scripts/           demo + validation studies + paper_figures.py (every data panel)
 docs/figures/data/ committed measurement tables the paper figures read (git add -f: *.csv is ignored)
-tests/             805 tests, all stages scored against phantom ground truth (incl. gtcore.plan, seed refinement)
+tests/             1140 tests, all stages scored against phantom ground truth (incl. gtcore.plan, seed refinement)
 docs/              TG-43 physics notes, interference notes, data notes
 output/            generated volumes, meshes, figures (gitignored)
 ```

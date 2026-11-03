@@ -1,4 +1,4 @@
-# Clinical validation notes — first case (DOE^JOHN, post-implant CT, 2023-10-26)
+# Clinical validation notes — first case (`PT-CT1mm` post-implant CT with the `PT-RT` RTSTRUCT / RTDOSE)
 
 Reproduce with:
 

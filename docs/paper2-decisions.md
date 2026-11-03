@@ -4,14 +4,14 @@ Dated decisions that change the rev 3 work list. Each entry says what was
 found, what Jacob decided, and which figures, tables and tasks change. The
 rev 3 document itself is not edited; this file is read with it.
 
-## 2026-11-03 — "Case 54" and the TPS case are one patient (Jacob: assume identical)
+## 2026-11-03 — the separately delivered MRI/CT folder (PT-preMRI, PT-intraMRI, PT-postMRI, PT-CT-s3) and the TPS case are one patient (Jacob: assume identical)
 
-**Finding.** The CT delivered as "Case 54 post-op CT" is a second
-reconstruction (series 3, 178 contiguous 1 mm slices, no Hr40 kernel) of the
-same acquisition as the TPS case's thin-cut (series 2, 204 slices, Hr40):
+**Finding.** The CT delivered in the second folder (now `PT-CT-s3`) is a second
+reconstruction (series 3, 178 contiguous 1 mm slices, a different kernel) of the
+same acquisition as the TPS case's thin-cut (series 2, 204 slices):
 identical acquisition timestamp to 3 ms, identical table position and slice
 positions, identical tube settings, same seed voxels, slice correlation 0.985.
-The "Case 54" post-op MRI rigidly registers onto that CT with the craniotomy,
+That folder's post-op MRI (`PT-postMRI`) rigidly registers onto that CT with the craniotomy,
 the cavity, the ventricles and the dental work coinciding. Confidence: the CT
 identity is certain; the MRI/patient identity is very high (a rigid transform
 cannot align a different skull, craniotomy site and cavity). Jacob
@@ -20,22 +20,23 @@ cannot align a different skull, craniotomy site and cavity). Jacob
 **Consequences (rev 3 → this amendment).**
 
 1. *Datasets (Table 1).* One clinical patient, dataset id **JD**: `JD-1mm`
-   (thin-cut, Hr40; the series the RTSTRUCT references), `JD-CT-s3` (the
+   (thin-cut; the series the RTSTRUCT references), `JD-CT-s3` (the
    second reconstruction of the same acquisition, contiguous 1 mm), `JD RT`
    (RTSTRUCT, RTDOSE; RTPLAN when obtained), `JD-MRI-pre`, `JD-MRI-intra`,
    `JD-MRI-post`. The printed phantom cavity was printed from `JD-MRI-intra`
    (rev 2 wording restored: the phantom is this patient's intra-operative
    cavity; tiles placed by hand in arbitrary positions, "as placed"). The
-   identifier "Case 54" is not used anywhere. `JD-2mm` (the 64-slice gapped
+   second folder's original label is not used anywhere; the dataset ids are.
+   `JD-2mm` (the 64-slice gapped
    export of series 3) is missing from disk since 2026-11-03; see F10(b).
 2. *No held-out real scan.* The paper states one clinical case. Every
    real-data row of Table 3 is flagged calibration-set; the only negative
-   control is the tile-less phantom. The rev 3 "held-out run on Case 54" and
-   `scripts/heldout_case54.py` are removed from Phase 5. The brief's rule "no
-   parameter is re-tuned on JohnDoe" still holds: the clinical case is a
+   control is the tile-less phantom. The rev 3 "held-out run" on the second
+   folder and its planned held-out script are removed from Phase 5. The brief's rule "no
+   parameter is re-tuned on the clinical case" still holds: the clinical case is a
    reference, not a tuning set, and the formalism/gamma/DVH comparisons are
    implementation-equivalence checks, as §5 already says.
-3. *F8 becomes two panels.* F8(c) ("Case 54 implant vs optimizer") is the
+3. *F8 becomes two panels.* F8(c) ("patient implant vs optimizer") is the
    single-patient implanted-vs-optimized comparison that rev 2/3 moved to
    Paper 3 for the target-circularity reason (the full rind scores the
    surgeon on a target he was not aiming at). The comparison is still
@@ -50,7 +51,7 @@ cannot align a different skull, craniotomy site and cavity). Jacob
    cavity (`Cav_Post` from the RTSTRUCT and the gtcore cavity on `JD-1mm`).
    No MRI segmentation is added (stop list); the MRIs are shown, not
    segmented. New script `scripts/cavity_across_scans.py` (Phase 5)
-   replaces `heldout_case54.py`.
+   replaces the planned held-out script.
 5. *F10(b).* If `JD-2mm` is restored, unchanged. Otherwise two real
    substitutes, both stated as such: (i) `JD-CT-s3` vs `JD-1mm` — seed
    positions across two reconstructions of one acquisition (reconstruction
@@ -59,10 +60,10 @@ cannot align a different skull, craniotomy site and cavity). Jacob
    same kernel). The previously measured gapped-export numbers (median 0.32
    mm, per-axis SD 0.51/0.40/0.63 mm, `docs/localization-notes.md`) are
    quoted with their commit, labelled "not regenerable from the tag".
-6. *Table 3.* Drop the row "Case 54 held-out (seed/tile count vs the
+6. *Table 3.* Drop the row "second-folder held-out (seed/tile count vs the
    operative note)". The operative count for JD is 8 full tiles = 32
    sources (already the F4 criterion).
-7. *§5 statements.* "Case 54 is the only held-out real scan" → "there is
+7. *§5 statements.* "the second folder is the only held-out real scan" → "there is
    no held-out real scan; one clinical case, reference not validation
    cohort". Phantom provenance sentence: cavity = this patient's intra-op
    MRI geometry.

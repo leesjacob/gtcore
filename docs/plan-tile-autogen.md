@@ -79,8 +79,7 @@ deformed (collagen folds and sticks to the cavity wall).
 - Merge order: Step 0 alone first (touches shared constants; coordinate with
   main), then 1-2, then 3-5.
 
-Conventions: RAS mm, arrays [k,j,i]; venv python
-C:\Users\jacob\.venvs\gammatile\Scripts\python.exe; run tests from the
+Conventions: RAS mm, arrays [k,j,i]; use the project venv's python; run tests from the
 worktree ROOT (python -m pytest tests/ -q) so this checkout's gtcore is
 imported; full suite must stay green at every step; no Claude attribution in
 commits.

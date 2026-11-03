@@ -154,8 +154,9 @@ now observable (WARNING + traceback) if they ever do, and fatal under the
 flag. No handler intent was changed; nothing was loosened.
 
 Data layout note: between the first and the final JD-1mm run (2026-11-03
-00:05) the clinical folders were moved one level down into a `JohnDoe/`
-folder under `GT_DATA_ROOT` (same folder names); the phantom folders are
+00:05) the clinical folders were moved one level down into a per-patient
+sub-folder under `GT_DATA_ROOT` (same folder names; `GT_DATASETS_JSON` maps
+the dataset ids to them since Phase 5); the phantom folders are
 unchanged. Commands above take the dataset path as an argument, so only the
 path changed; the pipeline results did not.
 
@@ -262,7 +263,7 @@ Driver (no script change needed): `load_volume(path)`, then
 `scripts/validation_realdata_proxies.py --scans negatives,printed8` reports
 the same quantities.
 
-| | PH0 `CT 3D printed` (248 slices, 0.68 x 0.68 x 1.0 mm) | PH8 printed 8-tile phantom (157 slices, 0.59 x 0.59 x 1.0 mm) |
+| | PH0 (tile-less printed phantom, 248 slices, 0.68 x 0.68 x 1.0 mm) | PH8 printed 8-tile phantom (157 slices, 0.59 x 0.59 x 1.0 mm) |
 |---|---|---|
 | before `aff83c0` | 0 raw blobs, 0 seed candidates; vault_filter applied False, interior 0.0 mL; implant present False ("only 0 candidates") | 32 raw / 32 seeds; vault filter skipped (0 mL, fails open); implant confirmed (7 gate-passing quads); auto fit 8 full tiles |
 | after `fad8701` | 0 raw blobs, 0 seed candidates; `{'applied': False, 'interior_ml': 0.0, 'n_dropped': 0, 'margin_mm': 4.0}`; implant present False | 32 raw / 32 seeds; `{'applied': False, 'interior_ml': 0.0, 'n_dropped': 0, 'margin_mm': 4.0}`; implant confirmed; **8 supported full tiles, 0 tentative, 32 of 32 seeds assigned** |
@@ -560,12 +561,12 @@ That table is now historical: voxel-step growth.)
 **(b) Clinical JD-1mm vs `Cav_Post`.**
 
 ```
-python scripts/validation_clinical.py "$GT_DATA_ROOT/JohnDoe/<JD-1mm>" \
-    "$GT_DATA_ROOT/JohnDoe/<JD RT RTSTRUCT>" "$GT_DATA_ROOT/JohnDoe/<JD RT RTDOSE>"
+python scripts/validation_clinical.py "$GT_DATA_ROOT/<PT-CT1mm>" \
+    "$GT_DATA_ROOT/<PT-RTSTRUCT>" "$GT_DATA_ROOT/<PT-RTDOSE>"
 ```
 (the "before" run used the pre-move paths `$GT_DATA_ROOT/<...>`; same
 files.)  Cavity-stage runtime from
-`python scripts/cavity_reach_sweep.py --ct "$GT_DATA_ROOT/JohnDoe/<JD-1mm>" --rtstruct "$GT_DATA_ROOT/JohnDoe/<JD RT RTSTRUCT>"`
+`python scripts/cavity_reach_sweep.py --ct "$GT_DATA_ROOT/<PT-CT1mm>" --rtstruct "$GT_DATA_ROOT/<PT-RTSTRUCT>"`
 (`reconstruct(verbose=True)` stage timings; Dice identical to the
 validation script's).
 

@@ -1117,7 +1117,7 @@ seeds — not the generator's radial normal with its ~7° floor):
 ```
 PYTHONPATH=. python scripts/validation_axis_term.py                     # raw detections, 62 s
 PYTHONPATH=. python scripts/validation_axis_term.py --refine centroid   # stage-2 seeds, 56 s
-GT_DATA_ROOT=C:\Users\jacob\Documents python scripts/validation_realdata_proxies.py --scans printed8 --no-cache
+GT_DATA_ROOT=<data root> python scripts/validation_realdata_proxies.py --scans printed8 --no-cache
 ```
 
 **Raw detections** (OFF = axes always fitted = 0611ccc; ON = dropped above 1.2 mm):
@@ -1294,15 +1294,15 @@ Odd − even, 28 seeds found in both halves:
 
 | scan | loaded | grid (mm) | candidates | verdict | reason |
 |---|---|---|---|---|---|
-| CT 3D printed | True | 0.68x0.68x1.00 (248 slices) | 0 | absent | only 0 candidates (a tile needs 4 seeds) |
-| DOEJOHNPOSTCT | True | 0.52x0.52x1.00 (204 slices) | 31 | confirmed | 6 gate-passing tile quads, 6 grouped within one cavity-sized region |
+| PH0 | True | 0.68x0.68x1.00 (248 slices) | 0 | absent | only 0 candidates (a tile needs 4 seeds) |
+| PT-CT1mm | True | 0.52x0.52x1.00 (204 slices) | 31 | confirmed | 6 gate-passing tile quads, 6 grouped within one cavity-sized region |
 
 Reading against the plan's real-data criteria at baseline: printed phantom
 32/32 seeds, 8/8 tiles (holds); 25/31 partitioned differently by the auto and
 the counted fit (the documented ambiguity; stage 6's margin should flag it);
 PostOp 4 supported + 2 tentative, 5 unassigned of which 3 are 3.0–3.4 mm
 from a neighbour (split duplicates, the stage 3 target); tile-free printed
-scan: 0 candidates, absent. **The pre-implant DOE scan is already
+scan: 0 candidates, absent. **The PT-CT1mm scan (then mislabelled pre-implant) is already
 "confirmed" at baseline** (6 tile-like quads from calcifications, the known
 limitation in `docs/data-notes.md`), so the plan's "negative controls stay
 not confirmed" cannot be a no-regression check for that scan: the criterion
@@ -1333,10 +1333,10 @@ positives.
    gaps, loader grid 2.0 mm) instead of the literal 1 mm grid with every
    other slice interpolated (G3L), which the 2000 HU thin-slice branch cannot
    detect at PostOp contrast.
-3. **DOE negative control** is "confirmed" before any change; the
+3. **PT-CT1mm negative control** is "confirmed" before any change; the
    verification criterion for it needs rewording (no new quads / verdict not
    worse), or the assessment fixed separately. *(Resolved 2026-10-08:
-   `DOEJOHNPOSTCT` is the post-implant thin-cut of the PostOp acquisition,
+   `PT-CT1mm` is the post-implant thin-cut of the PostOp acquisition,
    stage 3; "confirmed" is correct there and `docs/data-notes.md` is
    corrected on loc/proxies. There is no real pre-implant negative control
    on this machine.)*
@@ -1372,17 +1372,17 @@ Two facts the earlier notes did not have:
   implant the slices k = 58–62 and 65 are present, 63–64 interpolated
   (52/89 interpolated overall, re-derived from the slice positions with the
   loader's rule).
-* `DOEJOHNPOSTCT` is **not a pre-implant scan**: it is the complete
-  contiguous 1 mm thin-cut ("STEALTH 1.0 Hr40", 204 slices, acquired
-  2023-10-26 09:09:16) of the **same post-implant acquisition** as the
-  PostOp export (PostOp series time 09:11:14, same in-plane origin and
+* `PT-CT1mm` is **not a pre-implant scan**: it is the complete
+  contiguous 1 mm thin-cut (204 slices, a different reconstruction kernel)
+  of the **same post-implant acquisition** as the
+  PostOp export (exported two minutes later, same in-plane origin and
   0.5195 mm pixels, all 64 PostOp slice positions coincide exactly with
   thin-cut slices; different kernel, mean |ΔHU| ≈ 40). Its seeds reproduce
   the PostOp supported tiles to ≤ 0.2 mm (6 supported tiles; the "6 chance
   quads" recorded for it in docs/data-notes.md are the implant). It is used
   below as a thin-cut reference for the PostOp merges.
 
-| Unassigned ↔ nearest | \|d\| (mm) | separation RAS (mm) / voxel (i, j, k) | along normal / in-plane (mm) | axes (angle to separation) | volume (mm³) | peak HU | bridge: straight trilinear min / ridge (cell-max) min vs need (HU) | slices k (interpolated?) | one thresholded blob? | thin-cut seed (DOE) |
+| Unassigned ↔ nearest | \|d\| (mm) | separation RAS (mm) / voxel (i, j, k) | along normal / in-plane (mm) | axes (angle to separation) | volume (mm³) | peak HU | bridge: straight trilinear min / ridge (cell-max) min vs need (HU) | slices k (interpolated?) | one thresholded blob? | thin-cut seed (PT-CT1mm) |
 |---|---|---|---|---|---|---|---|---|---|---|
 | #4 ↔ #37 | 3.39 | (−0.12, 2.70, −2.05) / (0.24, −5.20, −1.02) | 2.05 / 2.70 | #4 (−0.02, −0.11, 0.99) 47°, smeared along z by interpolated slice 63; #37 fallback (0, 0, 1) (2 voxels) | 9.72 / 1.08 | 2896 / 1768 | 603 (bg −2, frac 0.34) / 1224 vs 455 | 62.26 / 61.23 (both present) | no (labels 609 / 598) | one seed, axis (−0.01, −0.91, 0.42): separation within 13° of it; fragments 1.38 / 2.05 mm from it |
 | #35 ↔ #34 (#34 in tentative T4) | 3.01 | (2.01, 0.87, −2.07) / (−3.87, −1.67, −1.03) | 2.07 / 2.19 | both (0, 0, 1) (#35 fallback, 3 voxels) | 1.62 / 2.16 | 1831 / 2178 | 897 (bg 24, frac 0.48) / 1557 vs 656 | 62.03 / 61.00 (both present) | no (611 / 601) | one seed lying in-plane, axis (−0.97, −0.26, 0): the in-plane separation runs along it; fragments 1.44 / 1.57 mm from it |
@@ -1416,8 +1416,8 @@ image clearly satisfies.
 
 | Piece | Rule (disclosed) | Default | Evidence for the default |
 |---|---|---|---|
-| windowed split reference (`split_window`) | median over blobs inside `[min_mm3, max_mm3]` (fallback: all blobs if < 4 inside) | on | bit-identical on PostOp, printed phantom, tile-free scan and the 20 synthetic head-phantom cases (rng 0–4 × 0.7/1.4/2.1/2.8 mm) without the guard too; on the DOE thin-cut alone it LOWERS the median 4.59 → 4.32 mm³ and, without the guard, cuts 7 single implant seeds in half (legacy cuts 3) — hence the guard. Side effect: oversize bone-like blobs (1.6–4.5 × the lone-seed volume) are also cut into seed-sized pieces (test `test_reference_median_ignores_oversize_blobs`), left to the shape/vault/tile stages |
-| halves guard (`split_guard`, slices ≤ 1.2 mm) | refuse a split when the parent blob is a rod (√(λ₁/λ₂) ≥ 2, weighted PCA) and two parts lie closer than `MERGE_MAX_SEP_MM` = L − 0.5 = 4.0 mm along its axis (≤ 25°): two capsules end to end cannot be closer than L | on | DOE thin-cut: the halves splits (parts 1.66–1.87 mm apart) are all refused; 0 split blobs within 40 mm of the implant (legacy 3, window-only 7). Linearity: lone seeds 2.3–3.1 (0.59 mm grid), DOE halved seeds 2.43–3.23, merged side-by-side pairs ≤ 1.37 |
+| windowed split reference (`split_window`) | median over blobs inside `[min_mm3, max_mm3]` (fallback: all blobs if < 4 inside) | on | bit-identical on PostOp, printed phantom, tile-free scan and the 20 synthetic head-phantom cases (rng 0–4 × 0.7/1.4/2.1/2.8 mm) without the guard too; on the PT-CT1mm thin-cut alone it LOWERS the median 4.59 → 4.32 mm³ and, without the guard, cuts 7 single implant seeds in half (legacy cuts 3) — hence the guard. Side effect: oversize bone-like blobs (1.6–4.5 × the lone-seed volume) are also cut into seed-sized pieces (test `test_reference_median_ignores_oversize_blobs`), left to the shape/vault/tile stages |
+| halves guard (`split_guard`, slices ≤ 1.2 mm) | refuse a split when the parent blob is a rod (√(λ₁/λ₂) ≥ 2, weighted PCA) and two parts lie closer than `MERGE_MAX_SEP_MM` = L − 0.5 = 4.0 mm along its axis (≤ 25°): two capsules end to end cannot be closer than L | on | PT-CT1mm thin-cut: the halves splits (parts 1.66–1.87 mm apart) are all refused; 0 split blobs within 40 mm of the implant (legacy 3, window-only 7). Linearity: lone seeds 2.3–3.1 (0.59 mm grid), PT-CT1mm halved seeds 2.43–3.23, merged side-by-side pairs ≤ 1.37 |
 | weighted split (`split_weighted`) | k = round(Σ(HU − thr) / median of that), deterministic weighted Lloyd's from equal-weight slabs along the 1st and the 2nd principal axis, lower weighted SSE wins | on (was specified opt-in until measured better) | 90 random side-by-side pairs on 0.59×0.59×1.0 (seed 7, d = 2.5/3.0/3.5): 90/90 within 0.5 mm, worst 0.19 mm; k-means++ with volume-ratio k 86/90, worst 1.53 mm (at 2.5 mm the bloom bridge makes a pair ~2.7 lone volumes → cut in 3; or cut across both seeds). Identical to the historical method on all real scans and the 20 head-phantom cases. Without the guard it over-splits much brighter single seeds (mass ratio ≥ 3) — the guard catches every case seen |
 | fragment merge (`merge_fragments`) | pair < 4.0 mm; ridge bridge ≥ bg + 0.35 (dimmer peak − bg), bg = median HU on 6/8/10 mm shells; geometry: thin — every usable 3D axis ≤ 25° of the separation; coarse — end-on (in-plane < 1.5 mm and ≥ in-plane along the normal), or every directional in-plane trace (≥ 4 voxels, in-plane elongation ≥ 1.5) ≤ 25° of the in-plane separation, or (no directional trace) one slice apart; never split siblings; union ≤ `max_mm3`; group span < 4.0 mm; group isolated (no other candidate within 4.0 mm of a member) | `detect_seed_candidates`: off. `reconstruct`: on iff slices > 1.2 mm AND DICOM slice thickness ≤ 0.75 × spacing (unimaged gaps); logged in `vol.meta["seed_merge"]` | PostOp (1.0/2.0 mm): fixes both pairs, nothing else in the implant changes. Synthetic G2s (that geometry): fixes 29/29 fragmented seeds. G3 (contiguous 2 mm + interpolation): fixes 0, fuses 8/180 close pairs → off. G1/thin: nothing to fix (0/200 fragment) → off. Unknown thickness (NRRD, synthetic) → off, so every synthetic pipeline test is unchanged |
 
@@ -1521,7 +1521,7 @@ worse (the fragment that was matched is replaced by the union's centroid,
 contrast) every false positive is a split-seed fragment and the merge
 removes all of them (29 → 0).  On the loader-grid G3 the stage-3 split
 defaults alone already drop the FP count (80 → 53: the windowed median no
-longer cuts seeds, see the DOE thin-cut finding) and the merge takes it to
+longer cuts seeds, see the PT-CT1mm thin-cut finding) and the merge takes it to
 32 (−40 %); the remainder are fragments two grid slices apart across an
 interpolated slice (> 4.0 mm, see open decisions).  On G4 (2.8 mm) the merge
 removes half of the fragments (20 → 12).  No row gets worse.  Note the
@@ -1540,7 +1540,7 @@ check <scan> --merge default` (`diagnose` for PostOp), each scan run alone.
 | PostOp (0.52×0.52×2.0, 1 mm slices) | on ("1.00 mm slices every 2.00 mm leave unimaged gaps") | 731 raw → 53 in-vault; 4 supported + 2 tentative tiles; **5 unassigned**, 26 clutter; thin-cut seeds #16 and #23 each hit by two candidates | 30 merges head-wide (20 in-plane-axis, 9 adjacent-slice, 1 end-on), mostly bone/streak fragments; 3 merged groups touch in-vault candidates (the two pairs above and clutter #41, 60 mm from the implant) → 701 raw → 50 in-vault; the 4 supported tiles **bit-identical** (residuals 0.39/0.42/0.65/0.71 mm), both tentative tiles kept (the one containing #34 now uses the merged seed; its inferred seed moves 1.1 mm); **3 unassigned**, 25 clutter; no thin-cut seed hit twice; implant "confirmed" unchanged |
 | printed 8-tile phantom (0.59×0.59×1.0) | off (thin) | 32/32 seeds, 8/8 tiles | 32/32 seeds, 8/8 tiles, detection bit-identical; forcing the merge on rejoins 0 pairs |
 | tile-free printed (0.68×0.68×1.0) | off (thin) | 0 candidates, not present | 0 candidates, not present |
-| DOE thin-cut (0.52×0.52×1.0) | off (thin) | 74 raw (24 from splits, 3 of them halves of implant seeds) → 31 in-vault; 6 supported tiles (residuals 0.18/0.21/0.29/0.51/0.64/0.67 mm), 7 unassigned; "confirmed" | 57 raw (no splits) → 31 in-vault; 6 supported tiles, the one that used a half-seed now uses the whole seed (residual 0.64 → 0.47 mm); 7 unassigned, all whole seeds; "confirmed" unchanged |
+| PT-CT1mm thin-cut (0.52×0.52×1.0) | off (thin) | 74 raw (24 from splits, 3 of them halves of implant seeds) → 31 in-vault; 6 supported tiles (residuals 0.18/0.21/0.29/0.51/0.64/0.67 mm), 7 unassigned; "confirmed" | 57 raw (no splits) → 31 in-vault; 6 supported tiles, the one that used a half-seed now uses the whole seed (residual 0.64 → 0.47 mm); 7 unassigned, all whole seeds; "confirmed" unchanged |
 
 PostOp unassigned 5 → 3, not the planned ≤ 2: the 3 left are real seeds
 (thin-cut seeds 1.36, 0.12 and 0.20 mm away), and the thin-cut fit leaves
@@ -1552,9 +1552,9 @@ the 4/37 candidate from 1.38/2.05 to 1.36 mm (its remaining ~1 mm z offset
 is #4's smear into interpolated slice 63, not the merge). Merge cost on
 PostOp: detection 0.26 → 0.29 s.
 
-### Stage 3 with-truth track: the DOE thin-cut as reference
+### Stage 3 with-truth track: the PT-CT1mm thin-cut as reference
 
-The DOE thin-cut (see stage 3) is a same-acquisition 1 mm reference for
+The PT-CT1mm thin-cut (see stage 3) is a same-acquisition 1 mm reference for
 the PostOp 2 mm export: 64/64 PostOp slices are a re-reconstruction of
 thin-cut slice positions, so PostOp seed positions can be scored against
 thin-cut seeds (subject to the thin-cut's own ~0.2–0.4 mm localization
@@ -1563,7 +1563,7 @@ seed median 0.34 mm (0.47 before the merge), max 2.41 mm.
 
 ### Stage 3 open decisions
 
-- **DOE relabel** (for the coordinator / Jacob): `DOEJOHNPOSTCT` is the
+- **PT-CT1mm relabel** (for the coordinator / Jacob): `PT-CT1mm` is the
   complete thin-cut of the PostOp acquisition, not a pre-implant negative
   control. docs/data-notes.md and the "calcification chance quads"
   limitation in `pipeline.assess_implant` rest on that mislabel; there is
@@ -1587,9 +1587,9 @@ pipeline runs (`--no-cache`), one configuration at a time, each as one
 command; `reconstruct(refine_seeds=, fuse_tiles=, merge_fragments=)` is
 accepted on this branch, so refinement and fusion run IN the pipeline
 (refinement after the vault filter on the raw volume, fusion after the
-auto tile fit; nothing post hoc). Data root: the scans left OneDrive this
-morning and now live under `C:\Users\jacob\Documents\` (the script falls
-back to the old path; `GT_DATA_ROOT` overrides). Outputs:
+auto tile fit; nothing post hoc). Data root: the scans left the cloud-synced
+folder this morning for a local data root (`GT_DATA_ROOT`; since Phase 5
+the script resolves dataset ids through `gtcore.io.datasets`). Outputs:
 `output/validation_realdata_proxies/<tag>/proxies_<tag>.{md,json}`, cache
 `output/validation_realdata_proxies/cache/`.
 
@@ -1622,7 +1622,7 @@ for the rows below.
 
 ### Three configurations
 
-Printed phantom = `3D-Printed Phantom-8tiles (223)`, 0.59 × 0.59 × 1.0 mm,
+Printed phantom = `PH8`, 0.59 × 0.59 × 1.0 mm,
 157 slices, 31/32 seed peaks saturated at 3071 HU. "Chord − model" = measured
 side chord minus the fitted bent tile's chord, all 8 tiles (32 chords); near-
 flat = max |κ| ≤ 0.04 /mm (n = 2 tiles). Split halves = even / odd 1 mm
@@ -1646,14 +1646,14 @@ slices as two 2.0 mm scans, 28 seeds found in both; disagreement/√2 = RMS
 | Split-half Bland–Altman bias [95 % LoA] i / j / k (mm) | −0.100 [−2.22, 2.03] / 0.131 [−0.83, 1.09] / −0.062 [−1.68, 1.56] | −0.096 [−2.22, 2.03] / 0.129 [−0.83, 1.09] / −0.056 [−1.68, 1.57] | same as (b) | — |
 | Split halves vs the 1 mm result (3-D mean ± SD; RMS i/j/k) | even 0.74 ± 0.59 (0.73/0.27/0.53), odd 0.49 ± 0.48 (0.48/0.27/0.41) | even 0.74 ± 0.60, odd 0.49 ± 0.48 | same | — |
 | PostOp (0.52 × 0.52 × 2.0 grid, 1.0 mm slabs, 52/89 interpolated) | 701 raw → 50 in-vault (merge on, 30 rejoined); **4 supported + 2 tentative, 3 unassigned** (NN 10.1 / 10.0 / 9.2 mm); prior path agrees; confirmed | 50; **4 + 2, 3 unassigned** (NN 10.1 / 10.0 / 8.5); refinement **7/50** (43 fallbacks: close_neighbour ×13, shift ×11, extended ×9, background ×5, no_signal ×5; shifts 0.10–0.73 mm); prior path agrees; confirmed | 50; **4 + 2, 3 unassigned** (NN 6.9 / 10.0 / 7.3: the weighted auto fit picks different tentative members); `fit_tiles_prior(ImplantPrior())` **disagrees** with the weighted auto fit; confirmed | not worse than 4 + 2 / ≤ 3 unassigned → **PASS** (all three) |
-| Tile-free printed scan (`CT 3D printed`, 248 sl) | 0 candidates, **absent** | 0, absent (0/0 refined) | 0, absent | verdict unchanged → **PASS** |
-| DOE thin-cut (`DOEJOHNPOSTCT`, 204 sl, 1 mm; post-implant, see stage 3) | 31 candidates, **confirmed** (6 quads, 1 region) | 31, confirmed; **27/31 refined** (fallbacks: background, shift, extended ×2) | 31, confirmed | verdict unchanged → **PASS** |
+| Tile-free printed scan (`PH0`, 248 sl) | 0 candidates, **absent** | 0, absent (0/0 refined) | 0, absent | verdict unchanged → **PASS** |
+| PT-CT1mm thin-cut (`PT-CT1mm`, 204 sl, 1 mm; post-implant, see stage 3) | 31 candidates, **confirmed** (6 quads, 1 region) | 31, confirmed; **27/31 refined** (fallbacks: background, shift, extended ×2) | 31, confirmed | verdict unchanged → **PASS** |
 | Fusion (stage 5, printed) | — | — | 32 fused, 0 passed through; \|posterior − detected\| **median 0.117 mm**, mean 0.147, max 0.565 | > 0.3 mm median would be flagged → **not** the case |
-| Wall per dataset (s): printed / split / PostOp / tile-free / DOE / total | 26 / 0.4 / 16 / 26 / 33 / 111 | 26 / 0.4 / 16 / 24 / 26 / 103 | 25 / 0.6 / 17 / 23 / 25 / 102 | (machine shared with other agents; refinement itself 0.04–0.1 s per scan) |
+| Wall per dataset (s): printed / split / PostOp / tile-free / PT-CT1mm / total | 26 / 0.4 / 16 / 26 / 33 / 111 | 26 / 0.4 / 16 / 24 / 26 / 103 | 25 / 0.6 / 17 / 23 / 25 / 102 | (machine shared with other agents; refinement itself 0.04–0.1 s per scan) |
 
 ### PostOp vs its 1 mm thin-cut (the closest thing to a real-data accuracy check)
 
-`DOEJOHNPOSTCT` is the contiguous 1 mm thin-cut of the SAME post-implant
+`PT-CT1mm` is the contiguous 1 mm thin-cut of the SAME post-implant
 acquisition as the PostOp export (stage 3); grids checked to coincide:
 direction cosines equal, in-plane pixel 0.5195 mm equal, PostOp origin
 offset (0.000, 0.000, 1.000) thin-cut voxels — the PostOp z origin sits
@@ -1731,7 +1731,7 @@ at 3.93 mm and 24/30).
 | Partition margin for 25/31 | 1.87 in all three configurations (not ambiguous under the bent-tile score; counted chord still reads the pair the other way) |
 | Split-half: ≥ 15 % lower disagreement than baseline | **FAIL** — 1.01 → 1.01 mm (0 %); the estimator engages on 1 of 36 / 1 of 30 half-scan seeds; forced on, +4 % |
 | PostOp: 4 supported kept, no new supported tiles, unassigned ≤ 3 (after stage 3) | **PASS** (a, b, c: 4 + 2, 3 unassigned); under `--fuse` the tentative tiles' members change and the prior path disagrees — to watch, not a failure |
-| Negative controls: verdict unchanged (tile-free absent; DOE confirmed — it is a post-implant thin-cut) | **PASS** (a, b, c) |
+| Negative controls: verdict unchanged (tile-free absent; PT-CT1mm confirmed — it is a post-implant thin-cut) | **PASS** (a, b, c) |
 | `--fuse` changes the printed seeds by > 0.3 mm median? | No: 0.117 mm median (max 0.565) |
 
 **Verdict: the stage-2 refinement does not pass its real-data gate on the
@@ -1766,7 +1766,7 @@ Proposed README validation rows (coordinator's pass; do not copy the
   0.58 mm per axis, 1.01 mm 3-D; bent-tile RMS 0.26–0.87 mm; side chords
   − bent-tile model 0.07 ± 0.63 mm"
 - `Negative controls` → "tile-free printed scan: 0 candidates, absent. No
-  pre-implant head CT is available (DOEJOHNPOSTCT is the post-implant
+  pre-implant head CT is available (PT-CT1mm is the post-implant
   thin-cut, corrected 2026-10-08)"
 - `Grey-level seed refinement (stage 2)` → "opt-in (`refine_seeds=
   'centroid'`): synthetic gains as in the stage-2 row; on real scans it
@@ -1800,7 +1800,7 @@ Proposed README validation rows (coordinator's pass; do not copy the
 | 2026-10-08 | `scripts/localization_mergesplit_realdata.py diagnose --merge default` (PostOp) | — | 6eb4aa4 | 26 s |
 | 2026-10-08 | `scripts/localization_mergesplit_realdata.py check phantom8 --merge default` (and `--merge on`) | — | 6eb4aa4 | 27 s |
 | 2026-10-08 | `scripts/localization_mergesplit_realdata.py check tilefree --merge default` | — | 6eb4aa4 | 28 s |
-| 2026-10-08 | `scripts/localization_mergesplit_realdata.py check doe --merge default [--legacy-split]` | — | 6eb4aa4 | 32 s / 26 s |
+| 2026-10-08 | `scripts/localization_mergesplit_realdata.py check thincut --merge default [--legacy-split]` (scan key as renamed in Phase 5) | — | 6eb4aa4 | 32 s / 26 s |
 | 2026-10-08 | `scripts/localization_mergesplit_sweep.py --singles 200 --pairs 60` | 2026 | 6eb4aa4 | 15.8 s |
 | 2026-10-08 | `python scripts/validation_seed_localization.py --methods baseline,legacy,merge --grids G2,G3,G4` | layout rng 0–4 × 40 × sparse/crowded | merge of 2b9f896 + loc/integration 8a35ee6 (this commit) | 15 s |
 | 2026-10-08 | `pytest tests/test_seeds_merge_split.py tests/test_seeds_unit.py tests/test_integration.py tests/test_tiles_cover.py tests/test_implant_assessment.py tests/test_localization_plumbing.py` | — | 6eb4aa4 | 33 s, 51 passed |
@@ -1810,7 +1810,7 @@ Proposed README validation rows (coordinator's pass; do not copy the
 | 2026-10-08 | `python scripts/validation_fuse.py --refine centroid --seed-render analytic --mode prior` | phantom rng 0-4 | 0611ccc (+ script) | 40 s |
 | 2026-10-08 | `python scripts/validation_axis_term.py` (raw detections, both renderings, auto + prior, OFF vs ON) | phantom rng 0-4 | task-2 commit | 62 s |
 | 2026-10-08 | `python scripts/validation_axis_term.py --refine centroid` | phantom rng 0-4 | task-2 commit | 56 s |
-| 2026-10-08 | `GT_DATA_ROOT=C:\Users\jacob\Documents python scripts/validation_realdata_proxies.py --scans printed8 --no-cache` | printed 8-tile phantom | task-2 commit | 39 s (pipeline 36 s) |
+| 2026-10-08 | `GT_DATA_ROOT=<data root> python scripts/validation_realdata_proxies.py --scans printed8 --no-cache` | printed 8-tile phantom | task-2 commit | 39 s (pipeline 36 s) |
 | 2026-10-08 | `python scripts/validation_fuse.py --refine centroid --seed-render {binary,analytic} --mode {auto,prior}` (re-run after the axis change) | phantom rng 0-4 | task-2 commit | 4 × 30 s |
 | 2026-10-08 | `pytest tests/test_tiles_axis_term.py tests/test_tiles_auto.py tests/test_tiles_cover.py tests/test_localization_plumbing.py tests/test_localization_scoring.py tests/test_tiles_fuse.py tests/test_tiles_deform.py` | fixed | task-2 commit | 92 s, 117 passed |
 | 2026-10-08 | `pytest tests/test_tiles.py tests/test_tiles_degraded.py tests/test_tiles_suggest.py tests/test_tiles_surface.py tests/test_tile_model.py tests/test_implant_assessment.py tests/test_seeds_refine.py tests/test_integration.py` | fixed | task-2 commit | 128 s, 178 passed |
@@ -1850,7 +1850,7 @@ real scans.
 | 2026-10-08 | `python scripts/validation_seed_localization.py --calibrate` | 400 seeds per grid × contrast, rng 0 | fe4a1a8 | ~40 s |
 | 2026-10-08 | `python scripts/validation_spacing.py --refine none --realizations 5` | phantom rng 0–4 | fe4a1a8 | 7 s |
 | 2026-10-08 | `python scripts/validation_spacing.py --refine none --realizations 5 --seed-render analytic` | phantom rng 0–4 | fe4a1a8 | 8 s |
-| 2026-10-08 | `python scripts/validation_realdata_proxies.py --no-cache` | real scans (printed8, PostOp, CT 3D printed, DOE) | fe4a1a8 | 101 s |
+| 2026-10-08 | `python scripts/validation_realdata_proxies.py --no-cache` | real scans (PH8, PT-CT2mm, PH0, PT-CT1mm) | fe4a1a8 | 101 s |
 
 ### Coordinator decisions on the stage-0 open items (2026-10-08, loc/integration 4d3f833)
 
@@ -1868,10 +1868,10 @@ real scans.
   interpolated at 1 mm" stays as `--grids G3L` and is reported once, with
   the note that the thin-slice threshold tier makes it a detection, not a
   localization, test.
-- **Negative controls.** The DOE pre-implant scan is "confirmed" before any
+- **Negative controls.** The PT-CT1mm scan (then mislabelled pre-implant) is "confirmed" before any
   change (documented calcification limitation, data-notes). The gate for
   every stage is therefore **"verdict unchanged on both negative controls"**
-  (tile-free printed scan: absent, 0 candidates; DOE: confirmed), not
+  (tile-free printed scan: absent, 0 candidates; PT-CT1mm: confirmed), not
   "not confirmed".
 - **Near-flat threshold for the 10 mm-pitch proxy.** |κ| ≤ 0.04 /mm admits
   only 2 of the 8 printed-phantom tiles; the proxy is reported for ALL tiles
@@ -1902,14 +1902,14 @@ receives `spacing_mm`, so counted = auto exactly — is kept.
 | 2026-10-08 | `scripts/localization_mergesplit_realdata.py diagnose --merge default` (PostOp) | — | 6eb4aa4 | 26 s |
 | 2026-10-08 | `scripts/localization_mergesplit_realdata.py check phantom8 --merge default` (and `--merge on`) | — | 6eb4aa4 | 27 s |
 | 2026-10-08 | `scripts/localization_mergesplit_realdata.py check tilefree --merge default` | — | 6eb4aa4 | 28 s |
-| 2026-10-08 | `scripts/localization_mergesplit_realdata.py check doe --merge default [--legacy-split]` | — | 6eb4aa4 | 32 s / 26 s |
+| 2026-10-08 | `scripts/localization_mergesplit_realdata.py check thincut --merge default [--legacy-split]` (scan key as renamed in Phase 5) | — | 6eb4aa4 | 32 s / 26 s |
 | 2026-10-08 | `scripts/localization_mergesplit_sweep.py --singles 200 --pairs 60` | 2026 | 6eb4aa4 | 15.8 s |
 | 2026-10-08 | `pytest tests/test_seeds_merge_split.py tests/test_seeds_unit.py tests/test_integration.py tests/test_tiles_cover.py tests/test_implant_assessment.py tests/test_localization_plumbing.py` | — | 6eb4aa4 | 33 s, 51 passed |
 | 2026-10-08 | `python scripts/validation_loc_scoring.py --verify` | rng-1 head phantom at 2.1 mm | f9c6134 | ~40 s (two `reconstruct` runs) |
 | 2026-10-08 | `pytest tests/test_tiles_verify.py` | rng 1 | f9c6134 | 16.3 s, 5 passed |
 | 2026-10-08 | `pytest tests/test_tiles*.py tests/test_tile_model.py tests/test_implant_assessment.py tests/test_localization_plumbing.py tests/test_localization_scoring.py` after merging loc/integration (0611ccc) into loc/scoring | per test | f9c6134 | 213 s, 272 passed |
-| 2026-10-08 | `python scripts/validation_realdata_proxies.py --refine none --no-cache --out output/validation_realdata_proxies/none --cache-dir output/validation_realdata_proxies/cache --tag none` | real scans (printed8 + split halves, PostOp, CT 3D printed, DOE thin-cut) | 5073e01 | 111 s |
+| 2026-10-08 | `python scripts/validation_realdata_proxies.py --refine none --no-cache --out output/validation_realdata_proxies/none --cache-dir output/validation_realdata_proxies/cache --tag none` | real scans (PH8 + split halves, PT-CT2mm, PH0, PT-CT1mm thin-cut) | 5073e01 | 111 s |
 | 2026-10-08 | `python scripts/validation_realdata_proxies.py --refine centroid --no-cache --out output/validation_realdata_proxies/centroid --cache-dir output/validation_realdata_proxies/cache --tag centroid` | same | 5073e01 | 103 s |
 | 2026-10-08 | `python scripts/validation_realdata_proxies.py --refine centroid --fuse --no-cache --out output/validation_realdata_proxies/centroid-fuse --cache-dir output/validation_realdata_proxies/cache --tag centroid-fuse` | same | 5073e01 | 102 s |
 | 2026-10-08 | `python scripts/localization_proxies_diag.py --part printed` | printed8 (detection + refinement variants, split halves) | 5073e01 | ~15 s |
-| 2026-10-08 | `python scripts/localization_proxies_diag.py --part thincut` | cached PostOp / DOE runs | 5073e01 | 2 s |
+| 2026-10-08 | `python scripts/localization_proxies_diag.py --part thincut` | cached PostOp / PT-CT1mm runs | 5073e01 | 2 s |

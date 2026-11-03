@@ -40,7 +40,7 @@ Dataset ids (figure plan v6 / data designation v7; the Phase 1-3 notes use the
 ======================  ===============================================================
 
 The legacy keys of the localisation scripts (``printed8``, ``phantom8``,
-``printed_blank``, ``tilefree``, ``postop``, ``doe``, ``thincut``) are
+``printed_blank``, ``tilefree``, ``postop``, ``thincut``) are
 accepted as aliases so their cached runs keep their meaning.
 """
 from __future__ import annotations
@@ -91,7 +91,6 @@ ALIASES = {
     "printed_blank": "PH0",
     "tilefree": "PH0",
     "postop": "PT-CT2mm",
-    "doe": "PT-CT1mm",
     "thincut": "PT-CT1mm",
 }
 
