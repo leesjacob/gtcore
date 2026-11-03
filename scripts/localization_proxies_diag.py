@@ -15,7 +15,7 @@
 ``--part thincut``
     PostOp (1 mm slabs every 2 mm, gaps interpolated) seeds against the
     seeds of the contiguous 1 mm thin-cut of the same acquisition
-    (DOEJOHNPOSTCT) with the two sides refined independently, from the
+    (``PT-CT1mm``) with the two sides refined independently, from the
     cached results of ``validation_realdata_proxies.py --refine none`` and
     ``--refine centroid`` (``--cache-dir``, default
     output/validation_realdata_proxies/cache, newest commit in the cache):

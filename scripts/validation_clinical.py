@@ -959,7 +959,13 @@ def optional_hooks(verbose=True):
     for name in ("gamma", "formalism"):
         try:
             mod = __import__("gtcore.dose.%s" % name, fromlist=[name])
-            status[name] = "available (%s)" % getattr(mod, "__file__", "?")
+            # repo-relative, so no machine path lands in the committed CSV
+            f = getattr(mod, "__file__", None)
+            try:
+                loc = os.path.relpath(f, REPO_ROOT).replace(os.sep, "/") if f else mod.__name__
+            except ValueError:          # different drive
+                loc = mod.__name__
+            status[name] = "available (%s)" % loc
         except ImportError:
             status[name] = "not merged"
     status["optimizer_arm"] = "Phase 4/5 (not run here)"

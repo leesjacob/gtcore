@@ -64,7 +64,7 @@ SPLIT_FACTOR = 1.6
 SPLIT_MIN_REFERENCE_BLOBS = 4
 # a blob is a ROD (one capsule) when sqrt(major / middle) weighted-PCA
 # eigenvalue ratio reaches this: a bloomed capsule gives ~(L + 2r) / 2r ~ 3-4
-# (lone seeds measured >= 2.3 on the 0.59 mm grid, 2.4-3.2 on the DOE 1 mm
+# (lone seeds measured >= 2.3 on the 0.59 mm grid, 2.4-3.2 on the PT-CT1mm
 # thin-cut); two seeds side by side give a planar blob, ~1.3-1.4 at 2.5 mm
 SPLIT_ROD_LINEARITY = 2.0
 
@@ -703,7 +703,7 @@ def detect_seed_candidates(vol, hu_threshold=2000.0, min_mm3=0.2, max_mm3=120.0,
         On thin slices (<= 1.2 mm), refuse to split a rod-shaped blob into
         parts closer than ``merge_max_sep_mm`` along its long axis: those
         are the two halves of one capsule (two capsules end to end cannot be
-        closer than the 4.5 mm capsule length).  Measured on the DOE
+        closer than the 4.5 mm capsule length).  Measured on the PT-CT1mm
         thin-cut (1 mm post-implant series): the 1.6x volume rule cuts 3
         single implant seeds in half with the all-blob median and 7 with
         the windowed one; the guard keeps them whole.

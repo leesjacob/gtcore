@@ -35,7 +35,9 @@ import numpy as np
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-DEFAULT_PHANTOM8 = r"C:\Users\jacob\Documents\3D-Printed Phantom-8tiles (223)"
+# ``--phantom8`` default: dataset id PH8 resolved through GT_DATA_ROOT (+ the
+# optional GT_DATASETS_JSON map) by gtcore.io.datasets; a path overrides it.
+DEFAULT_PHANTOM8 = "PH8"
 CACHE = os.path.join("output", "loc_scoring", "cache", "phantom8_seeds.pkl")
 
 
@@ -337,10 +339,16 @@ def main():
     ap.add_argument("--extract", action="store_true")
     ap.add_argument("--calibration", action="store_true")
     ap.add_argument("--verify", action="store_true")
-    ap.add_argument("--phantom8", default=DEFAULT_PHANTOM8)
+    ap.add_argument("--phantom8", default=DEFAULT_PHANTOM8,
+                    help="PH8 folder, or the dataset id (default) resolved via GT_DATA_ROOT")
     args = ap.parse_args()
     if args.extract:
-        extract(args.phantom8)
+        path = args.phantom8
+        if not os.path.exists(path):
+            from gtcore.io.datasets import dataset_path
+
+            path = str(dataset_path(path))
+        extract(path)
         return
     if args.calibration:
         calibration()

@@ -3,7 +3,7 @@
 
 No-truth proxies
 ----------------
-printed8   the 8-tile printed phantom (Philips 0.59 x 0.59 x 1.0 mm, 157
+printed8   the 8-tile printed phantom ``PH8`` (0.59 x 0.59 x 1.0 mm, 157
            slices, no skull, so the pipeline's vault filter fails open):
            ``reconstruct(vol, n_full_tiles="auto")``; seed and tile counts;
            per tile the bent-tile RMS (``pose.deform.rms_mm``), curvatures and
@@ -21,13 +21,17 @@ split      split-half repeatability: the 1 mm printed phantom decimated into
            disagreement / sqrt(2) (RMS of the difference over sqrt 2: the
            single-scan 2 mm precision when the halves' errors are independent)
            and the Bland-Altman bias and 95 % limits of agreement.
-postop     PostOp CT (1 mm slices at irregular positions, rebuilt onto a 2 mm
-           grid): candidate count, supported / tentative tiles, unassigned
+postop     the gapped post-op export ``PT-CT2mm`` (1 mm slabs at 2 mm pitch,
+           rebuilt onto a 2 mm grid): candidate count, supported / tentative tiles, unassigned
            in-implant seeds (pipeline auto result, cross-checked with
            ``fit_tiles_prior(..., ImplantPrior())``).
-negatives  the tile-free printed scan (``CT 3D printed``) and the pre-implant
-           head CT (``DOEJOHNPOSTCT``): ``result.implant`` verdict (must not be
-           "confirmed").
+negatives  the tile-free printed scan (``PH0``) and the 1 mm thin-cut
+           ``PT-CT1mm`` (once mislabelled a pre-implant control; it is the
+           post-implant thin-cut, so "confirmed" is correct there):
+           ``result.implant`` verdict (``PH0`` must not be "confirmed").
+
+Scan folders come from ``GT_DATA_ROOT`` + the optional ``GT_DATASETS_JSON``
+map (``gtcore.io.datasets``; ``--data-root`` / ``--datasets-json`` override).
 
 ``--refine`` / ``--fuse`` are passed to ``reconstruct`` as ``refine_seeds`` /
 ``fuse_tiles`` when it accepts them; otherwise they are applied after the
@@ -82,18 +86,18 @@ from scipy.optimize import linear_sum_assignment
 from scipy.spatial.distance import cdist
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-# The scans left OneDrive on 2026-10-08 (now C:\Users\jacob\Documents); the
-# old root is kept as a fallback and GT_DATA_ROOT overrides both.
-_DATA_ROOTS = (r"C:\Users\jacob\Documents",
-               r"C:\Users\jacob\OneDrive\Documents")
-DATA_ROOT = os.environ.get("GT_DATA_ROOT") or next(
-    (r for r in _DATA_ROOTS if os.path.isdir(r)), _DATA_ROOTS[0])
+if REPO not in sys.path:          # import THIS tree's gtcore, not the editable install
+    sys.path.insert(0, REPO)
+# Scan key -> dataset id.  Folders are resolved at run time by
+# gtcore.io.datasets.dataset_path (GT_DATA_ROOT + optional GT_DATASETS_JSON);
+# no machine path or folder name lives in this file.
 SCANS = {
-    "printed8": "3D-Printed Phantom-8tiles (223)",
-    "postop": "PostOp CT",
-    "printed_blank": "CT 3D printed",
-    "doe": "DOEJOHNPOSTCT",
+    "printed8": "PH8",
+    "postop": "PT-CT2mm",
+    "printed_blank": "PH0",
+    "doe": "PT-CT1mm",
 }
+DATA_OVERRIDES = {"root": None, "datasets_json": None}   # set from the CLI
 MATCH_MM = 3.0
 # "near-flat": max |kappa| of the bent-tile fit.  Four seeds on a cylinder
 # are coplanar, so flatness is not observable from positions alone and the
@@ -247,10 +251,21 @@ class Context:
         return out
 
 
+def scan_path(name):
+    """Folder of scan ``name`` (str); raises DatasetNotConfigured with the
+    remedy when GT_DATA_ROOT is unset.  A configured-but-absent folder is
+    returned so the caller can report "not found at ..." and go on."""
+    from gtcore.io.datasets import dataset_path
+
+    return str(dataset_path(SCANS[name], root=DATA_OVERRIDES["root"],
+                            datasets_json=DATA_OVERRIDES["datasets_json"],
+                            must_exist=False))
+
+
 def load(name):
     from gtcore.io import load_volume
 
-    path = os.path.join(DATA_ROOT, SCANS[name])
+    path = scan_path(name)
     if not os.path.isdir(path):
         return None, path
     with warnings.catch_warnings():
@@ -642,7 +657,7 @@ def split_half(ctx, vol, ref_centers):
 def postop_vs_thincut(postop, doe):
     """PostOp seeds (1 mm slabs every 2 mm, gaps interpolated) against the
     seeds of the contiguous 1 mm thin-cut of the SAME acquisition
-    (``DOEJOHNPOSTCT``; docs/localization-notes.md, stage 3).  Same frame,
+    (``PT-CT1mm``; docs/localization-notes.md, stage 3).  Same frame,
     so no transform: the in-plane grids must coincide (direction, pixel
     size and in-plane origin equal; the PostOp z origin on a thin-cut slice)
     -- checked and reported.  Hungarian within MATCH_MM; differences
@@ -1012,7 +1027,7 @@ def to_markdown(rep, header):
     x = rep.get("thincut")
     if x:
         g = x["grid"]
-        L += ["**PostOp vs its 1 mm thin-cut** (DOEJOHNPOSTCT, same "
+        L += ["**PostOp vs its 1 mm thin-cut** (PT-CT1mm, same "
               "acquisition, no transform; PostOp minus thin-cut in the PostOp "
               "voxel axes; Hungarian within %.0f mm; %d PostOp / %d thin-cut "
               "candidates). Grids coincide: %s (direction equal %s, in-plane "
@@ -1115,7 +1130,19 @@ def main(argv=None):
                     help="pipeline-result cache (default: <out>/cache)")
     ap.add_argument("--no-cache", action="store_true")
     ap.add_argument("--verbose", action="store_true")
+    ap.add_argument("--data-root", default=None,
+                    help="scan root (default: GT_DATA_ROOT)")
+    ap.add_argument("--datasets-json", default=None,
+                    help="dataset id -> folder map (default: GT_DATASETS_JSON or "
+                         "<root>/datasets.json; see docs/datasets.example.json)")
     args = ap.parse_args(argv)
+    DATA_OVERRIDES["root"] = args.data_root
+    DATA_OVERRIDES["datasets_json"] = args.datasets_json
+    from gtcore.io.datasets import DatasetNotConfigured, data_root
+    try:
+        data_root(args.data_root)
+    except DatasetNotConfigured as exc:
+        ap.error(str(exc))
     try:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     except Exception:

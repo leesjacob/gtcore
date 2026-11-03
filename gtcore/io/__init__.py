@@ -1,5 +1,9 @@
 """Image I/O: DICOM series, NRRD/NIfTI/MetaImage, RT DICOM (RTSTRUCT / RTDOSE /
 RTPLAN) and RAS conversion."""
+from .datasets import (
+    DatasetNotConfigured,
+    dataset_path,
+)
 from .dicom import (
     load_dicom_series,
     load_volume,
@@ -23,6 +27,8 @@ from .rt import (
 )
 
 __all__ = [
+    "DatasetNotConfigured",
+    "dataset_path",
     "volume_from_sitk",
     "sitk_from_volume",
     "load_dicom_series",

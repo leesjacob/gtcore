@@ -86,9 +86,9 @@ def assess_implant(centers_ras, axes_ras=None):
     gates (10 mm grid chords, quad topology, coplanarity, axis parallelism).
     Mere spatial clustering is NOT enough -- a pre-implant head CT's ~30
     dense-bone candidates chain into one big 15 mm-linkage cluster along the
-    skull base, but form zero gate-passing quads (measured on the DOE
-    negative-control scan), while every real implant scan yields its full
-    tile count.
+    skull base, but form zero gate-passing quads (measured on the PT-CT1mm
+    scan while it was mislabelled a negative control), while every real
+    implant scan yields its full tile count.
 
     Returns dict(present, n_candidates, n_tile_evidence, reason).
     """

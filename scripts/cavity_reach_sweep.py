@@ -14,8 +14,8 @@ Usage::
     python scripts/cavity_reach_sweep.py                       # synthetic sweep
     python scripts/cavity_reach_sweep.py --reaches 12,14,16,20
     python scripts/cavity_reach_sweep.py --ct "$GT_DATA_ROOT/<PH8>"
-    python scripts/cavity_reach_sweep.py --ct "$GT_DATA_ROOT/JohnDoe/<JD-1mm>" \
-        --rtstruct "$GT_DATA_ROOT/JohnDoe/<JD RT RTSTRUCT>"
+    python scripts/cavity_reach_sweep.py --ct "$GT_DATA_ROOT/<PT-CT1mm>" \
+        --rtstruct "$GT_DATA_ROOT/<PT-RTSTRUCT>"
 
 Numbers quoted in docs/paper2-phase-notes.md ("Phase 1 -- cavity reach in
 physical mm") come from this code path.  Writes nothing.

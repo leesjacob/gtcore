@@ -9,3 +9,5 @@ output/
 *.nrrd
 *.nii*
 *.dcm
+# user-local dataset map (GT_DATASETS_JSON): real folder names, never committed
+datasets.json
