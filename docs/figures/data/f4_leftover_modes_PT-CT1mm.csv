@@ -1,13 +1,15 @@
 # script: scripts/leftover_seeds.py
-# command: python scripts/leftover_seeds.py "$GT_DATA_ROOT/<PT-CT1mm>" --dataset PT-CT1mm --rtstruct "$GT_DATA_ROOT/<PT-RT RTSTRUCT>" --n-full 8 --out docs/figures/data
-# commit: afb96ea
+# command: python scripts/leftover_seeds.py "$GT_DATA_ROOT/<PT-CT1mm>" --dataset PT-CT1mm --rtstruct "$GT_DATA_ROOT/<PT-RT RTSTRUCT>" --n-full 8 --halves 6,4 --out docs/figures/data
+# commit: 378b819
 # dataset: PT-CT1mm
-# generated: 2026-11-03 02:04
-# gtcore imported from tree: p2-leftovers
+# generated: 2026-11-03 02:56
+# gtcore imported from tree: p2-clinical-followups
 # strict_mode: True
 # n_seeds: 32; n_full requested: 8
+# halves requested: 6 full + 4 half tiles (mode count_6full_4half = fit_tiles_prior(ImplantPrior(n_full=6, n_half=4), mesh); the prior is an input, not a fitted count; which count-known row the paper quotes waits for the operative record)
 # one row per fit mode
 mode,label,result_type,n_tiles,n_supported,n_tentative,n_degraded,n_assigned,n_leftover,leftovers,unassigned_in_implant,clutter,summary,seconds
-auto,count-free (auto),AutoFitResult,6,6,0,0,24,8,0;2;5;8;11;13;16;21,0;2;5;8;11;13;16;21,,evidence supports n=6 (no further tile candidate); 8 seeds unassigned,40.98
-count8,"count-known N=8 (pipeline, chord)",TileFitResult,7,7,0,1,28,4,2;5;11;21,,,,0.007268
-prior8,"count-known N=8 (planner, fit_tiles_prior)",AutoFitResult,7,7,0,1,28,4,2;5;11;21,2;5;11;21,,asked for 8 full tile(s): 7 supported (geometry supports only 7); 4 seeds unassigned,46.54
+auto,count-free (auto),AutoFitResult,6,6,0,0,24,8,0;2;5;8;11;13;16;21,0;2;5;8;11;13;16;21,,evidence supports n=6 (no further tile candidate); 8 seeds unassigned,31.05
+count8,"count-known N=8 (pipeline, chord)",TileFitResult,7,7,0,1,28,4,2;5;11;21,,,,0.004764
+prior8,"count-known N=8 (planner, fit_tiles_prior)",AutoFitResult,7,7,0,1,28,4,2;5;11;21,2;5;11;21,,asked for 8 full tile(s): 7 supported (geometry supports only 7); 4 seeds unassigned,34.55
+count_6full_4half,"count-known 6 full + 4 half (planner, fit_tiles_prior)",AutoFitResult,10,10,0,0,32,0,,,,asked for 6 full tile(s): 6 supported,46.7

@@ -1,11 +1,12 @@
 # script: scripts/leftover_seeds.py
-# command: python scripts/leftover_seeds.py "$GT_DATA_ROOT/<PT-CT1mm>" --dataset PT-CT1mm --rtstruct "$GT_DATA_ROOT/<PT-RT RTSTRUCT>" --n-full 8 --out docs/figures/data
-# commit: afb96ea
+# command: python scripts/leftover_seeds.py "$GT_DATA_ROOT/<PT-CT1mm>" --dataset PT-CT1mm --rtstruct "$GT_DATA_ROOT/<PT-RT RTSTRUCT>" --n-full 8 --halves 6,4 --out docs/figures/data
+# commit: 378b819
 # dataset: PT-CT1mm
-# generated: 2026-11-03 02:04
-# gtcore imported from tree: p2-leftovers
+# generated: 2026-11-03 02:56
+# gtcore imported from tree: p2-clinical-followups
 # strict_mode: True
 # n_seeds: 32; n_full requested: 8
+# halves requested: 6 full + 4 half tiles (mode count_6full_4half = fit_tiles_prior(ImplantPrior(n_full=6, n_half=4), mesh); the prior is an input, not a fitted count; which count-known row the paper quotes waits for the operative record)
 # every 4-combination of the leftover seeds; std_* = gtcore.tiles.fit quad gates, loose_* / cover_* = gtcore.tiles.auto tiers (cover scaled by tol 1.00), completion_* = count-constrained completion rule; def_* = bent-tile fit; gates_failed lists every failed gate
 seeds,chords_mm,side_min_mm,side_max_mm,diag_min_mm,diag_max_mm,grid_residual_mm,plane_rms_mm,axis_angle_3rd_deg,axis_angle_max_deg,mean_axis_dot,extent_sv2_mm,sim_rms_mm,sim_scale,chord_score,def_rms_mm,bending_energy,fold_deg,def_axis_err_deg,def_score,std_link,std_side_window,std_diag_window,std_topology,std_grid_residual,std_plane_rms,std_axis_hard,std_chord_score_pos,standard_pass,standard_pass_ref,loose_chord,loose_topology,loose_axis_hard,loose_extent,loose_sim_rms,loose_def_rms,loose_energy,loose_axis_err,loose_score_pos,loose_pass,cover_chord,cover_topology,cover_axis_hard,cover_extent,cover_sim_rms,cover_def_rms,cover_energy,cover_axis_err,cover_score_pos,cover_pass,completion_chord,completion_axis_dot,completion_extent,completion_pass,gates_failed
 5;13;16;21,7.627;9.313;19.94;21.05;21.46;22.71,7.627,21.05,21.46,22.71,5.044,0.5541,17.74,41.16,0.9007,8.389,4.977,1.1,-0.166,4.008,0.01002,91.67,5.424,-0.01664,False,False,False,True,False,True,True,False,False,False,False,True,True,True,False,False,True,True,False,False,False,True,True,True,False,False,True,True,False,False,False,True,True,False,std_link;std_side_window;std_diag_window;std_grid_residual;std_chord_score_pos;loose_chord;loose_sim_rms;loose_def_rms;loose_score_pos;cover_chord;cover_sim_rms;cover_def_rms;cover_score_pos;completion_chord

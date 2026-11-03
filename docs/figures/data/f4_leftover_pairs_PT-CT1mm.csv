@@ -1,11 +1,12 @@
 # script: scripts/leftover_seeds.py
-# command: python scripts/leftover_seeds.py "$GT_DATA_ROOT/<PT-CT1mm>" --dataset PT-CT1mm --rtstruct "$GT_DATA_ROOT/<PT-RT RTSTRUCT>" --n-full 8 --out docs/figures/data
-# commit: afb96ea
+# command: python scripts/leftover_seeds.py "$GT_DATA_ROOT/<PT-CT1mm>" --dataset PT-CT1mm --rtstruct "$GT_DATA_ROOT/<PT-RT RTSTRUCT>" --n-full 8 --halves 6,4 --out docs/figures/data
+# commit: 378b819
 # dataset: PT-CT1mm
-# generated: 2026-11-03 02:04
-# gtcore imported from tree: p2-leftovers
+# generated: 2026-11-03 02:56
+# gtcore imported from tree: p2-clinical-followups
 # strict_mode: True
 # n_seeds: 32; n_full requested: 8
+# halves requested: 6 full + 4 half tiles (mode count_6full_4half = fit_tiles_prior(ImplantPrior(n_full=6, n_half=4), mesh); the prior is an input, not a fitted count; which count-known row the paper quotes waits for the operative record)
 # every leftover pair against the half-tile gates
 seeds,dist_mm,axis_angle_deg,align_dev_deg,pair_score,pair_chord_window,pair_axis_hard,pair_score_pos,pair_pass,gates_failed
 11;21,8.998,10.19,5.119,3.92,True,True,True,True,

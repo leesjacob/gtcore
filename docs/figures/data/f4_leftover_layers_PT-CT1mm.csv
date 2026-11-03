@@ -1,11 +1,12 @@
 # script: scripts/leftover_seeds.py
-# command: python scripts/leftover_seeds.py "$GT_DATA_ROOT/<PT-CT1mm>" --dataset PT-CT1mm --rtstruct "$GT_DATA_ROOT/<PT-RT RTSTRUCT>" --n-full 8 --out docs/figures/data
-# commit: afb96ea
+# command: python scripts/leftover_seeds.py "$GT_DATA_ROOT/<PT-CT1mm>" --dataset PT-CT1mm --rtstruct "$GT_DATA_ROOT/<PT-RT RTSTRUCT>" --n-full 8 --halves 6,4 --out docs/figures/data
+# commit: 378b819
 # dataset: PT-CT1mm
-# generated: 2026-11-03 02:04
-# gtcore imported from tree: p2-leftovers
+# generated: 2026-11-03 02:56
+# gtcore imported from tree: p2-clinical-followups
 # strict_mode: True
 # n_seeds: 32; n_full requested: 8
+# halves requested: 6 full + 4 half tiles (mode count_6full_4half = fit_tiles_prior(ImplantPrior(n_full=6, n_half=4), mesh); the prior is an input, not a fitted count; which count-known row the paper quotes waits for the operative record)
 # every (leftover seed, fitted tile) pair of the count-free fit: u/v in-plane and h along the normal (+ toward the cavity) in the tile's bent-tile frame, distance to the tile's seed sheet, overhang beyond the 20 mm footprint, layer_class as in layer_rows()
 seed,tile,tile_seeds,u_mm,v_mm,h_mm,dist_sheet_mm,overhang_mm,inside_footprint,layer_class
 0,3,1;3;4;10,-12.88,-7.083,-2.741,4.609,2.882,False,edge
