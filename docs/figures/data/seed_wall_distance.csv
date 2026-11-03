@@ -1,0 +1,213 @@
+# script: scripts/seed_wall_distance.py
+# command: python scripts/seed_wall_distance.py --ct "$GT_DATA_ROOT/<PT-CT1mm>" --rtstruct "$GT_DATA_ROOT/<PT-RT RTSTRUCT>" --rtdose "$GT_DATA_ROOT/<PT-RT RTDOSE>" --ph8 "$GT_DATA_ROOT/<PH8>" --ph0 "$GT_DATA_ROOT/<PH0>"
+# commit: 448a6b3
+# date: 2026-11-03
+# datasets: PT-CT1mm, PT-RT, PH8, PH0
+# flag: calibration-set (one clinical case; the phantom cavity is the same patient's intra-operative cavity)
+# sign: positive = seed centre on the cavity side of the surface (inside the contoured/segmented cavity; in the lumen, away from the printed plastic); negative = inside tissue / plastic / the segmented solid
+# model: SEED_PLANE_OFFSET_MM = 3.00 mm, hydrated band [2.25, 3.75] mm (gtcore.geometry; measured against, not re-tuned)
+# method edt: signed Euclidean distance transform (inside - outside, physical mm) of the mask on the image grid linearly upsampled through-plane to <= 0.50 mm and thresholded at 0.5, trilinear at the seed centres; crop margin 15 mm
+# method mesh: gtcore.segment.surface.mask_to_mesh (marching cubes 0.5, Taubin 10, largest component) + trimesh.proximity.signed_distance
+# references: Cav_Post = RTSTRUCT ROI rasterised on the CT grid (gtcore.io.rt.rasterize_roi); gtcore_cavity = gtcore.pipeline.reconstruct cavity mask (seed-informed: clipped SHEET_TOL_MM = 3 mm beyond the seed sheet, so this reference is circular and reported for completeness only); PH8_body = gtcore body mask of PH8 (> -300 HU, filled; includes the collagen tiles); PH0_wall = body mask of the tile-less twin PH0, PH8 seeds carried into PH0 by the rigid registration
+# seed sets: gtcore_seeds = reconstruct().seeds.centers_ras; tps_sources = RTDOSE local maxima > 200 Gy merged within 3 mm (validation_clinical.py rule; dose-grid voxel centres, 1 x 1 x 1.667 mm); tps seed_id = matched gtcore seed id when the one-to-one match is <= 3 mm, else 100 + index
+# percentiles: numpy linear interpolation; sd: sample (ddof 1)
+# registration PH0 -> PH8: SimpleITK Euler3D, Mattes MI 50 bins, random sampling 25 % (seed 1234), levels 4/2/1 with 2/1/0 mm smoothing, regular-step gradient descent; final metric -1.4168, Dice of the body masks 0.9787, Euler angles [-0.012, -3.542, -0.059] deg, translation [-12.902, -2.672, -141.993] mm (LPS), 23 iterations, RegularStepGradientDescentOptimizerv4: Step too small after 22 iterations. Current step (6.10352e-05) is less than minimum step (0.0001).
+# registration residual (|distance| of PH0 wall points carried into PH8 to the PH8 body surface): all 60000 points median 0.343 / p90 0.768 / p95 0.979 mm; > 15 mm from any seed 47765 points median 0.327 / p90 0.697 / p95 0.785 mm
+# plastic HU (median, eroded body): PH8 104, PH0 94; sensitivity threshold -453 HU
+# note: clinical: 32 gtcore seeds, 32 TPS sources (RTDOSE maxima); one-to-one match median 0.92 / max 1.45 mm
+# note: PH8: 32 seeds; 23 centres inside the body mask
+# note: PH0->PH8 rigid: Dice 0.9787, residual median 0.34 mm (all) / 0.33 mm (>15 mm from seeds), angles [-0.01, -3.54, -0.06] deg, translation [-12.9, -2.67, -141.99] mm (LPS)
+# runtime: 104 s total (other processes may have run concurrently)
+dataset,seed_set,seed_id,x_ras_mm,y_ras_mm,z_ras_mm,reference,signed_distance_mm,signed_distance_mesh_mm,in_band,matched_gtcore_seed,match_distance_mm
+PT-CT1mm,gtcore_seeds,0,29.95,224.842,-508.049,Cav_Post,1.599,1.335,0,,
+PT-CT1mm,gtcore_seeds,1,30.645,228.655,-522.301,Cav_Post,1.585,1.462,0,,
+PT-CT1mm,gtcore_seeds,2,47.79,199.289,-510.797,Cav_Post,3.244,3.162,1,,
+PT-CT1mm,gtcore_seeds,3,35.366,216.232,-521.944,Cav_Post,3.902,3.876,0,,
+PT-CT1mm,gtcore_seeds,4,30.934,220.3,-516.118,Cav_Post,3.424,3.344,1,,
+PT-CT1mm,gtcore_seeds,5,42.803,204.262,-517.36,Cav_Post,4.902,4.778,0,,
+PT-CT1mm,gtcore_seeds,6,12.762,203.881,-509.262,Cav_Post,4.621,4.517,0,,
+PT-CT1mm,gtcore_seeds,7,16.308,198.547,-517.167,Cav_Post,5.499,5.492,0,,
+PT-CT1mm,gtcore_seeds,8,30.89,219.695,-500.174,Cav_Post,3.63,3.485,1,,
+PT-CT1mm,gtcore_seeds,9,21.514,193.141,-511.481,Cav_Post,2.593,2.579,1,,
+PT-CT1mm,gtcore_seeds,10,34.268,223.168,-529.522,Cav_Post,-2.072,-1.822,0,,
+PT-CT1mm,gtcore_seeds,11,39.492,218.125,-525.772,Cav_Post,2.874,2.872,1,,
+PT-CT1mm,gtcore_seeds,12,18.645,198.25,-503.836,Cav_Post,3.802,3.676,0,,
+PT-CT1mm,gtcore_seeds,13,33.952,209.194,-500.183,Cav_Post,4.84,4.798,0,,
+PT-CT1mm,gtcore_seeds,14,23.771,200.188,-520.406,Cav_Post,4.886,4.758,0,,
+PT-CT1mm,gtcore_seeds,15,28.638,196.616,-511.93,Cav_Post,3.416,3.299,1,,
+PT-CT1mm,gtcore_seeds,16,33.295,217.797,-503.688,Cav_Post,3.254,2.977,1,,
+PT-CT1mm,gtcore_seeds,17,30.143,200.905,-497.2,Cav_Post,1.5,1.297,0,,
+PT-CT1mm,gtcore_seeds,18,36.703,200.627,-514.417,Cav_Post,3.665,3.635,1,,
+PT-CT1mm,gtcore_seeds,19,31.961,203.986,-523.223,Cav_Post,3.38,3.233,1,,
+PT-CT1mm,gtcore_seeds,20,28.518,214.569,-510.2,Cav_Post,3.834,3.714,0,,
+PT-CT1mm,gtcore_seeds,21,40.928,210.192,-521.776,Cav_Post,5.068,5.023,0,,
+PT-CT1mm,gtcore_seeds,22,39.329,199.57,-505.2,Cav_Post,3.486,3.48,1,,
+PT-CT1mm,gtcore_seeds,23,20.703,213.416,-502.2,Cav_Post,3.066,3.001,1,,
+PT-CT1mm,gtcore_seeds,24,31.164,195.707,-504.2,Cav_Post,4.183,4.078,0,,
+PT-CT1mm,gtcore_seeds,25,20.312,205.897,-518.2,Cav_Post,6.108,6.056,0,,
+PT-CT1mm,gtcore_seeds,26,16.72,203.323,-498.151,Cav_Post,4.911,4.789,0,,
+PT-CT1mm,gtcore_seeds,27,13.504,208.806,-501.2,Cav_Post,5.776,5.781,0,,
+PT-CT1mm,gtcore_seeds,28,19.029,211.669,-509.365,Cav_Post,4.172,4.064,0,,
+PT-CT1mm,gtcore_seeds,29,26.16,208.418,-498.2,Cav_Post,7.109,7.004,0,,
+PT-CT1mm,gtcore_seeds,30,38.696,203.512,-497.455,Cav_Post,2.936,2.889,1,,
+PT-CT1mm,gtcore_seeds,31,28.809,208.224,-518.586,Cav_Post,3.526,3.395,1,,
+PT-CT1mm+PT-RT,tps_sources,18,36.5,200.5,-514.2,Cav_Post,3.685,3.671,1,18,0.323
+PT-CT1mm+PT-RT,tps_sources,28,19.5,212.5,-509.2,Cav_Post,3.529,3.294,1,28,0.969
+PT-CT1mm+PT-RT,tps_sources,12,17.5,198.5,-504.2,Cav_Post,3.539,3.481,1,12,1.227
+PT-CT1mm+PT-RT,tps_sources,24,32.5,195.5,-504.2,Cav_Post,3.608,3.546,1,24,1.352
+PT-CT1mm+PT-RT,tps_sources,3,36.5,216.5,-522.533,Cav_Post,4.382,4.4,0,3,1.306
+PT-CT1mm+PT-RT,tps_sources,6,12.5,203.5,-509.2,Cav_Post,4.237,4.146,0,6,0.466
+PT-CT1mm+PT-RT,tps_sources,15,28.5,197.5,-510.867,Cav_Post,4.402,4.338,0,15,1.39
+PT-CT1mm+PT-RT,tps_sources,14,23.5,200.5,-520.867,Cav_Post,4.611,4.482,0,14,0.619
+PT-CT1mm+PT-RT,tps_sources,30,38.5,203.5,-497.533,Cav_Post,3.041,2.994,1,30,0.211
+PT-CT1mm+PT-RT,tps_sources,8,30.5,220.5,-500.867,Cav_Post,2.823,2.714,1,8,1.131
+PT-CT1mm+PT-RT,tps_sources,26,16.5,203.5,-497.533,Cav_Post,5.124,5.022,0,26,0.679
+PT-CT1mm+PT-RT,tps_sources,31,29.5,207.5,-517.533,Cav_Post,4.818,4.722,0,31,1.452
+PT-CT1mm+PT-RT,tps_sources,21,41.5,209.5,-520.867,Cav_Post,4.605,4.598,0,21,1.278
+PT-CT1mm+PT-RT,tps_sources,10,33.5,223.5,-529.2,Cav_Post,-1.75,-1.5,0,10,0.897
+PT-CT1mm+PT-RT,tps_sources,23,20.5,213.5,-502.533,Cav_Post,3.012,2.952,1,23,0.399
+PT-CT1mm+PT-RT,tps_sources,4,31.5,221.5,-515.867,Cav_Post,3.377,3.225,1,4,1.35
+PT-CT1mm+PT-RT,tps_sources,11,38.5,218.5,-525.867,Cav_Post,2.687,2.56,1,11,1.065
+PT-CT1mm+PT-RT,tps_sources,5,42.5,204.5,-517.533,Cav_Post,4.844,4.716,0,5,0.422
+PT-CT1mm+PT-RT,tps_sources,9,21.5,193.5,-510.867,Cav_Post,2.982,2.986,1,9,0.711
+PT-CT1mm+PT-RT,tps_sources,29,26.5,207.5,-497.533,Cav_Post,6.573,6.469,0,29,1.184
+PT-CT1mm+PT-RT,tps_sources,17,29.5,200.5,-497.533,Cav_Post,1.114,0.953,0,17,0.83
+PT-CT1mm+PT-RT,tps_sources,27,13.5,208.5,-500.867,Cav_Post,5.618,5.617,0,27,0.452
+PT-CT1mm+PT-RT,tps_sources,20,28.5,214.5,-510.867,Cav_Post,3.414,3.311,1,20,0.671
+PT-CT1mm+PT-RT,tps_sources,16,33.5,217.5,-502.533,Cav_Post,3.464,3.443,1,16,1.21
+PT-CT1mm+PT-RT,tps_sources,19,31.5,204.5,-522.533,Cav_Post,2.804,2.693,1,19,0.976
+PT-CT1mm+PT-RT,tps_sources,25,20.5,205.5,-517.533,Cav_Post,6.676,6.595,0,25,0.798
+PT-CT1mm+PT-RT,tps_sources,22,39.5,200.5,-505.867,Cav_Post,4.286,4.226,0,22,1.157
+PT-CT1mm+PT-RT,tps_sources,0,29.5,225.5,-507.533,Cav_Post,1.083,0.833,0,0,0.949
+PT-CT1mm+PT-RT,tps_sources,2,47.5,199.5,-510.867,Cav_Post,3.394,3.297,1,2,0.366
+PT-CT1mm+PT-RT,tps_sources,13,34.5,208.5,-500.867,Cav_Post,5.213,5.109,0,13,1.118
+PT-CT1mm+PT-RT,tps_sources,1,30.5,228.5,-522.533,Cav_Post,1.565,1.436,0,1,0.314
+PT-CT1mm+PT-RT,tps_sources,7,15.5,198.5,-517.533,Cav_Post,5.113,5.153,0,7,0.888
+PT-CT1mm,gtcore_seeds,0,29.95,224.842,-508.049,gtcore_cavity,3.075,3.016,1,,
+PT-CT1mm,gtcore_seeds,1,30.645,228.655,-522.301,gtcore_cavity,3.107,2.992,1,,
+PT-CT1mm,gtcore_seeds,2,47.79,199.289,-510.797,gtcore_cavity,-0.289,-0.135,0,,
+PT-CT1mm,gtcore_seeds,3,35.366,216.232,-521.944,gtcore_cavity,3.003,3.044,1,,
+PT-CT1mm,gtcore_seeds,4,30.934,220.3,-516.118,gtcore_cavity,3.139,2.878,1,,
+PT-CT1mm,gtcore_seeds,5,42.803,204.262,-517.36,gtcore_cavity,1.503,1.3,0,,
+PT-CT1mm,gtcore_seeds,6,12.762,203.881,-509.262,gtcore_cavity,3.084,2.878,1,,
+PT-CT1mm,gtcore_seeds,7,16.308,198.547,-517.167,gtcore_cavity,2.984,2.91,1,,
+PT-CT1mm,gtcore_seeds,8,30.89,219.695,-500.174,gtcore_cavity,2.771,2.55,1,,
+PT-CT1mm,gtcore_seeds,9,21.514,193.141,-511.481,gtcore_cavity,3.12,2.954,1,,
+PT-CT1mm,gtcore_seeds,10,34.268,223.168,-529.522,gtcore_cavity,0.808,0.721,0,,
+PT-CT1mm,gtcore_seeds,11,39.492,218.125,-525.772,gtcore_cavity,-0.016,-0.043,0,,
+PT-CT1mm,gtcore_seeds,12,18.645,198.25,-503.836,gtcore_cavity,3.044,2.969,1,,
+PT-CT1mm,gtcore_seeds,13,33.952,209.194,-500.183,gtcore_cavity,1.636,1.412,0,,
+PT-CT1mm,gtcore_seeds,14,23.771,200.188,-520.406,gtcore_cavity,2.868,2.755,1,,
+PT-CT1mm,gtcore_seeds,15,28.638,196.616,-511.93,gtcore_cavity,2.271,2.106,1,,
+PT-CT1mm,gtcore_seeds,16,33.295,217.797,-503.688,gtcore_cavity,3.231,3.149,1,,
+PT-CT1mm,gtcore_seeds,17,30.143,200.905,-497.2,gtcore_cavity,2.966,2.855,1,,
+PT-CT1mm,gtcore_seeds,18,36.703,200.627,-514.417,gtcore_cavity,3.177,3.06,1,,
+PT-CT1mm,gtcore_seeds,19,31.961,203.986,-523.223,gtcore_cavity,1.653,1.393,0,,
+PT-CT1mm,gtcore_seeds,20,28.518,214.569,-510.2,gtcore_cavity,3.114,3.001,1,,
+PT-CT1mm,gtcore_seeds,21,40.928,210.192,-521.776,gtcore_cavity,-1.789,-1.694,0,,
+PT-CT1mm,gtcore_seeds,22,39.329,199.57,-505.2,gtcore_cavity,1.912,1.614,0,,
+PT-CT1mm,gtcore_seeds,23,20.703,213.416,-502.2,gtcore_cavity,3.039,2.939,1,,
+PT-CT1mm,gtcore_seeds,24,31.164,195.707,-504.2,gtcore_cavity,3.085,2.973,1,,
+PT-CT1mm,gtcore_seeds,25,20.312,205.897,-518.2,gtcore_cavity,2.885,2.868,1,,
+PT-CT1mm,gtcore_seeds,26,16.72,203.323,-498.151,gtcore_cavity,2.912,2.814,1,,
+PT-CT1mm,gtcore_seeds,27,13.504,208.806,-501.2,gtcore_cavity,2.933,2.928,1,,
+PT-CT1mm,gtcore_seeds,28,19.029,211.669,-509.365,gtcore_cavity,3.065,2.953,1,,
+PT-CT1mm,gtcore_seeds,29,26.16,208.418,-498.2,gtcore_cavity,2.849,2.704,1,,
+PT-CT1mm,gtcore_seeds,30,38.696,203.512,-497.455,gtcore_cavity,1.565,1.422,0,,
+PT-CT1mm,gtcore_seeds,31,28.809,208.224,-518.586,gtcore_cavity,3.018,2.989,1,,
+PT-CT1mm+PT-RT,tps_sources,18,36.5,200.5,-514.2,gtcore_cavity,3.185,3.047,1,18,0.323
+PT-CT1mm+PT-RT,tps_sources,28,19.5,212.5,-509.2,gtcore_cavity,3.575,3.458,1,28,0.969
+PT-CT1mm+PT-RT,tps_sources,12,17.5,198.5,-504.2,gtcore_cavity,2.852,2.797,1,12,1.227
+PT-CT1mm+PT-RT,tps_sources,24,32.5,195.5,-504.2,gtcore_cavity,2.378,2.228,1,24,1.352
+PT-CT1mm+PT-RT,tps_sources,3,36.5,216.5,-522.533,gtcore_cavity,3.043,3.082,1,3,1.306
+PT-CT1mm+PT-RT,tps_sources,6,12.5,203.5,-509.2,gtcore_cavity,3.346,3.137,1,6,0.466
+PT-CT1mm+PT-RT,tps_sources,15,28.5,197.5,-510.867,gtcore_cavity,1.751,1.667,0,15,1.39
+PT-CT1mm+PT-RT,tps_sources,14,23.5,200.5,-520.867,gtcore_cavity,2.641,2.559,1,14,0.619
+PT-CT1mm+PT-RT,tps_sources,30,38.5,203.5,-497.533,gtcore_cavity,1.529,1.418,0,30,0.211
+PT-CT1mm+PT-RT,tps_sources,8,30.5,220.5,-500.867,gtcore_cavity,2.879,2.891,1,8,1.131
+PT-CT1mm+PT-RT,tps_sources,26,16.5,203.5,-497.533,gtcore_cavity,3.522,3.452,1,26,0.679
+PT-CT1mm+PT-RT,tps_sources,31,29.5,207.5,-517.533,gtcore_cavity,3.378,3.336,1,31,1.452
+PT-CT1mm+PT-RT,tps_sources,21,41.5,209.5,-520.867,gtcore_cavity,-2.048,-1.994,0,21,1.278
+PT-CT1mm+PT-RT,tps_sources,10,33.5,223.5,-529.2,gtcore_cavity,0.861,0.761,0,10,0.897
+PT-CT1mm+PT-RT,tps_sources,23,20.5,213.5,-502.533,gtcore_cavity,3.125,3.018,1,23,0.399
+PT-CT1mm+PT-RT,tps_sources,4,31.5,221.5,-515.867,gtcore_cavity,3.705,3.444,1,4,1.35
+PT-CT1mm+PT-RT,tps_sources,11,38.5,218.5,-525.867,gtcore_cavity,1.204,0.931,0,11,1.065
+PT-CT1mm+PT-RT,tps_sources,5,42.5,204.5,-517.533,gtcore_cavity,1.458,1.289,0,5,0.422
+PT-CT1mm+PT-RT,tps_sources,9,21.5,193.5,-510.867,gtcore_cavity,3.472,3.329,1,9,0.711
+PT-CT1mm+PT-RT,tps_sources,29,26.5,207.5,-497.533,gtcore_cavity,3.417,3.149,1,29,1.184
+PT-CT1mm+PT-RT,tps_sources,17,29.5,200.5,-497.533,gtcore_cavity,2.851,2.76,1,17,0.83
+PT-CT1mm+PT-RT,tps_sources,27,13.5,208.5,-500.867,gtcore_cavity,2.84,2.85,1,27,0.452
+PT-CT1mm+PT-RT,tps_sources,20,28.5,214.5,-510.867,gtcore_cavity,2.911,2.806,1,20,0.671
+PT-CT1mm+PT-RT,tps_sources,16,33.5,217.5,-502.533,gtcore_cavity,3.654,3.476,1,16,1.21
+PT-CT1mm+PT-RT,tps_sources,19,31.5,204.5,-522.533,gtcore_cavity,1.228,1.159,0,19,0.976
+PT-CT1mm+PT-RT,tps_sources,25,20.5,205.5,-517.533,gtcore_cavity,3.563,3.621,1,25,0.798
+PT-CT1mm+PT-RT,tps_sources,22,39.5,200.5,-505.867,gtcore_cavity,0.982,0.719,0,22,1.157
+PT-CT1mm+PT-RT,tps_sources,0,29.5,225.5,-507.533,gtcore_cavity,2.244,2.147,0,0,0.949
+PT-CT1mm+PT-RT,tps_sources,2,47.5,199.5,-510.867,gtcore_cavity,-0.445,-0.156,0,2,0.366
+PT-CT1mm+PT-RT,tps_sources,13,34.5,208.5,-500.867,gtcore_cavity,1.18,1.095,0,13,1.118
+PT-CT1mm+PT-RT,tps_sources,1,30.5,228.5,-522.533,gtcore_cavity,3.353,3.234,1,1,0.314
+PT-CT1mm+PT-RT,tps_sources,7,15.5,198.5,-517.533,gtcore_cavity,3.628,3.529,1,7,0.888
+PH8,gtcore_seeds,0,-2.934,-192.798,-622.436,PH8_body,1.87,1.986,0,,
+PH8,gtcore_seeds,1,-2.445,-199.867,-621.653,PH8_body,-0.403,-0.153,0,,
+PH8,gtcore_seeds,2,-6.302,-192.483,-630.972,PH8_body,0.953,0.85,0,,
+PH8,gtcore_seeds,3,-26.994,-174.077,-612.862,PH8_body,-0.008,0.087,0,,
+PH8,gtcore_seeds,4,-27.928,-180.351,-619.53,PH8_body,0.6,0.342,0,,
+PH8,gtcore_seeds,5,-6.545,-199.572,-629.708,PH8_body,0.579,0.294,0,,
+PH8,gtcore_seeds,6,-18.82,-176.012,-611.552,PH8_body,0.363,0.024,0,,
+PH8,gtcore_seeds,7,-2.78,-177.442,-607.108,PH8_body,-0.579,-0.431,0,,
+PH8,gtcore_seeds,8,-19.285,-209.717,-634.221,PH8_body,-0.922,-0.775,0,,
+PH8,gtcore_seeds,9,-18.64,-183.423,-616.757,PH8_body,0.205,0.129,0,,
+PH8,gtcore_seeds,10,-31.278,-194.117,-644.283,PH8_body,-0.502,-0.332,0,,
+PH8,gtcore_seeds,11,-22.863,-197.039,-647.552,PH8_body,-0.217,-0.232,0,,
+PH8,gtcore_seeds,12,-10.809,-206.023,-617.337,PH8_body,-0.547,-0.415,0,,
+PH8,gtcore_seeds,13,-7.942,-184.116,-617.427,PH8_body,-1.232,-1.105,0,,
+PH8,gtcore_seeds,14,-20.878,-211.065,-616.207,PH8_body,-1.597,-1.545,0,,
+PH8,gtcore_seeds,15,0.736,-181.329,-614.109,PH8_body,-1.063,-0.903,0,,
+PH8,gtcore_seeds,16,-12.837,-206.154,-634.904,PH8_body,-1.213,-1.146,0,,
+PH8,gtcore_seeds,17,-18.741,-196.111,-640.413,PH8_body,0.486,0.187,0,,
+PH8,gtcore_seeds,18,-26.388,-192.726,-636.706,PH8_body,-0.732,-0.468,0,,
+PH8,gtcore_seeds,19,-10.025,-200.913,-614.464,PH8_body,0.28,-0.069,0,,
+PH8,gtcore_seeds,20,-11.287,-178.795,-610.687,PH8_body,-1.0,-0.883,0,,
+PH8,gtcore_seeds,21,-19.178,-206.496,-614.795,PH8_body,-1.751,-1.69,0,,
+PH8,gtcore_seeds,22,-26.521,-205.641,-615.264,PH8_body,-0.634,-0.554,0,,
+PH8,gtcore_seeds,23,-22.127,-211.224,-623.795,PH8_body,-0.828,-0.555,0,,
+PH8,gtcore_seeds,24,-15.144,-215.608,-625.795,PH8_body,-2.148,-2.109,0,,
+PH8,gtcore_seeds,25,-6.197,-212.565,-627.795,PH8_body,-2.089,-1.938,0,,
+PH8,gtcore_seeds,26,-5.487,-210.417,-620.83,PH8_body,-0.774,-0.614,0,,
+PH8,gtcore_seeds,27,-17.625,-202.414,-612.795,PH8_body,-1.599,-1.661,0,,
+PH8,gtcore_seeds,28,-28.085,-204.46,-622.795,PH8_body,-0.118,-0.133,0,,
+PH8,gtcore_seeds,29,-14.363,-211.562,-618.795,PH8_body,-0.946,-0.763,0,,
+PH8,gtcore_seeds,30,-14.657,-213.661,-629.795,PH8_body,-2.317,-2.133,0,,
+PH8,gtcore_seeds,31,-6.709,-209.221,-629.795,PH8_body,-1.425,-1.316,0,,
+PH8+PH0,gtcore_seeds,0,-2.934,-192.798,-622.436,PH0_wall,3.776,3.775,0,,
+PH8+PH0,gtcore_seeds,1,-2.445,-199.867,-621.653,PH0_wall,3.136,2.789,1,,
+PH8+PH0,gtcore_seeds,2,-6.302,-192.483,-630.972,PH0_wall,3.068,2.925,1,,
+PH8+PH0,gtcore_seeds,3,-26.994,-174.077,-612.862,PH0_wall,2.862,2.872,1,,
+PH8+PH0,gtcore_seeds,4,-27.928,-180.351,-619.53,PH0_wall,2.658,2.656,1,,
+PH8+PH0,gtcore_seeds,5,-6.545,-199.572,-629.708,PH0_wall,1.751,1.668,0,,
+PH8+PH0,gtcore_seeds,6,-18.82,-176.012,-611.552,PH0_wall,3.829,3.848,0,,
+PH8+PH0,gtcore_seeds,7,-2.78,-177.442,-607.108,PH0_wall,3.296,3.244,1,,
+PH8+PH0,gtcore_seeds,8,-19.285,-209.717,-634.221,PH0_wall,2.505,2.474,1,,
+PH8+PH0,gtcore_seeds,9,-18.64,-183.423,-616.757,PH0_wall,2.885,2.85,1,,
+PH8+PH0,gtcore_seeds,10,-31.278,-194.117,-644.283,PH0_wall,3.476,3.418,1,,
+PH8+PH0,gtcore_seeds,11,-22.863,-197.039,-647.552,PH0_wall,3.742,3.739,1,,
+PH8+PH0,gtcore_seeds,12,-10.809,-206.023,-617.337,PH0_wall,4.103,4.039,0,,
+PH8+PH0,gtcore_seeds,13,-7.942,-184.116,-617.427,PH0_wall,2.97,2.903,1,,
+PH8+PH0,gtcore_seeds,14,-20.878,-211.065,-616.207,PH0_wall,3.215,3.128,1,,
+PH8+PH0,gtcore_seeds,15,0.736,-181.329,-614.109,PH0_wall,3.342,3.261,1,,
+PH8+PH0,gtcore_seeds,16,-12.837,-206.154,-634.904,PH0_wall,1.359,1.25,0,,
+PH8+PH0,gtcore_seeds,17,-18.741,-196.111,-640.413,PH0_wall,3.457,3.293,1,,
+PH8+PH0,gtcore_seeds,18,-26.388,-192.726,-636.706,PH0_wall,2.659,2.566,1,,
+PH8+PH0,gtcore_seeds,19,-10.025,-200.913,-614.464,PH0_wall,3.724,3.661,1,,
+PH8+PH0,gtcore_seeds,20,-11.287,-178.795,-610.687,PH0_wall,2.337,2.15,1,,
+PH8+PH0,gtcore_seeds,21,-19.178,-206.496,-614.795,PH0_wall,4.36,4.341,0,,
+PH8+PH0,gtcore_seeds,22,-26.521,-205.641,-615.264,PH0_wall,2.346,2.168,1,,
+PH8+PH0,gtcore_seeds,23,-22.127,-211.224,-623.795,PH0_wall,3.027,2.854,1,,
+PH8+PH0,gtcore_seeds,24,-15.144,-215.608,-625.795,PH0_wall,3.347,3.181,1,,
+PH8+PH0,gtcore_seeds,25,-6.197,-212.565,-627.795,PH0_wall,2.709,2.537,1,,
+PH8+PH0,gtcore_seeds,26,-5.487,-210.417,-620.83,PH0_wall,2.619,2.54,1,,
+PH8+PH0,gtcore_seeds,27,-17.625,-202.414,-612.795,PH0_wall,3.713,3.645,1,,
+PH8+PH0,gtcore_seeds,28,-28.085,-204.46,-622.795,PH0_wall,2.697,2.561,1,,
+PH8+PH0,gtcore_seeds,29,-14.363,-211.562,-618.795,PH0_wall,2.409,2.394,1,,
+PH8+PH0,gtcore_seeds,30,-14.657,-213.661,-629.795,PH0_wall,3.205,3.187,1,,
+PH8+PH0,gtcore_seeds,31,-6.709,-209.221,-629.795,PH0_wall,2.393,2.376,1,,
