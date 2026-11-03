@@ -109,3 +109,24 @@ name above). Amendments:
    SA 8/60, full-grid metrics), never the mock run; the caption says
    "one case, illustration, not a cohort claim". The `S4`-only option above is
    superseded unless Jacob reverts it.
+
+## 2026-11-03 — data designation v7 adopted (what is a figure, a table row, an image)
+
+`figure-data-designation.md` (Jacob, v7) supersedes the v6 panel list for what
+is *rendered*: main text keeps one chart (F5b DVH with the MC envelope) and
+one diagram with numbers (F1); everything else is an image or a 3-D
+reconstruction. Removed from figures → tables/captions: the gamma map (pass
+rates in Table 3 + F5 caption), the implant-reach slice and the three-target
+DVH (F6 caption numbers + Table 3), the synthetic V100-vs-N chart (Table 3 +
+S4), the phantom hand-placed-vs-optimized panel (Table 3). Final figures: F1,
+F2, F3, F4, F5 (isodoses + DVH), F6 (one slice), F7, F8 (patient implanted vs
+optimized, two renders), F9; S2, S4. Code consequences: `paper_figures.py`
+emits F2(c), F3(c), F4(a–c), F5(a–b), F6, F8(a–b), S2(a–b), S4; every other
+number flows through `paper_tables.py` (Tables 1–4, caption numbers, S3/S4
+tables). The computations behind the removed panels (gamma, three-target DVH,
+campaign curves) are unchanged — only their presentation moves. Coordinator
+notes: (i) the gamma map and the three-target DVH are generated anyway and
+are kept as optional Supplement panels (S3, S5-equivalent) for reviewers;
+(ii) F9 still lists an Artec crop — no Artec export exists on this machine
+(see the F9 entry above); (iii) "structure-volume reproduction vs MIM" needs
+the MIM export, still missing.
