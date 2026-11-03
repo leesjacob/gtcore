@@ -199,31 +199,39 @@ def seed_vault_distance_mm(interior, vol: Volume, centers_ras,
     The Euclidean distance transform of ``~interior`` on the volume's own
     voxel spacing (``sampling``, so a millimetre is a millimetre on every
     axis) is sampled trilinearly at each seed's continuous voxel position; a
-    centre inside the interior reads 0.  The transform is computed on the
-    candidates' bounding box padded by ``margin_mm`` plus two voxel
-    diagonals rather than on the whole grid (seconds and ~1 GB on a
-    204 x 512 x 512 scan): a cropped transform can only OVER-estimate, and
-    only for voxels whose nearest interior voxel lies beyond the padding, so
-    every value up to ``margin_mm`` equals the full-grid value (tested in
-    tests/test_vault_filter_mm.py).  Values above ``margin_mm`` are upper
-    bounds; a crop that holds no interior voxel at all reads ``inf``.
+    centre inside the interior reads 0.  The transform is computed on a small
+    box around each seed -- its voxel neighbourhood padded by ``margin_mm``
+    plus two voxel diagonals -- rather than on the whole grid (seconds and
+    ~1 GB on a 204 x 512 x 512 scan, and the candidates can span the whole
+    head when dental work passes the shape filter).  A cropped transform can
+    only OVER-estimate, and only for voxels whose nearest interior voxel lies
+    beyond the padding, so every value up to ``margin_mm`` equals the
+    full-grid value (tested in tests/test_vault_filter_mm.py).  Values above
+    ``margin_mm`` are upper bounds; a box holding no interior voxel at all
+    reads ``inf``.
     """
     centers = np.atleast_2d(np.asarray(centers_ras, dtype=float))
     if centers.shape[0] == 0:
         return np.zeros(0)
     interior = np.asarray(interior, dtype=bool)
+    shape = np.asarray(interior.shape)
     kji = np.atleast_2d(vol.ras_to_index(centers))[:, ::-1]      # array order
     sp = np.asarray(vol.spacing, dtype=float)[::-1]               # (sk, sj, si)
     reach_mm = float(margin_mm) + 2.0 * float(np.sqrt(np.sum(sp ** 2)))
     pad = np.ceil(reach_mm / sp).astype(int) + 1
-    lo = np.clip(np.floor(kji.min(axis=0)).astype(int) - pad, 0, None)
-    hi = np.minimum(np.ceil(kji.max(axis=0)).astype(int) + pad + 1,
-                    np.asarray(interior.shape))
-    sub = interior[lo[0]:hi[0], lo[1]:hi[1], lo[2]:hi[2]]
-    if not sub.any():
-        return np.full(centers.shape[0], np.inf)
-    dist = ndimage.distance_transform_edt(~sub, sampling=sp)
-    return ndimage.map_coordinates(dist, (kji - lo).T, order=1, mode="nearest")
+    out = np.full(centers.shape[0], np.inf)
+    for n, c in enumerate(kji):
+        lo = np.clip(np.floor(c).astype(int) - pad, 0, None)
+        hi = np.minimum(np.ceil(c).astype(int) + pad + 1, shape)
+        if np.any(hi <= lo):
+            continue                                              # off the grid
+        sub = interior[lo[0]:hi[0], lo[1]:hi[1], lo[2]:hi[2]]
+        if not sub.any():
+            continue                                              # > margin away
+        dist = ndimage.distance_transform_edt(~sub, sampling=sp)
+        out[n] = ndimage.map_coordinates(dist, (c - lo)[:, None], order=1,
+                                         mode="nearest")[0]
+    return out
 
 
 def in_cranial_vault(interior, vol: Volume, centers_ras,
