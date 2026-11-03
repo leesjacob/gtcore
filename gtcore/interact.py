@@ -428,9 +428,10 @@ def export_plan_csv(path, tiles, detected_centers=None, detected_axes=None,
 # ------------------------------------------------------------ overlap detection
 _OVERLAP_GRID_N = 7          # NxN footprint sampling grid
 _OVERLAP_NORMAL_DOT = 0.5    # local normals must agree this much (same wall)
+_FOOTPRINT_RCOND = 1e-3      # lstsq cutoff of the footprint height-field fit
 
 
-def _footprint_surface(tile, n_grid=_OVERLAP_GRID_N):
+def _footprint_surface(tile, n_grid=_OVERLAP_GRID_N, rcond=_FOOTPRINT_RCOND):
     """Sample a placed tile's conformed collagen footprint from its own fields.
 
     The physical footprint is the 20x20 mm (full) / 10x20 mm (half) collagen
@@ -444,6 +445,10 @@ def _footprint_surface(tile, n_grid=_OVERLAP_GRID_N):
     alone is NOT good enough here: on this cavity's curvature the corners sag
     several mm below the tangent plane, so a bilinear centre would float mm
     off the real sheet, while the quadratic tracks it to well under 1 mm.
+
+    ``rcond`` is the relative singular-value cutoff of that fit (see the
+    comment at the fit); the default ``_FOOTPRINT_RCOND`` is the planner's
+    value and the keyword exists so tests can reproduce the old behaviour.
 
     Returns ``(points (n_grid**2, 3), normals (n_grid**2, 3))`` with normals
     unit and oriented INTO the cavity (same sense as ``tile.normal_ras``).
@@ -464,18 +469,31 @@ def _footprint_surface(tile, n_grid=_OVERLAP_GRID_N):
     z = rel @ n
 
     # quadratic height field z(u, v) = c . [1, u, v, u^2, u*v, v^2], fitted in
-    # coordinates scaled by the tile half-size for conditioning.  rcond=1e-6
-    # (not None) is essential: at a symmetric placement the u^2 and v^2
-    # columns coincide across every fit point (corners/seeds all at |u|=|v|),
-    # and keeping the resulting near-zero singular value would amplify fp
-    # noise into wildly curved surfaces; the cutoff drops it and lstsq falls
-    # back to the benign minimum-norm fit.
+    # coordinates scaled by the tile half-size for conditioning.  The cutoff
+    # ``rcond`` (default 1e-3, NOT None and NOT 1e-6) is essential: at the
+    # conformer's own placement every fit point has |u| = |v| (corners at
+    # (+-1, +-1), seeds at (+-0.5, +-0.5), anchor at 0, all scaled), so the
+    # u^2 and v^2 columns coincide and the u^2 - v^2 direction is
+    # unidentifiable.  On a flat wall its singular value is ~1e-16 of the
+    # largest and any cutoff drops it; on a smooth curved wall the 3 mm
+    # inset along converging normals keeps |u| = |v| exactly and only mesh
+    # faceting lifts the ratio to ~1e-4 -- above 1e-6, so the old cutoff
+    # KEPT the direction and divided faceting noise (~0.02 mm) by 1e-4 into
+    # coefficients of +-100s: the sampled grid points (where u^2 != v^2)
+    # then ballooned to a median radius ~35 mm, p90 > 100 mm, against the
+    # 14.1 mm nominal corner radius (measured on an r = 25 mm icosphere,
+    # docs/optimize-notes.md "Open decision 14").  1e-3 drops it and lstsq
+    # falls back to the benign minimum-norm fit (equal u^2 and v^2
+    # coefficients), which tracks the sphere to < 0.1 mm.  On irregular
+    # marching-cubes cavity meshes the asymmetric fit points condition the
+    # direction well above 1e-3 (ratio median ~1e-2), so anisotropic wall
+    # curvature is still resolved there and those fits are unchanged.
     sc = TILE_HALF_SIZE_MM
     us, vs = u / sc, v / sc
     basis = np.column_stack(
         [np.ones_like(us), us, vs, us * us, us * vs, vs * vs]
     )
-    coef, _res, _rank, _sv = np.linalg.lstsq(basis, z, rcond=1e-6)
+    coef, _res, _rank, _sv = np.linalg.lstsq(basis, z, rcond=float(rcond))
 
     # sample the (u, v) domain as the bilinear span of the 4 corners' own
     # tangent coordinates (loop order c0, c1, c2, c3 -> bilinear corners
