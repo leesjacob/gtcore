@@ -659,7 +659,7 @@ Pipeline result cached under `output/validation_optimize/cache/` (reconstruct
 ≈ 30 s).
 
 **Wall and eligibility (definition).** The 8-tile printed phantom
-(`3D-Printed Phantom-8tiles (223)`, 157 slices) has no cavity mask
+(dataset `PH8`, 157 slices) has no cavity mask
 (`result.cavity_mask` is empty: printed shell, no brain window), so the wall
 is `result.meshes["body"]` — one watertight component that includes the
 OUTER surface of the printed shell (53 863 mm², 474 mL enclosed, 72 396
@@ -726,7 +726,7 @@ Seeds (1, 2) × scales (1.0,); N (4, 8); n_random 10; rx 6000 cGy; grid 1 mm; re
 
 Endpoints below are the WEIGHTED stats of the eligible +5 mm target (the mesh's own shell vertices include the outer surface of the printed shell; those are kept as `*_shellverts` in `v6_phantom.csv`).
 
-Wall = `meshes["body"]` (53863 mm², 473.9 mL enclosed, 72396 faces); eligible = faces visible from the implant centroid (cached mask (C:\Users\jacob\OneDrive\Desktop\gt-worktrees\plan-validation\output\validation_optimize\cache\printed_visible_72396.npy)) AND within 35 mm of a detected seed: 4651 mm² (7347 faces); target = +5 mm shell of the eligible faces (4210 points, 15539 mm²). 32 localized seeds, 8 fitted tiles. Recommended tiles: 12 (plan.recommend_tile_count).
+Wall = `meshes["body"]` (53863 mm², 473.9 mL enclosed, 72396 faces); eligible = faces visible from the implant centroid (cached mask (output/validation_optimize/cache/printed_visible_72396.npy)) AND within 35 mm of a detected seed: 4651 mm² (7347 faces); target = +5 mm shell of the eligible faces (4210 points, 15539 mm²). 32 localized seeds, 8 fitted tiles. Recommended tiles: 12 (plan.recommend_tile_count).
 
 Conformer substitution alone: localized seeds sit 0.84 mm off this mesh on average, the conformer puts them at 3 mm (mean seed shift 3.94 mm): V100 +1.75 pp, D90 -6 cGy.
 
@@ -1866,7 +1866,7 @@ out of the candidate set on the meshes tested. Decision (a) is Jacob's.
 ### A6 end-to-end, deferred measurement (coordinator): printed phantom `--min-n`
 
 Command (run alone, commit 94ce83c):
-`python -m gtcore.cli optimize "C:\Users\jacob\OneDrive\Documents\3D-Printed Phantom-8tiles (223)" --tiles 8 --solver greedy --h 4 --spins 3 --seed 0 --min-n --out output/optimize_phantom8_minn`
+`python -m gtcore.cli optimize "$GT_DATA_ROOT/<PH8>" --tiles 8 --solver greedy --h 4 --spins 3 --seed 0 --min-n --out output/optimize_phantom8_minn`
 
 Wall: pipeline ~20 s (cached DICOM read), eligible faces 7498/72396 (angular
 visible_faces), recommendation 12 (4732 mm² eligible; ellipsoid estimate 30),
@@ -2316,7 +2316,7 @@ _v5: 303 s wall; process RSS 1068 MB, peak 1478 MB._
 
 Endpoints below are the WEIGHTED stats of the eligible +5 mm target (the mesh's own shell vertices include the outer surface of the printed shell; those are kept as `*_shellverts` in `v6_phantom.csv`).
 
-Wall = `meshes["body"]` (53863 mm², 473.9 mL enclosed, 72396 faces); eligible = faces visible from the implant centroid (cached mask (C:\Users\jacob\OneDrive\Desktop\gt-worktrees\plan-validation\output\validation_optimize\cache\printed_visible_72396.npy)) AND within 35 mm of a detected seed: 4651 mm² (7347 faces); target = +5 mm shell of the eligible faces (4210 points, 15539 mm²). 32 localized seeds, 8 fitted tiles. Recommended tiles: 12 (plan.recommend_tile_count).
+Wall = `meshes["body"]` (53863 mm², 473.9 mL enclosed, 72396 faces); eligible = faces visible from the implant centroid (cached mask (output/validation_optimize/cache/printed_visible_72396.npy)) AND within 35 mm of a detected seed: 4651 mm² (7347 faces); target = +5 mm shell of the eligible faces (4210 points, 15539 mm²). 32 localized seeds, 8 fitted tiles. Recommended tiles: 12 (plan.recommend_tile_count).
 
 Conformer substitution alone: localized seeds sit 0.84 mm off this mesh on average, the conformer puts them at 3 mm (mean seed shift 3.94 mm): V100 +1.75 pp, D90 -6 cGy.
 

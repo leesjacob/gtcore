@@ -186,8 +186,12 @@ V4_N = 8
 V5_N = 8
 V5_OFFSETS_MM = (2.25, 3.0, 3.75)
 # Seed-plane offsets: geometry.SEED_PLANE_OFFSET_RANGE_MM endpoints + nominal (re-read below).
-V6_PHANTOM_DIR = r"C:\Users\jacob\Documents\3D-Printed Phantom-8tiles (223)"
-# rev-1 default; pass ``--phantom "$GT_DATA_ROOT/<PH8>"`` (Phase 5 scrubs the constant).
+V6_PHANTOM_ID = "PH8"        # printed phantom (8 tiles placed by hand)
+V6_PH0_ID = "PH0"            # its tile-less twin (the registered wall reference)
+# Dataset ids, resolved at run time by gtcore.io.datasets.dataset_path
+# (GT_DATA_ROOT [+ GT_DATASETS_JSON]); ``--phantom`` / ``--ph0`` override with
+# a folder or another id.  Unresolvable defaults leave the phantom sections
+# "Not run" (no machine path in the code).
 V6_SEED_RADIUS_MM = 35.0
 V6_N = 8
 V6_N_MAX = 12
@@ -1844,7 +1848,34 @@ def section_v5(cfg) -> Dict[str, Any]:
 
 
 # ------------------------------------------------------------------- V6
-def load_printed_phantom(cache_dir: str, use_cache: bool = True, path: str = V6_PHANTOM_DIR,
+def resolve_dataset(value: Optional[str], default_id: str) -> Optional[str]:
+    """A ``--phantom`` / ``--ph0`` value (an existing folder or a dataset id),
+    or ``default_id`` when the flag is absent, as a folder path.  An explicit
+    value that resolves to nothing is returned unchanged (the section then
+    reports it as not found); an unresolvable default gives None."""
+    if value and os.path.exists(value):
+        return value
+    from gtcore.io.datasets import DatasetNotConfigured, dataset_path
+    try:
+        return str(dataset_path(value or default_id))
+    except DatasetNotConfigured:
+        return value or None
+
+
+def repo_rel(path: str) -> str:
+    """``path`` relative to the repository root (forward slashes); a path
+    outside the repository is written as ``<cache>/<file name>``, never as an
+    absolute machine path."""
+    try:
+        rel = os.path.relpath(os.path.abspath(path), ROOT)
+    except ValueError:                       # another drive (Windows)
+        rel = None
+    if rel is None or rel.startswith(".."):
+        return "<cache>/" + os.path.basename(path)
+    return rel.replace(os.sep, "/")
+
+
+def load_printed_phantom(cache_dir: str, use_cache: bool = True, path: Optional[str] = None,
                          ph0_path: Optional[str] = None) -> Dict[str, Any]:
     """Pipeline result on the printed phantom (PH8): wall mesh, localized
     seeds, fitted tiles.  ``ph0_path`` (the tile-less twin PH0) enables the
@@ -1861,6 +1892,9 @@ def load_printed_phantom(cache_dir: str, use_cache: bool = True, path: str = V6_
     silent fall-back to the PH8 body mesh would score the wrong wall);
     without ``--ph0`` ``cavity_mask`` is None and ``phantom_cavity_note``
     says so."""
+    if not path:
+        raise Skip("printed phantom %s not resolved: set GT_DATA_ROOT (and GT_DATASETS_JSON) "
+                   "or pass --phantom" % V6_PHANTOM_ID)
     os.makedirs(cache_dir, exist_ok=True)
     tag = os.path.basename(path.rstrip("\\/"))[:24] + ("_ph0c" if ph0_path else "")
     cpath = os.path.join(cache_dir, "printed_phantom_v2_%s.pkl" % tag)
@@ -1997,7 +2031,7 @@ def section_v6(cfg) -> Dict[str, Any]:
     vis_cache = os.path.join(cfg.cache_dir, "printed_visible_v2_%d.npy" % len(mesh.faces))
     if cfg.use_cache and os.path.exists(vis_cache):
         eligible = np.load(vis_cache)
-        vis_src = "cached mask (%s)" % vis_cache
+        vis_src = "cached mask (%s)" % repo_rel(vis_cache)
         vis = eligible
     else:
         eligible, vis, vis_src = phantom_eligible(ph, mesh)
@@ -2531,10 +2565,13 @@ def parse_args(argv=None) -> Config:
                    help="time limit [s] of the V100 bound per instance (default %g)" % MILP_TIME_LIMIT_S)
     p.add_argument("--bound-n", type=int, nargs="*", default=None,
                    help="N values the V2 bound arm runs for (default %s; V3 uses its own list)" % (V3_N,))
-    p.add_argument("--phantom", default=V6_PHANTOM_DIR, help="PH8 DICOM directory (V6, capacity)")
+    p.add_argument("--phantom", default=None,
+                   help="PH8 DICOM directory or dataset id (V6, capacity; default: dataset id %s "
+                        "resolved via GT_DATA_ROOT)" % V6_PHANTOM_ID)
     p.add_argument("--ph0", default=None,
-                   help="PH0 (tile-less twin) DICOM directory: enables RIND5(phantom cavity) through "
-                        "segment.cavity.phantom_wall_and_cavity when that helper is present")
+                   help="PH0 (tile-less twin) DICOM directory or dataset id (default: dataset id %s "
+                        "resolved via GT_DATA_ROOT, when it resolves): enables RIND5(phantom cavity) "
+                        "through segment.cavity.phantom_wall_and_cavity" % V6_PH0_ID)
     p.add_argument("--capacity", action="store_true",
                    help="run the packing-capacity section (synthetic set + phantom); alone when no --section")
     a = p.parse_args(argv)
@@ -2574,8 +2611,8 @@ def parse_args(argv=None) -> Config:
     cfg.m_opt = int(a.m_opt)
     cfg.bound_time_limit_s = float(a.bound_time_limit)
     cfg.bound_n = tuple(a.bound_n) if a.bound_n else V3_N
-    cfg.phantom_dir = a.phantom
-    cfg.ph0_dir = a.ph0
+    cfg.phantom_dir = resolve_dataset(a.phantom, V6_PHANTOM_ID)
+    cfg.ph0_dir = resolve_dataset(a.ph0, V6_PH0_ID)
     cfg.argv = list(argv if argv is not None else sys.argv[1:])
     return cfg
 
