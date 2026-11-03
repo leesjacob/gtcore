@@ -776,3 +776,252 @@ end point 60 px / 15 px asserted on the wall. Three consecutive module runs:
 32 passed each. Full-suite reference at the Phase 1 merge d063c23:
 875 passed, 14 skipped, 1 failed (this test); the four-merge tree 2630550:
 876 passed, 14 skipped.
+
+---
+
+## 2026-11-03 — Phase 2 — RT DICOM readers (io/rt.py) (task `rt-io`, branch `p2/rt-io`)
+
+Owner: agent `rt-io`. Commits: `c2a8952` (module + tests), `7d1c021`
+(script import switch), `d40bb32` (merge of `paper2/integration` at `d1de921`), `fe8d942` (synthetic
+RTPLAN test date), then this notes section. Branched from `paper2/integration` at `fde4f6e`;
+`d1de921` (test-only + docs) merged before the full run.
+
+### What was added
+
+`gtcore/io/rt.py` (exported from `gtcore.io`):
+
+| Function | Role |
+|---|---|
+| `load_rtstruct(path_or_dir) -> RTStruct` | ROI names/numbers, `contours(name)` as `(N, 3)` RAS mm (LPS→RAS by negating x and y, the same flip as `gtcore.io.dicom`), `contour_z_pitch_mm`, `contour_planes_z`, `frame_of_reference_uid`, `referenced_series_uid`, `describe()` |
+| `rasterize_roi(rtstruct, name, affine, shape, supersample=4, min_fraction=0.5, slice_rule="nearest", pitch_mm=None)` | the rasteriser below; `rasterize_rois(rtstruct, names, volume)` on a `Volume`'s grid |
+| `load_rtdose(path_or_dir, allow_any=False) -> Volume` | cGy (`DoseUnits` GY ×100, CGY ×1, anything else raises), `DoseGridScaling` applied, `GridFrameOffsetVector` → k axis (raises on non-uniform), `DoseSummationType` ∈ {PLAN, MULTI_PLAN, BRACHY} unless `allow_any`; affine built exactly like `gtcore.io.dicom` (row/column direction cosines, LPS→RAS flip); `meta` carries units / type / summation / FoR / referenced plan / manufacturer / software and a parsed `dvh_sequence` when the file has one |
+| `load_rtplan(path_or_dir) -> RTPlan` | brachy sources from `ApplicationSetupSequence → ChannelSequence → BrachyControlPointSequence`: `position_ras`, `orientation_ras` (`ControlPointOrientation`, else the end-to-end direction of two distinct control points, else None), per-seed `air_kerma_strength_u` (`ReferenceAirKermaRate`), `reference_datetime`, isotope, model, half-life, active length; `plan_level` with technique / type, prescription (cGy), label / date, approval, counts. Built from the DICOM standard (no RTPLAN on this machine) and tested on a synthetic RTPLAN written with pydicom. The RT Plan IOD has no public attribute for the TG-43 formalism or the anisotropy dataset: `plan_level["formalism"]` is None and `plan_level["private_creators"]` lists the private blocks present so a vendor attribute can be located by hand |
+| `reference_from_dvh_sequence(rtdose_or_items, rtstruct)` | RTDOSE `DVHSequence` → `{roi: {volume_cc, D90_cgy, Dmin/Dmax/Dmean}}` (cumulative curve, dicompyler convention, D90 interpolated linearly on the binned curve) |
+| `parse_mim_dvh_export(path, roi_col=None, volume_col=None, d90_col=None, dose_units=None, volume_units=None, delimiter=None, layout="auto")` | tolerant CSV/TSV reader for the MIM export (format unknown until it arrives): layouts `wide` (one row per structure with volume and D90 columns), `long` (structure / metric / value rows) and `curves` (dose column + one cumulative-volume column per structure); preamble lines skipped; units read from `(Gy)` / `[cGy]` / `(cc)` / `(%)` in the header, defaults Gy and cc, all overridable |
+| `verify_against_tps(rtdose, rtstruct, reference, rois=(...), rx_cgy=6000, tolerance=0.02)` | rasterises each ROI **on the RTDOSE grid**, takes the RTDOSE voxel values, compares volume and D90 with the reference; rows `roi, vol_mim, vol_gtcore, vol_rel_err, D90_mim, D90_gtcore, D90_rel_err, V100_gtcore, n_voxels, pass` (`pass` = both errors finite and ≤ 2 %) |
+| `check_references(rtstruct, ct=None, rtdose=None, rtplan=None) -> List[str]` | frame-of-reference / referenced-series / referenced-plan consistency as warning strings that never contain a UID; nothing is written to disk |
+
+D90 / V100 inside the module come from one private helper `_dose_stats`
+(today `gtcore.dose.hrctv.hrctv_stats`, whose D90 is already the
+Hyndman–Fan type-1 inverted-CDF quantile and whose V100 is the ≥ rule; a unit
+test pins both: D90 of 10, 20, …, 100 is 10, V100 at rx 50 is 0.6). When agent
+`dose-stats` lands `metrics.dose_stats`, the switch is the one-line body of
+`_dose_stats`.
+
+`gtcore/io/dicom.py::_series_meta` now also records `frame_of_reference_uid`
+and `series_instance_uid` (header values kept in memory for
+`check_references`; never printed). `scripts/validation_clinical.py` imports
+`load_rtstruct / load_rtdose / rasterize_rois` instead of its three local
+helpers (`_dcm`, `rasterise`, `rtdose_volume`); no other logic changed.
+
+### Rasterisation rule (Methods-quotable)
+
+Each physician structure is converted to a voxel mask on the evaluation grid
+as follows. In-plane, every voxel is divided into 4 × 4 sub-pixels; the closed
+planar contours of one plane are filled jointly with the even-odd (parity)
+rule, so a contour drawn inside another is a hole and disjoint contours are a
+union; a voxel is included when at least 50 % of its sub-pixels lie inside the
+filled region (covered fraction ≥ 0.5). Through-plane, the structure's own
+contour pitch *p* is the median spacing of its contour planes; a contour plane
+at *z*<sub>c</sub> claims every voxel whose centre *z* satisfies
+*z*<sub>c</sub> − *p*/2 ≤ *z* < *z*<sub>c</sub> + *p*/2 (a half-open interval,
+so a centre exactly half a pitch from two planes is assigned once, and a slab
+contoured on *k* planes is exactly *k·p* thick). Voxels more than half a pitch
+beyond the first or last contour plane are outside, and nothing is
+interpolated across missing planes. When the grid's slice spacing is coarser
+than *p*, each output slice therefore takes the contour plane nearest its
+centre; when it is finer, each plane is copied into every slice inside its
+slab. The same rule is applied on the CT grid and on the TPS dose grid, which
+is what makes a structure's volume comparable across grids.
+
+Implementation note: the fill is an even-odd scan-line fill in numpy
+(O(perimeter + area)); tests show it agrees with `skimage.draw.polygon` on
+random polygons and that the two-polygon fill equals the XOR of the single
+fills. The scan-line is needed because `skimage.draw.polygon` is O(bounding
+box × vertices) and the 1249-vertex `Brain` contours on a 2048² supersampled
+slice would take minutes. Measured on the clinical `Brain` (143 contours):
+5.0 s on the CT grid with 4 × 4 supersampling vs 11.1 s for the old
+unsupersampled skimage fill.
+
+### Unit tests (`tests/test_io_rt.py`, 28 tests, synthetic DICOM in `tmp_path`)
+
+- (a) sphere R = 10 mm contoured on 20 planes at 1 mm pitch, rasterised on
+  0.5 × 0.5 × 1, 1 × 1 × 1.667 and 0.7 mm isotropic grids: volume within 2 %
+  of 4/3 π R³ on all three; mask confined to [−R, R) ± half a voxel.
+- (b) slab on 5 planes: thickness 5 × pitch (± half a pitch) and nothing
+  beyond, for grid z-spacings 0.3, 0.5, 1.0 (two offsets) and 1.667 mm;
+  an exact-tie grid (centres half a pitch from two planes) gives exactly 5
+  slices (half-open rule).
+- (c) square with a square hole on one plane → ring of 300 mm² (exact on a
+  grid whose edges fall between sub-pixel centres); a separate test pins the
+  tie behaviour when an edge passes through voxel centres (fraction exactly
+  0.5 → in at `min_fraction=0.5`, out at 0.51).
+- (d) POINT ROI and an ROI without contours → empty mask + warning; unknown
+  name → `KeyError`.
+- (e) RTDOSE: GY → cGy, CGY unchanged, RELATIVE raises; `DoseGridScaling`
+  applied; non-uniform `GridFrameOffsetVector` raises; voxel (3, 5, 2)
+  round-trips to the expected RAS position; negative frame direction;
+  `DoseSummationType` FRACTION raises unless `allow_any=True`, MULTI_PLAN and
+  BRACHY accepted; directory handling.
+- (f) RTPLAN with 3 seeds: positions (LPS→RAS), orientations, strengths,
+  reference datetime, isotope / model / type, prescription 6000 cGy, technique.
+- (g) `verify_against_tps`: reference from the same synthetic data passes
+  (also the analytic sphere volume); volume +5 % fails; D90 −5 % fails;
+  missing reference row → NaN + fail, no exception; `DVHSequence` reference
+  (cumulative and differential forms) parsed; CSV/TSV parser on the three
+  documented example layouts plus explicit column names / units.
+- (h) `check_references`: mismatched RTDOSE frame of reference → one warning
+  without the UID; CT series mismatch; RTPLAN mismatch; consistent case → `[]`.
+
+```
+GTCORE_STRICT=1 python -m pytest -q tests/test_io_rt.py      # 28 passed in 1.3 s
+GTCORE_STRICT=1 python -m pytest -q                          # 904 passed, 14 skipped, 15241 warnings in 595.87s (0:09:55) at d40bb32
+#   (876 of the Phase 1 tree + 28 new; fe8d942 changed only tests/test_io_rt.py, re-run alone: 28 passed;
+#   other agents ran concurrently, so the wall time is an upper bound)
+```
+
+### Real data — JD RT + JD-1mm (commit `d40bb32`)
+
+Driver: a scratchpad script (not committed) run from the worktree root with
+`PYTHONPATH=<worktree>` and `GT_DATA_ROOT`; it printed
+`gtcore.__file__ = <worktree>\gtcore\__init__.py`. Equivalent in-tree
+reproduction (from the repo root):
+
+```
+python -c "
+from gtcore.io import load_volume
+from gtcore.io.rt import load_rtstruct, load_rtdose, rasterize_roi, check_references
+ct = load_volume('$GT_DATA_ROOT/<JD-1mm>')
+rs = load_rtstruct('$GT_DATA_ROOT/<JD RT RTSTRUCT dir>')
+dv = load_rtdose('$GT_DATA_ROOT/<JD RT RTDOSE dir>')
+print(rs.describe()); print(check_references(rs, ct=ct, rtdose=dv))
+for g in (ct, dv):
+    for roi in ('Cav_Post', 'CTV_GT', 'CTV_Post', 'Brain', 'Seeds'):
+        m = rasterize_roi(rs, roi, g.affine, g.array.shape)
+        print(roi, m.sum() * g.spacing.prod() / 1000.0, 'cc')
+"
+```
+
+Inputs as read: CT 204 × 512 × 512 at 0.52 × 0.52 × 1.0 mm; RTDOSE
+250 × 266 × 266 at 1 × 1 × 1.667 mm, `DoseUnits` GY, `DoseType` PHYSICAL,
+`DoseSummationType` PLAN, `DoseGridScaling` 0.2, maximum 813 Gy, **no
+`DVHSequence`**, `ReferencedRTPlanSequence` present. RTSTRUCT from MIM 7.2.5.
+
+**ROI table** (contours / planes / pitch): Lens_L 9/9, Lens_R 9/9,
+Retina_L 17/17, Retina_R 18/18, OpticNerve_L 6/6, OpticNerve_R 5/5,
+OpticChiasm 4/4, BrainStem 57/57, SpinalCord 35/35, **Brain 143/132**,
+Lacrimal_L 7/7, Lacrimal_R 8/8, Body 189/186, L Hippo 17/17, R Hippo 24/24,
+OptNrv_L_PRV 0, OptNrv_R_PRV 0, OpticChiasm_PRV 0 (empty), **Seeds 92/31**,
+**Cav_Post 45/43**, **CTV_GT 176/47**, Res_Post 14/10, **CTV_Post 154/47**,
+Point-2 1 POINT contour. All planar structures have a 1.000 mm pitch; the
+multi-polygon planes (CTV_GT 176 polygons on 47 planes, Brain 143 on 132)
+are disjoint pieces, handled by the even-odd fill. The POINT ROI and the
+three empty PRVs rasterise to empty masks with a warning.
+
+**`check_references(rtstruct, ct=JD-1mm, rtdose)`: no warnings** — the
+RTSTRUCT's referenced series is the JD-1mm series and the RTSTRUCT, CT and
+RTDOSE share one frame of reference (confirmed).
+
+**Volumes, old rasteriser (the script's per-contour XOR into `rint(k)`,
+voxel-centre rule) vs the new rule, on both grids:**
+
+| ROI | CT grid, old | CT grid, new | RTDOSE grid, old | RTDOSE grid, new | cross-grid gap old → new |
+|---|---|---|---|---|---|
+| Cav_Post | 35.10 cc | 35.10 cc | 15.53 cc | 35.40 cc | −55.8 % → **+0.9 %** |
+| CTV_GT | 19.02 cc | 19.01 cc | 11.62 cc | 19.39 cc | −38.9 % → **+2.0 %** |
+| CTV_Post | 23.39 cc | 23.39 cc | 13.44 cc | 23.83 cc | −42.5 % → **+1.9 %** |
+| Brain | 1383.98 cc | 1383.98 cc | 490.76 cc | 1384.47 cc | −64.5 % → **+0.0 %** |
+| Seeds | 0.36 cc | 0.36 cc | 0.40 cc | 0.34 cc | +13.0 % → −4.6 % |
+
+Reading. On the CT grid (1 mm slices = the 1 mm contour pitch) the new rule
+reproduces the old volumes to 0.01 cc: the end-slice rule changes nothing in
+z and the in-plane supersampling only moves boundary voxels. On the 1.667 mm
+RTDOSE grid the old rasteriser is grossly wrong: two 1 mm contour planes
+round to the same dose slice and their XOR cancels, so every structure loses
+40–65 % of its volume. The requirements doc's "21.6 cc on the dose grid"
+(+14 %) could not be reproduced on this tree by either path: nearest-neighbour
+resampling of the CT-grid mask onto the dose grid (`metrics.resample_mask_to`)
+gives 19.03 cc (+0.1 %), and the direct supersampled rasterisation 19.39 cc
+(+2.0 %; Dice 0.972 between the two dose-grid masks). The residual +2 % for
+CTV_GT is in-plane: the structure is a thin fragmented rind (176 polygons on
+47 planes), so 1 mm voxels at the 0.5-fraction threshold are coarse relative
+to its ~5 mm thickness; its z-extent is 46.67 mm (28 slices) on the dose grid
+vs 47.00 mm (47 planes) on the CT grid, −0.7 %. Cav_Post, CTV_Post and Brain
+agree across grids within 2 %, so the supersampled rule closes the cross-grid
+artifact; the MIM volume comparison (`verify_against_tps`) remains the gate.
+Seeds (0.8 mm diameter, contour areas 0.13–8.23 mm², median 3.64 mm²) cannot be
+represented on a 1 mm × 1.667 mm grid by any rule (−4.6 %; 38 connected
+components for 30 seeds on the dose grid, 52 with the old rasteriser) — the
+script only ever uses Seeds on the CT grid, where both rasterisers give 30
+components with identical voxel counts (min 30 / median 44 / max 56 voxels)
+and centroids within 0.06 mm.
+
+**RTDOSE D90 / V100 of CTV_GT on both grids** (rx 6000 cGy; CT grid =
+trilinear sample of the RTDOSE at CT voxel centres, RTDOSE grid = the voxel
+values; `_dose_stats`):
+
+| CTV_GT | volume | D90 | D50 | V100 | V150 |
+|---|---|---|---|---|---|
+| CT grid, old mask | 19.02 cc | 6365 cGy | 8865 | 93.7 % | 48.2 % |
+| CT grid, new mask | 19.01 cc | 6365 cGy | 8866 | 93.7 % | 48.2 % |
+| RTDOSE grid, old mask | 11.62 cc | 6180 cGy | 8700 | 92.1 % | 46.4 % |
+| RTDOSE grid, new mask | 19.39 cc | **6360 cGy** | 8880 | 93.6 % | 48.6 % |
+
+With the new rule the two grids agree on D90 to 5 cGy (0.1 %) and on V100 to
+0.1 percentage points; the old rasteriser's dose-grid D90 was 185 cGy (2.9 %)
+low because of the lost volume. Same pattern for CTV_Post (D90 5073 / 5100
+cGy, V100 81.8 / 82.1 %) and Cav_Post (9357 / 9320 cGy, V100 99.1 / 99.0 %).
+
+### `scripts/validation_clinical.py` before / after the import switch
+
+Both runs on JD-1mm + JD RT, each printing `gtcore.__file__` from its own
+tree (`p2-integration` at `fde4f6e` for "before", `p2-rt-io` at `7d1c021`
+for "after"); command
+`python scripts/validation_clinical.py "$GT_DATA_ROOT/<JD-1mm>" "$GT_DATA_ROOT/<JD RT RTSTRUCT dir>" "$GT_DATA_ROOT/<JD RT RTDOSE dir>"`.
+The printed tables are identical except for boundary voxels moved by the
+in-plane supersampling (on the 1 mm CT grid the end-slice rule coincides with
+the 1 mm contour pitch):
+
+| Line | before | after |
+|---|---|---|
+| TPS structures (Cav_Post / CTV_GT / CTV_Post / Seeds) | 35.1 / 19.0 / 23.4 / 0.4 cc | identical |
+| gtcore cavity, HR-CTV, rind rows (Dice, volumes) | — | identical |
+| seeds: TPS 30, detected 32; one-to-one match 30/30 | median 0.14 mm, p95 0.73, max 0.89 | median 0.15 mm, p95 0.73, max 0.89 |
+| RTDOSE on CTV_GT | D90 6365, D50 8865, Dmin 3921, V100 94 %, V150 48 % | D50 8866, rest identical |
+| RTDOSE on CTV_Post / Cav_Post / gtcore HR-CTV / rind(Cav_Post) | — | identical |
+| TG-43 / RTDOSE ratio at CTV_GT voxels > 5 mm from a seed | median 0.931, p5 0.777, p95 1.030, n = 13673 → implied S_K 3.76 U | median 0.931, p5 0.773, p95 1.029, n = 13665 → 3.76 U |
+| gtcore TG-43 rows (6 lines) | — | D50 / Dmin / D90 differ by ≤ 2 cGy on five lines (e.g. our seeds 3.50 U on CTV_GT: D90 6168 → 6167); every V100 / V150 / volume identical |
+
+The script stays on the new rasteriser (the intended fix); Phase 3 rebuilds it.
+
+### Missing data / next steps
+
+- **The MIM DVH / plan export is not on this machine**, so
+  `verify_against_tps` cannot be run on real data yet (and the JD RTDOSE has
+  no `DVHSequence`, checked with `"dvh_sequence" in load_rtdose(...).meta`).
+  When the export arrives, run from the repo root:
+
+  ```
+  python -c "
+  from gtcore.io.rt import load_rtstruct, load_rtdose, parse_mim_dvh_export, verify_against_tps
+  rs = load_rtstruct('$GT_DATA_ROOT/<JD RT RTSTRUCT dir>')
+  dv = load_rtdose('$GT_DATA_ROOT/<JD RT RTDOSE dir>')
+  ref = parse_mim_dvh_export('$GT_DATA_ROOT/<MIM DVH export file>')   # add roi_col=, volume_col=, d90_col=, dose_units= if auto-detection fails
+  for r in verify_against_tps(dv, rs, ref, rois=('Cav_Post', 'CTV_GT', 'CTV_Post', 'Brain'), rx_cgy=6000.0):
+      print('%-9s vol %6.2f vs %6.2f cc (%.1f%%)  D90 %6.0f vs %6.0f cGy (%.1f%%)  %s' % (
+          r['roi'], r['vol_mim'], r['vol_gtcore'], 100 * r['vol_rel_err'],
+          r['D90_mim'], r['D90_gtcore'], 100 * r['D90_rel_err'], 'PASS' if r['pass'] else 'FAIL'))
+  "
+  ```
+
+  Every row must pass before an F5 number is quoted (requirements §2 Grid,
+  §3 F5). If MIM reports D90 by interpolating its binned DVH, a sub-percent
+  D90 difference against the type-1 quantile is expected and inside the 2 %
+  gate; the volume comparison is the sharper test of the rasteriser.
+- **The RTPLAN is not on this machine**: `load_rtplan` is standard-built and
+  synthetic-tested only. On arrival: `plan = load_rtplan('$GT_DATA_ROOT/<JD RT RTPLAN>')`,
+  then `plan.n_sources` (expect 32), `plan.strengths_u` (per-seed S_K),
+  `plan.sources[0].reference_datetime`, `plan.plan_level["private_creators"]`
+  for the formalism hunt, and `check_references(rs, ct=ct, rtdose=dv, rtplan=plan)`.
+- `_dose_stats` → `metrics.dose_stats` once agent `dose-stats` merges (one
+  line).
