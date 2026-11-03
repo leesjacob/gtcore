@@ -1,11 +1,12 @@
 # script: scripts/leftover_seeds.py
-# command: python scripts/leftover_seeds.py "$GT_DATA_ROOT/<PT-CT1mm>" --dataset PT-CT1mm --rtstruct "$GT_DATA_ROOT/<PT-RT RTSTRUCT>" --n-full 8 --out docs/figures/data
-# commit: afb96ea
+# command: python scripts/leftover_seeds.py "$GT_DATA_ROOT/<PT-CT1mm>" --dataset PT-CT1mm --rtstruct "$GT_DATA_ROOT/<PT-RT RTSTRUCT>" --n-full 8 --halves 6,4 --out docs/figures/data
+# commit: 378b819
 # dataset: PT-CT1mm
-# generated: 2026-11-03 02:04
-# gtcore imported from tree: p2-leftovers
+# generated: 2026-11-03 02:56
+# gtcore imported from tree: p2-clinical-followups
 # strict_mode: True
 # n_seeds: 32; n_full requested: 8
+# halves requested: 6 full + 4 half tiles (mode count_6full_4half = fit_tiles_prior(ImplantPrior(n_full=6, n_half=4), mesh); the prior is an input, not a fitted count; which count-known row the paper quotes waits for the operative record)
 # pairwise angles (deg) between the PCA axes of the leftover seeds
 seed,a_0,a_2,a_5,a_8,a_11,a_13,a_16,a_21
 0,0,42.88,44.04,35.18,37.81,35.58,32.72,33.28

@@ -1,8 +1,8 @@
 # script: scripts/validation_clinical.py
-# command: python scripts/validation_clinical.py "$GT_DATA_ROOT/<PT-CT1mm dir>" "$GT_DATA_ROOT/<PT-RT RTSTRUCT dir>" "$GT_DATA_ROOT/<PT-RT RTDOSE dir>" --rx 6000 --out docs/figures/data
-# commit: fe0dc81
+# command: python scripts/validation_clinical.py "$GT_DATA_ROOT/<PT-CT1mm dir>" "$GT_DATA_ROOT/<PT-RT RTSTRUCT dir>" "$GT_DATA_ROOT/<PT-RT RTDOSE dir>" --rx 6000 --out docs/figures/data --axes si
+# commit: 378b819
 # datasets: PT-CT1mm, PT-RT
-# generated: 2026-11-03T01:56:17
+# generated: 2026-11-03T02:54:13
 # flag: calibration-set (one clinical case; no held-out scan)
 # sets: gtcore_seed (reconstruct), tps_contour_centroid (Seeds ROI), plan_source (RTDOSE maxima); near_slice = |dz| <= 3 mm; slice k=117 z=-511.200 mm
 set,seed_id,x_ras,y_ras,z_ras,dz_mm,ax,ay,az,contoured,near_slice

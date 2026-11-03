@@ -268,9 +268,11 @@ def test_panel_data_files(result, vc):
 
 
 def test_main_end_to_end(vc, synthetic_case, tmp_path, capsys):
+    """``main`` with ``--axes si``: the default columns plus the S-I ones."""
     out = tmp_path / "out"
     rc = vc.main([synthetic_case["ct"], synthetic_case["rtstruct"], synthetic_case["rtdose"],
-                  "--rx", "6000", "--out", str(out), "--datasets", "synthetic-phantom,synthetic-RT"])
+                  "--rx", "6000", "--out", str(out), "--datasets", "synthetic-phantom,synthetic-RT",
+                  "--axes", "si"])
     assert rc == 0
     text = capsys.readouterr().out
     assert "gtcore.__file__ =" in text and "git commit:" in text
@@ -278,11 +280,75 @@ def test_main_end_to_end(vc, synthetic_case, tmp_path, capsys):
     assert "diagnostic, not used" in text
     assert "TPS volume check pending" in text and "--mim-dvh" in text
     assert "hooks:" in text
+    assert "seed axes: physical, si" in text or "seed axes: si" in text
+    assert "32 TPS sources, S-I axes) / RTDOSE" in text        # the S-I implied-S_K line
+    assert "S-I axes vs physical axes on" in text
     assert (out / "clinical_table3_rows.csv").is_file()
     with open(out / "clinical_table3_rows.csv", encoding="utf-8") as f:
-        head = f.read(400)
+        head = f.read(900)
     assert "C:\\" not in head and "/Users/" not in head          # no machine paths in headers
     assert "<synthetic-phantom dir>" in head
+    assert "--axes si" in head and "# axes:" in head
+    cols, rows = _read(vc, out / "clinical_table3_rows.csv")
+    assert {r["dose_source"] for r in rows if r["metric"] == "D90" and r["row"] == vc.ROW_HRCTV} >= {
+        vc.COL_RTDOSE, vc.COL_TPS32, vc.COL_GT32, vc.COL_TPS30, vc.COL_TPS32_SI, vc.COL_GT32_SI}
+
+
+@pytest.fixture(scope="module")
+def result_si(vc, synthetic_case, result, tmp_path_factory):
+    """The same analysis with ``axes=("physical", "si")`` on the same
+    reconstruction (no second ``reconstruct``)."""
+    out = tmp_path_factory.mktemp("clinical_out_si")
+    case = synthetic_case
+    rs = rt.load_rtstruct(case["rtstruct"])
+    dv = rt.load_rtdose(case["rtdose"])
+    r = vc.run_analysis(case["vol"], rs, dv, result["res"], RX, str(out),
+                        "python scripts/validation_clinical.py <synthetic> --axes si", "test",
+                        datasets=("synthetic-phantom", "synthetic-RT"), verbose=False, axes=("physical", "si"))
+    r["out"] = str(out)
+    return r
+
+
+def test_si_axes_add_columns_and_leave_the_physical_ones_unchanged(result, result_si, vc, synthetic_case):
+    cells, cells_si = result["cells"], result_si["cells"]
+    assert result["axes"] == ("physical",) and result_si["axes"] == ("physical", "si")
+    # every physical cell is bit-identical with and without the S-I columns
+    assert set(cells) < set(cells_si)
+    for key, st in cells.items():
+        for m in ("D90", "D50", "Dmin", "Dmean", "V100", "V150", "V200"):
+            assert cells_si[key][m] == st[m], (key, m)
+    labels = [lbl for lbl, _t in result["targets"]]
+    for lbl in labels:
+        for col in (vc.COL_TPS32_SI, vc.COL_GT32_SI):
+            s = cells_si[(lbl, col)]
+            assert np.isfinite(s["D90"]) and s["D90"] > 0.0 and 0.0 <= s["V100"] <= 1.0
+    # the truth axes are not along z: the S-I convention changes the dose near the seeds
+    assert cells_si[(vc.ROW_HRCTV, vc.COL_TPS32_SI)]["D90"] != cells_si[(vc.ROW_HRCTV, vc.COL_TPS32)]["D90"]
+    assert cells_si[(vc.ROW_HRCTV, vc.COL_GT32_SI)]["D90"] != cells_si[(vc.ROW_HRCTV, vc.COL_GT32)]["D90"]
+    # ... but the far-field magnitude is the same physics: the S-I implied S_K is still near nominal
+    assert result["ratio_si"] is None
+    rsi = result_si["ratio_si"]
+    assert rsi is not None and rsi["n"] > 50 and abs(rsi["implied_sk_u"] - 3.5) < 0.6
+    assert result_si["ratio"]["implied_sk_u"] == result["ratio"]["implied_sk_u"]
+    # CSV: the S-I rows are additional; the other rows are exactly the default run's
+    cols, rows = _read(vc, result_si["paths"]["table3_csv"])
+    cols0, rows0 = _read(vc, result["paths"]["table3_csv"])
+    assert cols == cols0 == vc.TABLE3_COLUMNS
+    si_rows = [r for r in rows if "(S-I axes)" in r["dose_source"]]
+    assert {r["dose_source"] for r in si_rows if r["metric"] == "D90"} == {vc.COL_TPS32_SI, vc.COL_GT32_SI}
+    assert sum(1 for r in si_rows if r["metric"] == "D90") == 2 * len(labels)
+    assert any(r["row"] == "diagnostic" and r["metric"] == "implied_SK_not_used"
+               and vc.COL_TPS32_SI in r["dose_source"] for r in si_rows)
+    assert [r for r in rows if "(S-I axes)" not in r["dose_source"]] == rows0
+    with open(result_si["paths"]["table3_csv"], encoding="utf-8") as f:
+        head = f.read(1200)
+    assert "# axes:" in head and "S-I axes" in head
+    # panel data is unchanged by the convention: same DVH columns, same slice arrays
+    cols_d, rows_d = _read(vc, result_si["paths"]["dvh_csv"])
+    assert cols_d == vc.DVH_COLUMNS and len(rows_d) == 301
+    z0, z1 = np.load(result["paths"]["slice_npz"]), np.load(result_si["paths"]["slice_npz"])
+    assert np.array_equal(z0["gtcore32src_cgy"], z1["gtcore32src_cgy"])
+    assert np.array_equal(z0["gtcore32gt_cgy"], z1["gtcore32gt_cgy"])
 
 
 def test_helpers(vc, tmp_path):
@@ -308,3 +374,16 @@ def test_helpers(vc, tmp_path):
     vc.write_csv(p, rows, ["a", "b", "c", "d"], ["# h"])
     cols, back = vc.read_csv_rows(p)
     assert cols == ["a", "b", "c", "d"] and back[0]["a"] == 'x,"y"' and back[0]["c"] == "nan"
+    # seed-axis conventions
+    assert vc.parse_axes("physical") == ("physical",) and vc.parse_axes("si") == ("si",)
+    assert vc.parse_axes("physical, si") == ("physical", "si") and vc.parse_axes("") == ("physical",)
+    with pytest.raises(ValueError):
+        vc.parse_axes("lateral")
+    z = vc.si_axes(5)
+    assert z.shape == (5, 3) and np.array_equal(z, np.tile([0.0, 0.0, 1.0], (5, 1)))
+    # the S-I columns are opt-in; the physical four are always there
+    import types
+    args = types.SimpleNamespace(rx=6000.0, out="docs/figures/data", mim_dvh=None, axes="si")
+    assert vc.sanitized_command(args, ("PT-CT1mm", "PT-RT")).endswith("--axes si")
+    args.axes = "physical"
+    assert "--axes" not in vc.sanitized_command(args, ("PT-CT1mm", "PT-RT"))

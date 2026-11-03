@@ -3470,3 +3470,216 @@ GTCORE_STRICT=1 python -m pytest -q    # 966 passed, 14 skipped, 15242 warnings 
 - Rev 3's "a 1D plan would give 1.29 -> 0.96" needs the amendment stated above (far field only).
 - Missing data: the RTPLAN (orientations, per-seed S_K, private calc settings); the documented command above runs the comparison when it arrives. Nothing was installed.
 - `docs/figures/data/` did not exist before this branch; `data/` is git-ignored, so the four CSVs were added with `git add -f`.
+
+## 2026-11-03 — Phase 3 follow-ups — TPS axis-convention rows; 6 full + 4 half count-known row (task `clinical-followups`, branch `p2/clinical-followups`)
+
+Base `paper2/integration` 608da78. Commits: `378b819` (scripts + smoke tests), `d36db1d` (the
+regenerated / new `docs/figures/data/` files, `git add -f`), then this section. Three small,
+self-contained additions, no new method, no parameter touched; every real-data number below is
+**calibration-set** (PT-CT1mm + PT-RT, one case). All three real runs were made at `378b819` on a
+clean tree from the worktree root with `PYTHONPATH` = the worktree and `GTCORE_STRICT=1`; each
+log's first line is `gtcore.__file__` = `<worktree>\gtcore\__init__.py` (CSV headers carry the
+hash). The three ran concurrently with each other and with another agent's suite, so wall times
+are upper bounds. The physical-axis rows of every regenerated CSV were checked against the
+committed files (`git show 608da78:<path>`), data row by data row: **identical** (gamma: 24 pass-rate
+rows, 84 band rows, 12 histogram files, seed sets, capsule diagnostics -- apart from the new `axes`
+column and the two runtime columns; clinical: all 171 Table 3 rows -- the `hook` rows, which name the
+worktree, excluded -- and the DVH, residual, match and slice tables; leftovers: the three original
+mode rows and 20 tile rows, `seconds` aside, and the seven diagnostic tables). The eight leftover
+patch PNGs came out byte-identical.
+
+### What changed
+
+| File | Addition |
+|---|---|
+| `scripts/validation_gamma.py` | `--axes physical[,si]` (default `physical` = the Phase 3 run). `si` sets every seed axis of every seed set to RAS (0, 0, 1) -- the TPS convention found by the formalism check; the sign is irrelevant for the symmetric `F(r, θ)`. `gamma_pass_rates.csv` and `gamma_pass_by_band.csv` gain the column `axes` (second column); `--axes physical,si` writes one table with both. Per-run files of the `si` convention carry the suffix `_siaxes` (`gamma_histogram_<set>_<pct>pct_<mm>mm_<norm>_siaxes.csv`, `gamma_map_slice_<set>_3pct_2mm_<norm>_siaxes.npz`, each NPZ with an `axes` field); the physical files keep their names. The loop is now `run_gamma_table()` + `write_pass_rate_tables()` (testable without `reconstruct`). The RTDOSE maxima and the source-to-seed match now come from `gtcore.dose.formalism.rtdose_source_positions` / `match_sources_to_seeds` (same rule as the inline code they replace; verified by the byte-identity above). The capsule diagnostics stay with the physical axes (header says so). |
+| `scripts/validation_clinical.py` | `--axes physical|si`. `si` ADDS two columns to the structure × dose matrix and to `clinical_table3_rows.csv`: `gtcore@32 TPS sources (S-I axes)` and `gtcore@32 gtcore seeds (S-I axes)` (the same positions as the physical columns, every axis along RAS z), plus the implied-S_K / delivered-fraction diagnostic with S–I axes (`dose_source` = `... (S-I axes)`), and one header line. The four physical columns, the diagnostics and the panel data (slice NPZ, DVH, contours, seeds) are always written and unchanged -- F4(a)/F5/F6 show the pipeline result; the S–I column is the like-for-like equivalence row. `plan_sources_from_rtdose` wraps `formalism.rtdose_source_positions`. |
+| `scripts/leftover_seeds.py` | `--halves N_FULL,N_HALF` runs `fit_tiles_prior(ImplantPrior(n_full=N_FULL, n_half=N_HALF), mesh=cavity, spacing, complete_degraded=True)` -- the same planner path as `prior<N>`, with half tiles in the prior -- as the additional mode `count_<F>full_<H>half` (row in `f4_leftover_modes_<ds>.csv`, per-tile rows in `f4_leftover_tiles_<ds>.csv`, sheets / assignment in the render NPZ + JSON next to `auto` / `count8` / `prior8`; `halves_requested` in the JSON index; `halves` block in `f4_leftover_finding_<ds>.json`). The chord-scored `fit_tiles(F, H, complete_degraded=True)` partition is printed and stored in the finding JSON as a cross-check, not as a mode. The prior is an input (the header line says so); nothing is fitted. |
+| `tests/test_validation_gamma_smoke.py` (new, 5 tests, 5 s) | synthetic RTDOSE (the clinical smoke case) + the truth seeds, no `reconstruct`: `run_gamma_table` with `["physical", "si"]` gives 4 rows with both conventions, the physical row is the identical-dose case (≥ 99.5 %), the S–I row has a larger γ mean and a pass rate ≤ the physical one on the same voxels; `_siaxes` files exist and carry `axes="si"`; the physical-only run equals the physical rows of the combined run; `axes` is the second CSV column; `--axes lateral` exits. |
+| `tests/test_validation_clinical_smoke.py` (+1 test, `main` now runs `--axes si`; 9 tests, 30 s) | `run_analysis(..., axes=("physical", "si"))` on the same reconstruction: every physical cell bit-identical with and without the S–I columns, the S–I columns exist for every structure and differ from the physical ones (random truth axes), the S–I implied S_K is within 0.6 U of nominal, the CSV's non-S–I rows equal the default run's rows, DVH columns and slice arrays unchanged; `parse_axes` / `si_axes` / `sanitized_command`. |
+| `tests/test_leftover_seeds.py` (+4 tests; 14 tests, 5 s) | `--halves 2,2` on the 3-tile phantom: 2 full + 2 half, all 12 seeds assigned, the two halves are exactly the third truth tile cut in two (pair distance inside the half-tile window), every tile has a bent-tile fit (rigid fallback for 2 seeds); the chord cross-check assigns the same seeds to the same kinds; decoys stay over; `export_implant` with the extra mode documents every array, `tile_kind` has two `half`, half rows have two seeds, sheets finite and through the seeds, `halves_requested` in the index, the other modes untouched; `parse_halves`. |
+
+### Commands
+
+```
+export PYTHONPATH=<worktree>; export GTCORE_STRICT=1; export GT_DATA_ROOT=...     # from the worktree root
+python scripts/validation_gamma.py "$GT_DATA_ROOT/<PT-CT1mm>" "$GT_DATA_ROOT/<PT-RT RTSTRUCT dir>" "$GT_DATA_ROOT/<PT-RT RTDOSE dir>" --axes physical,si
+#   about 5 min wall, 02:53:51-02:58:49 (reconstruct 17.5 s; evaluation 35-45 s physical / 30-32 s si per seed set; gamma 0.9-7 s per run)
+python scripts/validation_clinical.py "$GT_DATA_ROOT/<PT-CT1mm dir>" "$GT_DATA_ROOT/<PT-RT RTSTRUCT dir>" "$GT_DATA_ROOT/<PT-RT RTDOSE dir>" --rx 6000 --out docs/figures/data --axes si
+#   about 2 min wall (reconstruct 17.5 s, matrix 22.7 s for 6 gtcore columns)
+python scripts/leftover_seeds.py "$GT_DATA_ROOT/<PT-CT1mm>" --dataset PT-CT1mm --rtstruct "$GT_DATA_ROOT/<PT-RT RTSTRUCT>" --n-full 8 --halves 6,4 --out docs/figures/data
+#   about 3 min wall; the 6 full + 4 half fit 46.7 s
+GTCORE_STRICT=1 python -m pytest -q -p no:cacheprovider tests/test_validation_gamma_smoke.py tests/test_validation_clinical_smoke.py tests/test_leftover_seeds.py   # 5 + 9 + 14 passed
+```
+
+### A. Gamma vs the RTDOSE, physical axes vs the TPS convention (`gamma_pass_rates.csv`, commit `378b819`, pymedphys 0.41.0 numba backend, 32 sources, S_K 3.5 U nominal, n = 81 527 / 89 639 voxels in every row)
+
+Pass rate (γ ≤ 1, %), **physical (PCA) axes → S–I axes**:
+
+| seed set | criteria | norm | 30–200 Gy (primary) | ≥ 30 Gy | γ mean (30–200) | γ p95 |
+|---|---|---|---|---|---|---|
+| gtcore seeds | 3 %/2 mm | global | **99.33 → 99.51** | 98.71 → 99.18 | 0.249 → 0.144 | 0.50 → 0.30 |
+| gtcore seeds | 3 %/2 mm | local | **99.37 → 99.67** | 98.92 → 99.45 | 0.250 → 0.142 | 0.50 → 0.30 |
+| gtcore seeds | 2 %/1 mm | global | **96.96 → 98.84** | 95.21 → 97.42 | 0.429 → 0.219 | 0.90 → 0.50 |
+| gtcore seeds | 2 %/1 mm | local | **96.23 → 98.99** | 94.78 → 97.79 | 0.437 → 0.220 | 0.92 → 0.50 |
+| TPS contours (+2 maxima) | 3 %/2 mm | global | 99.33 → 99.49 | 98.71 → 99.17 | 0.248 → 0.141 | 0.50 → 0.30 |
+| TPS contours (+2 maxima) | 3 %/2 mm | local | 99.37 → 99.63 | 98.90 → 99.43 | 0.249 → 0.139 | 0.50 → 0.30 |
+| TPS contours (+2 maxima) | 2 %/1 mm | global | 97.20 → 98.99 | 95.52 → 97.60 | 0.426 → 0.214 | 0.85 → 0.50 |
+| TPS contours (+2 maxima) | 2 %/1 mm | local | 96.57 → 99.11 | 95.16 → 97.92 | 0.433 → 0.215 | 0.87 → 0.50 |
+| RTDOSE maxima | 3 %/2 mm | global | 99.31 → 99.45 | 98.65 → 99.22 | 0.223 → 0.140 | 0.41 → 0.30 |
+| RTDOSE maxima | 3 %/2 mm | local | 99.35 → 99.61 | 98.85 → 99.49 | 0.224 → 0.137 | 0.41 → 0.26 |
+| RTDOSE maxima | 2 %/1 mm | global | 98.13 → 99.10 | 96.21 → 97.63 | 0.375 → 0.211 | 0.78 → 0.50 |
+| RTDOSE maxima | 2 %/1 mm | local | 97.69 → 99.20 | 96.02 → 97.99 | 0.382 → 0.212 | 0.80 → 0.45 |
+
+(`n_unresolved` = 0 everywhere. γ mean / p95 over the 30–200 Gy window.)
+
+Pass rate by reference dose band, gtcore seeds (`gamma_pass_by_band.csv`), physical → S–I:
+
+| band (Gy) | n | 3 %/2 mm global | 3 %/2 mm local | 2 %/1 mm global | 2 %/1 mm local |
+|---|---|---|---|---|---|
+| 30–60 | 48 201 | 100.0 → 100.0 | 100.0 → 100.0 | 97.40 → **100.0** | 95.98 → **100.0** |
+| 60–100 | 18 401 | 100.0 → 100.0 | 100.0 → 100.0 | 99.46 → 99.91 | 99.54 → 99.94 |
+| 100–200 | 14 925 | 96.31 → 97.30 | 96.56 → 98.19 | 92.44 → 93.76 | 92.96 → 94.57 |
+| 200–400 | 7 247 | 91.68 → 95.49 | 93.74 → 96.91 | 76.21 → 82.12 | 78.79 → 84.85 |
+| > 400 | 865 | 99.65 → 99.88 | 100.0 → 100.0 | 89.94 → 91.91 | 91.45 → 92.60 |
+
+Reading. With the TPS's own seed-axis convention the agreement tightens everywhere: at 2 %/1 mm the
+gtcore-seed pass rate goes from 96.96 to 98.84 % (global) and the γ mean halves (0.43 → 0.22); the
+2.6–4.0 % of 30–60 Gy voxels that failed at 2 %/1 mm with the physical axes -- the periphery, where
+a seed's anisotropy is still visible -- all pass with S–I axes, and the 60–100 Gy band is ≥ 99.9 %.
+What remains (1.2 % at 2 %/1 mm global, 0.5 % at 3 %/2 mm) sits in the 100–400 Gy zone between the
+seeds of a tile (93.8 / 82.1 % pass): the TPS grid's rendering of the seed-plane dose, the
+near-axis ±5 % the formalism check left unexplained -- it does not touch the 5 mm surface or the
+DVH. The spread between the three source sets shrinks too (2 %/1 mm global 98.84 / 98.99 / 99.10 %
+for gtcore seeds / contours / maxima, vs 96.96 / 97.20 / 98.13 % physical): once the axis
+convention is matched, localisation error and grid-quantised positions are a 0.1–0.3 pp term. The
+physical-axis rows are gtcore's claim (the dose the implant delivers under TG-43 with the seeds
+where and how they lie); the S–I rows are the implementation-equivalence check against a reference
+that used a default orientation for every source.
+
+### B. Structure × dose matrix, physical axes vs the TPS convention (`clinical_table3_rows.csv`, commit `378b819`; cell = D90 cGy / V100 % / V150 %; rx 6000 cGy; S_K 3.5 U nominal; every dose row still *TPS volume check pending*)
+
+| structure (CT grid) | RTDOSE | gtcore @ 32 TPS sources: physical → **S–I axes** | gtcore @ 32 gtcore seeds: physical → **S–I axes** |
+|---|---|---|---|
+| `HRCTV_PHYS` (`CTV_GT`, 19.0 cc) | **6365 / 93.7 / 48.2** | 6224 / 92.3 / 47.0 → **6323 / 93.4 / 47.3** | 6167 / 91.7 / 46.8 → **6288 / 93.0 / 47.1** |
+| `RIND5(Cav_Post, clip Brain)` (35.4 cc) | 4646 / 67.8 / 28.1 | 4564 / 67.7 / 27.4 → 4632 / 67.3 / 27.5 | 4538 / 67.8 / 27.4 → 4620 / 67.3 / 27.4 |
+| `RIND5(gtcore cavity, clip cranial interior)` (53.8 cc) | 2725 / 38.3 / 20.0 | 2671 / 38.5 / 19.6 → 2731 / 37.9 / 19.7 | 2653 / 38.7 / 19.8 → 2715 / 38.1 / 19.8 |
+| `IMPLANT_REACH(r = 10 mm)` (16.8 cc) | 6881 / 97.4 / 56.7 | 6776 / 96.5 / 55.2 → 6840 / 97.2 / 55.6 | 6700 / 96.0 / 54.8 → 6782 / 96.8 / 55.3 |
+| `IMPLANT_REACH(r = 12 mm)` (25.3 cc) | 5859 / 88.0 / 39.3 | 5801 / 87.2 / 38.3 → 5836 / 87.6 / 38.4 | 5765 / 86.9 / 38.2 → 5815 / 87.4 / 38.3 |
+
+(The physical columns and the `gtcore @ 30 contoured seeds` column are unchanged from the
+`clinical-rebuild` run: 6224 / 92.3 / 47.0, 6167 / 91.7 / 46.8, 5790 / 87.3 / 37.7 on `CTV_GT`.)
+
+Side by side on `CTV_GT`: gtcore @ 32 TPS sources is −2.2 % in D90 against the RTDOSE with the
+physical axes and **−0.7 %** with the TPS convention (6224 → 6323 vs 6365 cGy; V100 92.3 → 93.4 vs
+93.7 %); gtcore @ 32 gtcore seeds −3.1 % → **−1.2 %** (6167 → 6288 cGy; V100 91.7 → 93.0 %). About
+two thirds of the D90 gap between gtcore and the TPS (99 of 141 cGy at the TPS positions, 121 of
+198 cGy at the gtcore seeds) is therefore the seed-axis convention of the reference; the rest
+(42 / 77 cGy, 0.7 / 1.2 %) is grid sampling plus, for the gtcore seeds, the localisation error
+(median 0.15 mm, and the two uncontoured sources are the same in both columns). D90 moves the same
+way on every structure (+0.6 to +2.3 %); V150 barely moves (0 to +0.5 pp) and the RIND V100
+actually drops 0.4–0.6 pp, so the convention mostly redistributes dose along vs across the seed
+axes near the 60 Gy surface rather than scaling it.
+
+*Implied S_K with S–I axes (diagnostic, not used):* TG-43 (3.50 U, 32 TPS sources, S–I axes) /
+RTDOSE at `CTV_GT` voxels > 5 mm from any source and > 100 cGy (every 5th voxel, n = 13 476): median
+**0.993**, p5 0.939, p95 1.037 → implied S_K **3.53 U** (physical axes: 0.989 / 0.923 / 1.048 →
+3.54 U); RTDOSE / TG-43 total decay median 1.007 (p5 0.965, p95 1.065), conclusion unchanged (the
+RTDOSE is the total dose to decay). The p5–p95 spread narrows from 12.5 to 9.8 % with the TPS
+convention -- the residual angular structure the physical axes imprint on the far field -- but the
+median hardly moves: beyond 5 mm the single-seed anisotropy averages over many sources. **This is
+not the 3.59 U of the formalism section**, which was the overall RTDOSE / gtcore ratio at 3–5 mm
+single-seed voxels after a per-seed sub-voxel position refinement (a near-field selection); the two
+numbers measure different things and both leave the nominal 3.5 U in place.
+
+**Table 3 row (proposed text).**
+
+| Row | physical seed axes (pipeline) | TPS convention (axes along S–I) | Set |
+|---|---|---|---|
+| Dose agreement with the TPS, PT-RT, `CTV_GT`, 32 sources at S_K 3.5 U nominal: D90 / V100 | 6167 cGy / 91.7 % at the 32 gtcore seeds (RTDOSE 6365 cGy / 93.7 %); 6224 / 92.3 at the TPS positions | 6288 cGy / 93.0 %; 6323 / 93.4 at the TPS positions | calibration (this case) |
+| Gamma, RTDOSE vs gtcore at the 32 gtcore seeds, 30–200 Gy (≥ 30 Gy), global-to-rx; local | 3 %/2 mm 99.3 (98.7) %; 99.4 (98.9) % · 2 %/1 mm 97.0 (95.2) %; 96.2 (94.8) % | 3 %/2 mm 99.5 (99.2) %; 99.7 (99.4) % · 2 %/1 mm 98.8 (97.4) %; 99.0 (97.8) % | calibration (this case) |
+
+**F5 caption sentence (proposed).** *The TPS computed every source with its long axis along the
+patient superior–inferior direction (Phase 3 formalism check: common fitted axis 2.2° from S–I,
+physical seed axes 64.5° from it in median); gtcore is shown with the physical seed axes recovered
+from the CT, i.e. the dose the implant delivers under TG-43. Recomputed with the TPS convention,
+gtcore agrees with the RTDOSE to 99.5 % / 98.8 % (3 %/2 mm, 2 %/1 mm; 30–200 Gy, global-to-rx) and
+to 6288 vs 6365 cGy in CTV_GT D90, so the remaining near-seed difference is a convention of the
+reference, not of gtcore.*
+
+### C. Count-known row with half tiles in the prior: `count_6full_4half` (`f4_leftover_modes_PT-CT1mm.csv`, `f4_leftover_tiles_PT-CT1mm.csv`, `f4b_patient_implant.npz/.json`, commit `378b819`; 32 seeds from 57 raw blobs, vault filter applied, mesh = gtcore cavity 24 736 faces)
+
+| Mode | Tiles | Degraded | Seeds assigned | Leftovers | Summary | Wall (upper bound) |
+|---|---|---|---|---|---|---|
+| `auto` (count-free) | 6 | 0 | 24 / 32 | 8: {0, 2, 5, 8, 11, 13, 16, 21} | evidence supports n = 6; 8 seeds unassigned | 31.0 s |
+| `count8` (pipeline, chord) | 7 | 1 ({0, 8, 13, 16}) | 28 / 32 | 4: {2, 5, 11, 21} | — | 0.005 s |
+| `prior8` (planner, `ImplantPrior(8)`) | 7 | 1 (same) | 28 / 32 | 4: same | asked for 8 full: 7 supported (geometry supports only 7); 4 unassigned | 34.5 s |
+| **`count_6full_4half`** (planner, `ImplantPrior(n_full=6, n_half=4)`) | **10 (6 full + 4 half)** | **0** | **32 / 32** | **0** | asked for 6 full tile(s): 6 supported | 46.7 s |
+
+(The first three rows are the Phase 3 `leftovers` result reproduced to the digit.) The new mode:
+
+| Tile | Kind | Seeds | Chord residual mm | Bent-tile RMS mm | Fold ° | Axis err ° | Surface cross-check |
+|---|---|---|---|---|---|---|---|
+| 0 | full | 14, 15, 18, 19 | 0.18 | 0.18 | 18 | 8.1 | inconsistent 4.4 mm |
+| 1 | full | 6, 7, 9, 12 | 0.21 | 0.21 | 27 | 2.6 | inconsistent 5.7 |
+| 2 | full | 17, 22, 24, 30 | 0.29 | 0.29 | 53 | 7.5 | inconsistent 3.5 |
+| 3 | full | 1, 3, 4, 10 | 0.47 | 0.47 | 25 | 4.2 | inconsistent 6.0 |
+| 4 | full | 20, 25, 28, 31 | 0.51 | 0.51 | 52 | 10.3 | inconsistent 3.8 |
+| 5 | full | 23, 26, 27, 29 | 0.67 | 0.67 | 116 | 6.6 | inconsistent 5.7 |
+| 6 | half | 11, 21 | 0.40 | 2.02 (rigid fallback) | 0 | 65.6 | detached 1.9 mm |
+| 7 | half | 13, 16 | 0.71 | 1.86 | 0 | 61.4 | detached 1.8 |
+| 8 | half | 2, 5 | 1.03 | 1.92 | 0 | 66.7 | detached 2.3 |
+| 9 | half | 0, 8 | 0.85 | 1.85 | 0 | 67.2 | attached |
+
+The six full tiles are the same six seed groups as in every other mode (identical chord residuals
+0.18–0.67 mm; the "inconsistent" surface verdicts are the pre-existing free-vs-wall-conformed
+disagreement reported in the `leftovers` section). The four halves are exactly the four
+manufactured-pitch pairs the leftover diagnostic named -- {11, 21} 9.0 mm, {13, 16} 9.3 mm,
+{2, 5} 9.6 mm, {0, 8} 9.5 mm -- and the degraded completion of the N = 8 modes ({0, 8, 13, 16})
+does not fire, because its pool is consumed by two halves. **Chord-path cross-check**
+(`fit_tiles(6, 4, complete_degraded=True)`, in the finding JSON): the identical partition -- the
+same six full groups (chord residuals 0.19–1.15 mm, the chord selector's values) and the same
+four pairs, 0 degraded, 0 leftovers. So with the prior "6 full + 4 half" both selectors explain
+all 32 seeds with nothing degraded; with the prior "8 full" both explain 28 and invent one
+crumpled tile. **Which prior is the truth is Jacob's operative-record question, still open;
+until it is answered the paper has two candidate count-known rows** (`prior8`: 7/8 recovered,
+one degraded completion, 4 unassigned; `count_6full_4half`: 10/10, 32/32, none degraded) and the
+notes carry both. The F4(b) NPZ now has the `count_6full_4half_*` arrays next to the others
+(`primary_mode` stays `auto`; the renderer reads `<mode>_sheet_seed_vertices`, `<mode>_tile_kind`,
+`<mode>_seed_tile_id`).
+
+**Half-tile template orientation (pre-existing, reported, not changed).** The half tiles' rigid
+fallback has RMS 1.8–2.0 mm and axis error 61–67° although their chord residuals are 0.4–1.0 mm.
+Cause: `gtcore.tiles.model.RigidTile("half")` puts its two seeds at (u, v) = (0, ±5) -- side by
+side *across* the seed axes (the tile cut parallel to the seeds, footprint 10 mm along the axes ×
+20 mm across) -- whereas all four pairs here lie *end to end along* their axes (separation vs seed
+axis 3°, 6°, 15°, 17°; axes 5–35° apart), i.e. the tile cut across the seed rows (20 mm along the
+axes × 10 mm across). The pair selector (`fit._enumerate_pairs`, alignment term
+`min(θ, 90° − θ)`) accepts both cuts, so the selection is right; the rigid / bent-tile template
+represents only the first, so the fit compromises (sheet long axis 22–24° from the pair
+direction, seed-to-sheet ≤ 1.05 mm). **Consequence for F4(b):** the exported half-tile sheets
+(`count_6full_4half_sheet_*_vertices` for tiles 6–9) are the template's 10 × 20 mm footprint with
+its long side across the pair; the physical half tiles are 20 mm along the pair. Draw the halves
+from the pair geometry (a 20 × 10 mm sheet along the seed axes through the two seeds, 3 mm toward
+the wall) or rotate the template footprint 90° in its plane for these tiles; adding the second
+cut orientation to `RigidTile` is a model change (§4 stop list) left to the coordinator's call.
+The full-tile sheets are unaffected.
+
+### Notes for the coordinator
+
+- Shared files: none (`pyproject.toml`, `tests/conftest.py`, `README.md`, `gtcore/**` untouched;
+  `gtcore/plan/*`, `gtcore/segment/*`, `gtcore/cli.py`, `scripts/validation_optimize.py` not opened).
+- Semantics chosen: `validation_gamma.py --axes` is a list (`physical`, `si`, `physical,si`); each
+  convention is a full set of rows. `validation_clinical.py --axes si` *adds* the S–I columns -- the
+  physical columns are always computed because the panel data needs them and the paper reports both;
+  this is why `--axes si` alone regenerates the one consistent Table 3 file. The S–I DVH curves are
+  not added to `clinical_dvh_hrctv.csv` (F5(b) shows the pipeline result); the S–I D90s are in the
+  Table 3 rows. The gamma slice NPZs for `si` (6 × 90 kB) are committed for the optional Supplement
+  map; drop them if size matters.
+- Decision pending (Jacob): the operative record decides between `prior8` and `count_6full_4half`
+  as "the" count-known Table 3 row and whether F4(b) draws 6 sheets + 8 red seeds (`auto`,
+  current primary) or 6 sheets + 4 half-tile pairs. Both are in the NPZ.
+- The half-tile template orientation above is a pre-existing behaviour of `RigidTile("half")`;
+  nothing in `gtcore/` was changed. It matters only for rendering the half tiles.
+- Missing data unchanged (RTPLAN, MIM DVH export); nothing installed.
+- Full suite on the final tree (code `378b819`; the two later commits are data and docs), `GTCORE_STRICT=1 python -m pytest -q -p no:cacheprovider` from the worktree root, run concurrently with the three real-data runs and another agent's jobs (wall time an upper bound): **`1059 passed, 15 skipped, 15253 warnings in 628.81s (0:10:28)`**, exit 0. The three files touched here ran with no skips (5 + 9 + 14 passed); the skips are the pre-existing set of the tree at 608da78.

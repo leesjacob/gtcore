@@ -1,9 +1,9 @@
 # script: scripts/validation_gamma.py
-# command: python scripts/validation_gamma.py "$GT_DATA_ROOT/<PT-CT1mm>" "$GT_DATA_ROOT/<PT-RT RTSTRUCT dir>" "$GT_DATA_ROOT/<PT-RT RTDOSE dir>"
-# commit: ab85b1c
+# command: python scripts/validation_gamma.py "$GT_DATA_ROOT/<PT-CT1mm>" "$GT_DATA_ROOT/<PT-RT RTSTRUCT dir>" "$GT_DATA_ROOT/<PT-RT RTDOSE dir>" --axes physical,si
+# commit: 378b819
 # datasets: PT-CT1mm (CT + gtcore seeds), PT-RT (RTSTRUCT Seeds contours, RTDOSE)
 # flag: calibration-set (one clinical case, reference not validation cohort)
 # date: 2026-11-03
-# > 200 Gy reference voxels: count, fraction of the >= 30 Gy set, distance to the nearest seed of each set; RTDOSE vs gtcore at the hottest voxel
+# > 200 Gy reference voxels: count, fraction of the >= 30 Gy set, distance to the nearest seed of each set; RTDOSE vs gtcore at the hottest voxel (gtcore with the physical seed axes)
 n_ref_ge30,n_ref_above_200,fraction_above_200,n_ref_30_200,rtdose_max_gy,gtcore_at_rtdose_argmax_gy,gtcore_max_on_box_centres_gy,dist_gtcore_median_mm,dist_gtcore_p95_mm,dist_gtcore_max_mm,dist_gtcore_within3mm,dist_gtcore_within4mm,dist_gtcore_within6mm,dist_tps_maxima_median_mm,dist_tps_maxima_p95_mm,dist_tps_maxima_max_mm,dist_tps_maxima_within3mm,dist_tps_maxima_within4mm,dist_tps_maxima_within6mm,dist_tps_contours_median_mm,dist_tps_contours_p95_mm,dist_tps_contours_max_mm,dist_tps_contours_within3mm,dist_tps_contours_within4mm,dist_tps_contours_within6mm
 89639,8112,0.0905,81527,813.0000,2190.7499,2405.9515,3.8249,6.0487,7.8091,0.2634,0.5523,0.9456,3.8873,6.0093,7.6158,0.2754,0.5598,0.9456,3.8100,6.0471,7.8090,0.2668,0.5592,0.9464

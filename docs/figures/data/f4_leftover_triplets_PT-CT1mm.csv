@@ -1,11 +1,12 @@
 # script: scripts/leftover_seeds.py
-# command: python scripts/leftover_seeds.py "$GT_DATA_ROOT/<PT-CT1mm>" --dataset PT-CT1mm --rtstruct "$GT_DATA_ROOT/<PT-RT RTSTRUCT>" --n-full 8 --out docs/figures/data
-# commit: afb96ea
+# command: python scripts/leftover_seeds.py "$GT_DATA_ROOT/<PT-CT1mm>" --dataset PT-CT1mm --rtstruct "$GT_DATA_ROOT/<PT-RT RTSTRUCT>" --n-full 8 --halves 6,4 --out docs/figures/data
+# commit: 378b819
 # dataset: PT-CT1mm
-# generated: 2026-11-03 02:04
-# gtcore imported from tree: p2-leftovers
+# generated: 2026-11-03 02:56
+# gtcore imported from tree: p2-clinical-followups
 # strict_mode: True
 # n_seeds: 32; n_full requested: 8
+# halves requested: 6 full + 4 half tiles (mode count_6full_4half = fit_tiles_prior(ImplantPrior(n_full=6, n_half=4), mesh); the prior is an input, not a fitted count; which count-known row the paper quotes waits for the operative record)
 # every leftover triplet against the cover pass's L-shape windows
 seeds,corner_seed,arm_a_mm,arm_b_mm,hypotenuse_mm,corner_angle_deg,fourth_x,fourth_y,fourth_z,fourth_gap_to_detection_mm,triplet_arms,triplet_hypotenuse,triplet_corner_angle,triplet_axis,triplet_4th_free,triplet_pass,gates_failed
 0;8;16,16,4.663,8.935,9.455,81.59,27.54,226.7,-504.5,4.663,False,True,True,True,True,False,triplet_arms
