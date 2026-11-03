@@ -200,3 +200,24 @@ Results sentence names half tiles as the cause. No two-layer model extension is
 warranted (§4 item 18 not triggered). Marginal-score curves on real scans end at
 the implanted count (no 7th / 9th candidate) rather than crossing λ = 3.5 — caption
 point for the Supplement curve.
+
+## 2026-11-03 — formalism: MIM is 2D with seed axes along S–I (Phase 3 `formalism`)
+
+The angular-symmetry test on the RTDOSE reproduces rev 3 (ratio 0.93 at 0–15° →
+1.10 at 75–90° with the physical PCA axes). The residual trend is explained by the
+seed-axis definition, not the anisotropy dataset (CLRP_V2 identical), the grid
+(voxel averaging identical) or S_K (flat multiplier): axes fitted to the RTDOSE's
+own 2–6 mm shells are a median 3.6° from the patient S–I axis (p95 9.3°) and 66°
+from the physical axes; with all axes along S–I the ratio is flat (RMS log-ratio
+0.042 vs 0.180), within 1–2 % from 30–90° and ±5 % within 30° of the axis at
+r < 5 mm. Conclusion for the paper: MIM used the 2D line-source formalism and a
+default seed orientation (S–I) for every source; no 1D mode. Rev 3's "1D would
+give 1.29 → 0.96" holds only in the far field (> 6 mm); under the > 50 %
+single-seed selection it is 0.95 → 1.05. Consequences: (1) Table 3 and the F5
+caption report both gtcore with physical axes (the pipeline result) and gtcore
+with the TPS convention (axes along S–I; the like-for-like equivalence row) —
+Phase 5 adds the S–I-axis variant to `validation_gamma.py` and the DVH matrix;
+(2) the implied-S_K diagnostic with TPS-convention axes is 3.59 U (nominal 3.5 U
+unchanged); (3) the RTPLAN, when it arrives, is expected to show
+ControlPointOrientation = (0, 0, ±1) or absent — `scripts/formalism_check.py
+--rtplan` compares.
