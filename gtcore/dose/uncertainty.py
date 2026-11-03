@@ -62,8 +62,9 @@ gives the nominal dose exactly.  Draws are independent; ``n_workers > 1``
 spreads them over threads (numpy releases the GIL inside the kernel) and
 does not change a single bit of the result.  Cost: one exact engine
 evaluation per draw (about 0.1 s for 19 k points x 32 seeds on the
-reference machine, single thread), so 1000 draws on ``HRCTV_PHYS`` take
-about two minutes serially.
+reference machine, single thread; ``HRCTV_PHYS`` on the 0.52 x 0.52 x 1 mm
+CT grid is 70 k points, 1000 draws x 32 seeds took 90-105 s with four
+threads), so no subsampling of the target grid is needed.
 """
 from __future__ import annotations
 

@@ -1480,3 +1480,195 @@ are the Phase 1 set (13 interface placeholders + the `GT_E2E`-gated run);
 66dc856 (targets + rt-io) during this run; not merged here by the
 coordinator's instruction (conflicts in `metrics.py` / `hrctv.py` resolved
 at merge).
+
+## 2026-11-03 — Phase 3 — MC uncertainty (seed-position error → D90/V100) (task `uncertainty`, branch `p2/uncertainty`)
+
+Requirements rev 3 §3 F5 "ADD `gtcore/dose/uncertainty.py`", §6 Phase 3 last
+checkbox; Phase 3 plan row `uncertainty`; figure data designation v7 (F5(b)
+DVH with the MC envelope is the paper's one chart; Table 3 "MC D90 ±").
+Branched from `paper2/integration` at `e13a4af`. Code commit `c557cf4`
+(module, tests, script); the CSVs below were generated at `c557cf4` and
+committed at `1104fcb`; this section and a docstring runtime correction
+follow in the next commit. Hardware as in
+AGENT_COMMON; the full suite and other agents ran concurrently, so every
+wall time is an upper bound. **Calibration set: yes** — the one clinical
+case (PT-CT1mm + PT-RT), reference not validation cohort; there is no
+held-out scan.
+
+### Method (Methods-quotable)
+
+The uncertainty of every gtcore dose statistic on the physician's HR-CTV
+was obtained by Monte-Carlo propagation of the seed-position error. The
+nominal dose was evaluated with the TG-43U1 2D line-source engine at the
+centres of the 70 438 CT voxels (0.52 × 0.52 × 1.0 mm) of the `CTV_GT`
+contour (`HRCTV_PHYS`, 19.0 cc), with the nominal air-kerma strength of
+3.5 U for every seed and fixed seed axes. In each of 1000 draws every seed
+centre was displaced by an independent 3-vector drawn from an error model,
+the dose at the same voxel centres was recomputed with the same engine, and
+D90, V100 and V150 (`dose_stats`: type-1 quantile, ≥ rule) and the
+cumulative DVH on a 0.5 Gy ladder (0–150 Gy) were recorded. Two error
+models were used. The **primary band** resamples, with replacement and
+independently per seed, the 30 measured residual vectors between gtcore's
+seed centres on the thin-cut CT and the centroids of the TPS `Seeds`
+contours (one-to-one Hungarian match within 2 mm; |r| median 0.15 mm, 95th
+percentile 0.73 mm, maximum 0.89 mm; per-axis SD 0.25 / 0.11 / 0.16 mm;
+mean vector −0.03 / −0.06 / +0.04 mm, kept). The **degraded-export band**
+draws independent zero-mean Gaussians per RAS axis with SD 0.51 / 0.40 /
+0.63 mm, the per-axis seed-position SD measured between the 2 mm gapped
+export and the 1 mm thin-cut of the same acquisition (25 seeds,
+`docs/localization-notes.md`; the export is no longer on disk, so the SDs
+are quoted, not regenerated). Both bands are **conservative**: each is built
+from the difference between two measurements, so it contains the TPS
+contouring error (primary) or the thin-cut's own localisation error
+(degraded export) in addition to gtcore's. The envelope reported is the
+mean and the pointwise 2.5th and 97.5th percentiles across draws, of D90,
+V100, V150 and of the volume fraction at every DVH level. Seed axes and S_K
+were not perturbed (the residuals are position residuals; S_K is a stated
+input). The random generator was seeded (`numpy.random.default_rng(0)`);
+the thread count does not change a bit of the result. The refinement
+covariances (`SeedCandidates.cov_ras`, default-off) are available as a
+secondary check but were not present on this run and are never the band.
+
+### Implementation
+
+- `gtcore/dose/uncertainty.py` (new): `ErrorModel` base; `NoError`,
+  `AxisGaussian(sd_mm)`, `ResidualResample(residuals, center=False)`
+  (+ `from_csv`), `Covariance(cov_ras)`; `DEGRADED_EXPORT_SD_MM =
+  (0.51, 0.40, 0.63)`; `dvh_curve(doses, levels, weights=None)` (≥ rule;
+  equals `dose_stats` V bit for bit with unit weights); `propagate(target,
+  seed_centers, seed_axes, model, n_draws=1000, seed=0, sk_u=3.5,
+  rx_cgy=6000, levels_cgy=np.arange(0, 15001, 50), engine=None,
+  n_workers=1, exact=True) -> MCResult`; `MCResult` carries the per-draw
+  `d90` / `v100` / `v150`, `summary(key)` (nominal, mean, sd, p2.5, p97.5,
+  min, max), the DVH envelope (`dvh_nominal`, `dvh_mean`, `dvh_p2_5`,
+  `dvh_p97_5`), `nominal` (`dose_stats` dict), `model` text, `perturbation_mm`
+  (what was actually drawn), `runtime_s`, and `stat_rows` / `dvh_rows` for
+  the CSVs. Per draw, seed *s* displaced by δ_s is evaluated as the
+  undisplaced seed seen from the points shifted by −δ_s
+  (`engine._sum_seed_rates` per seed, the `dose_at_points` code path, summed
+  in seed order), so a zero perturbation reproduces `target_doses_exact`
+  bit for bit; draws are spread over threads when `n_workers > 1`.
+- `gtcore/dose/__init__.py`: exports the above (one import block +
+  `__all__` entries; shared file, minimal edit).
+- `scripts/validation_error_propagation.py`: the driver below.
+- `tests/test_uncertainty.py` (19 tests): zero-error models (`NoError`,
+  `AxisGaussian(0)`, `ResidualResample([0,0,0])`, `Covariance(0)`) reproduce
+  the nominal D90 / V100 / V150 / DVH exactly, also with unnormalised axes;
+  `dvh_curve` is the ≥ rule and equals V100 / V150 / V200 at rx; tiny-SD
+  Gaussian → band width ≤ 0.5 cGy and ≤ 1e-3 volume fraction, width grows
+  monotonically with SD; isotropic 1 mm Gaussian on a synthetic 3-seed
+  target → finite spread whose 95 % interval contains the nominal D90, V100,
+  V150 and the whole nominal DVH curve, envelope monotone; same seed →
+  identical arrays with 1 or 3 threads, different seed → different;
+  `ResidualResample` of one vector = rigid shift of the implant (rtol 1e-9),
+  draws only measured vectors, CSV round trip; `Covariance` draws have the
+  requested covariance (20 000 draws, atol 0.02 mm²), diagonal covariance ≈
+  `AxisGaussian`, bad input raises; weighted S5-like point target; bad
+  inputs raise; CSV row helpers; tabulated kernel within 1e-3 of exact.
+
+### Real data — PT-CT1mm + PT-RT at `c557cf4`
+
+```
+# from the worktree root; gtcore.__file__ printed = <worktree>\gtcore\__init__.py
+PYTHONPATH=. GTCORE_STRICT=1 python scripts/validation_error_propagation.py "$GT_DATA_ROOT/<PT-CT1mm>" \
+    "$GT_DATA_ROOT/<PT-RT RTSTRUCT>" "$GT_DATA_ROOT/<PT-RT RTDOSE>" \
+    --n-draws 1000 --seed 0 --workers 4 --seed-sets gtcore32,contoured30,gtcore30
+# -> docs/figures/data/f5b_dvh_band.csv, uncertainty_d90_v100.csv, clinical_seed_residuals.csv (git add -f)
+```
+
+Pipeline: `reconstruct` 32 seeds in 17 s (Phase 1 vault filter),
+`seeds.cov_ras` absent (default `refine_seeds=None`) → covariance check
+skipped. Target `HRCTV_PHYS` = `RTSTRUCT:CTV_GT` on the CT grid, 19.01 cc,
+70 438 voxels. Seed match: **30/30** contoured seeds matched one-to-one at
+2 mm; residual (detection − contour centroid, RAS) |r| median 0.15, p95 0.73,
+max 0.89 mm; mean (−0.025, −0.057, +0.037) mm; per-axis SD (0.25, 0.11,
+0.16) mm — the rev 3 text's "0.23 mm median, 0.9 mm max" predates the Phase 1
+vault filter and the Phase 2 rasteriser; the Phase 2 `rt-io` notes already
+give 0.15 / 0.73 / 0.89. RTDOSE on the same target (trilinear at the CT voxel
+centres): D90 6365 cGy, V100 0.937, V150 0.482 (as in Phase 2).
+
+Seed sets: `gtcore32` = the 32 gtcore detections (PCA axes); `contoured30`
+= the 30 TPS `Seeds` contour centroids (PCA axes; the plan has 32 sources,
+the ROI omits two); `gtcore30` = the 30 detections matched to them (added
+because it costs 3 minutes and separates the two-missing-seeds effect from
+the localisation effect: 5800 vs 5790 cGy nominal).
+
+| seed set | band | D90 nominal [cGy] | D90 mean ± SD | D90 95 % [p2.5, p97.5] | V100 nominal | V100 mean | V100 95 % | V150 nominal | V150 95 % |
+|---|---|---|---|---|---|---|---|---|---|
+| `gtcore32` | **residual (primary)** | **6167** | 6175 ± 19 | **[6133, 6212]** | **0.917** | 0.918 | **[0.914, 0.921]** | 0.468 | [0.467, 0.473] |
+| `gtcore32` | degraded export | 6167 | 6158 ± 49 | [6068, 6255] | 0.917 | 0.916 | [0.907, 0.925] | 0.468 | [0.458, 0.480] |
+| `contoured30` | residual (primary) | 5790 | 5797 ± 16 | [5761, 5828] | 0.873 | 0.874 | [0.870, 0.879] | 0.377 | [0.376, 0.383] |
+| `contoured30` | degraded export | 5790 | 5777 ± 43 | [5691, 5860] | 0.873 | 0.872 | [0.861, 0.882] | 0.377 | [0.369, 0.390] |
+| `gtcore30` | residual (primary) | 5800 | 5803 ± 17 | [5767, 5835] | 0.875 | 0.876 | [0.872, 0.880] | 0.381 | [0.379, 0.386] |
+| `gtcore30` | degraded export | 5800 | 5784 ± 44 | [5696, 5872] | 0.875 | 0.874 | [0.863, 0.884] | 0.381 | [0.372, 0.393] |
+| TPS (RTDOSE) | — | 6365 | — | — | 0.937 | — | — | 0.482 | — |
+
+Perturbations actually drawn (1000 × 32): primary |δ| median 0.15, p95 0.88,
+max 0.89 mm, per-axis SD 0.25 / 0.11 / 0.16 mm; degraded export median
+0.79, p95 1.49, max 3.14 mm, SD 0.51 / 0.40 / 0.63 mm.
+
+DVH envelope on `gtcore32` (volume fraction ≥ level; nominal / [p2.5,
+p97.5]): 45 Gy 0.994 / primary [0.993, 0.994], degraded [0.991, 0.996];
+60 Gy 0.917 / [0.914, 0.921], [0.907, 0.925]; 75 Gy 0.706 / [0.703, 0.712],
+[0.693, 0.716]; 90 Gy 0.468 / [0.467, 0.473], [0.458, 0.480]; 120 Gy
+0.189 / [0.186, 0.194], [0.180, 0.201]. Below 30 Gy every curve is 1.
+(`f5b_dvh_band.csv` also carries the RTDOSE curve on the same ladder as
+`band = rtdose, seed_set = tps`, nominal only, for the figure's reference
+line; the `clinical-rebuild` CSVs remain the source for the TPS / gtcore
+curves themselves.)
+
+**Reading.** On `HRCTV_PHYS` the measured localisation residuals move D90 by
+±40 cGy (95 %, −0.6 / +0.7 % of the nominal) and V100 by ±0.4 percentage
+points; the degraded-export model, three to four times wider in position,
+gives ±95 cGy (±1.5 %) and ±0.9 points. Both bands are conservative (above).
+The gap between the RTDOSE and gtcore at the 32 detected seeds (6365 vs
+6167 cGy, +3.2 %; V100 0.937 vs 0.917) lies outside both envelopes, so
+seed-position error does not account for it; it belongs to the
+S_K / formalism / anisotropy comparison (`formalism`, `clinical-rebuild`:
+implied S_K 3.76 U at this tree). The band means sit within 0.4 SD of the
+nominal (primary +8 cGy, degraded −10 to −16 cGy): random displacement of a
+wall-hugging implant is slightly asymmetric in dose, nothing more. The two
+30-seed sets agree to 10 cGy nominally and have the same band widths, so the
+377 cGy drop from 32 to 30 seeds is the two uncontoured sources, not
+localisation.
+
+Runtime (4 threads, concurrent load): 88–106 s per 1000-draw band on the
+70 438-voxel target (≈ 0.1 s per draw), 623 s for the whole script (two
+engine warm-ups, three seed sets × two bands, one `reconstruct`). Serial
+cost measured on a synthetic 19 k-point × 32-seed target: 0.10 s per draw
+exact, 0.11 s tabulated; threads 2 / 4 / 6 → ×2.0 / ×3.1 / ×3.7, results
+bit-identical. The target grid was **not** subsampled.
+
+### Tests
+
+```
+GTCORE_STRICT=1 python -m pytest -q tests/test_uncertainty.py        # 19 passed in 2.4 s
+GTCORE_STRICT=1 python -m pytest -q -p no:cacheprovider              # full suite, see the line below
+```
+
+Full suite at `c557cf4` (tree = `paper2/integration` e13a4af + this branch; conftest sets
+`GTCORE_STRICT=1`; run concurrently with the 1000-draw real-data script and other agents, so
+the wall time is an upper bound): **960 passed, 14 skipped**, 15242 warnings in 856.84 s
+(0:14:16). Baseline at e13a4af: 941 passed, 14 skipped; the 19 new tests are
+`tests/test_uncertainty.py`. The 14 skips are the Phase 1 set (interface placeholders + the
+`GT_E2E`-gated run).
+
+### Notes for the coordinator
+
+- `docs/figures/data/clinical_seed_residuals.csv` (30 rows, `seed_id, dx_mm,
+  dy_mm, dz_mm, dist_mm`) is **owned by `clinical-rebuild`**; it did not
+  exist, so this script wrote it with the matching code of
+  `validation_clinical.print_seed_match_detail` (Hungarian, 2 mm gate) and a
+  header saying it is a stand-in. If `clinical-rebuild` commits its own
+  version, keep theirs and re-run this script (it reads the file when
+  present; `--rebuild-residuals` overwrites).
+- Shared file touched: `gtcore/dose/__init__.py` (one import block, nine
+  `__all__` names). `gamma` / `formalism` will edit the same file.
+- The covariance check (`Covariance(res.seeds.cov_ras)`) runs automatically
+  when `reconstruct(..., refine_seeds=...)` supplies `cov_ras`; the default
+  pipeline does not, so no covariance row exists. It is never the band.
+- `gtcore30` is a third seed set beyond the task's two; drop its rows if
+  F5(b) / Table 3 only want `gtcore32` and `contoured30`.
+- Which "gtcore@30" the F5(b) legend means (TPS-contoured positions, or the
+  30 matched detections) is a wording decision: both are in the CSV
+  (`contoured30`, `gtcore30`), 10 cGy apart.
