@@ -4,13 +4,16 @@ DICOM header value is committed anywhere in the tree.
 Usage (from the repo root)::
 
     python scripts/check_no_identifiers.py            # exit 1 on any hit
-    python scripts/check_no_identifiers.py --strict   # also fail on the allowlisted files
+    python scripts/check_no_identifiers.py --strict   # same (nothing is allowlisted any more)
     python scripts/check_no_identifiers.py --root <dir> [--no-git]
 
 Scans every git-tracked and untracked-but-not-ignored text file (so ``output/``
 and the venv are never read) except ``.git``, this script and its test.  Each
-hit is printed as ``path:line: <rule>: <match>``.  Files on the ALLOWLIST are
-reported as warnings and do not fail the run unless ``--strict`` is given.
+hit is printed as ``path:line: <rule>: <match>``.  No file is exempt: the
+campaign-owned files allowlisted during the Phase 4 campaign were scrubbed in
+Phase 5 (task ``finish-tables-scrub``) and the allowlist removed.  ``check``
+still accepts an ``allowlist`` argument (files reported as warnings unless
+``strict``) for a future temporary exemption; the command line passes none.
 
 Rules (``gtcore.io.datasets`` is the replacement: ``GT_DATA_ROOT`` + dataset ids):
 
@@ -54,14 +57,6 @@ RULES = [
                 r"(?<![\d.])(?!1\.2\.840\.10008\b)(?!1\.2\.826\.0\.1\.3680043\b)\d+(?:\.\d+){6,}\b")),
 ]
 
-# Campaign-owned files (Phase 4 optimizer campaign, still running when the
-# Phase 5 scrub landed).  TODO(coordinator): scrub these after the campaign
-# merges and delete the allowlist; `--strict` shows what is left.
-ALLOWLIST = (
-    "scripts/validation_optimize.py",
-    "docs/optimize-notes.md",
-    "docs/figures/optimize/",
-)
 SELF_EXCLUDE = ("scripts/check_no_identifiers.py", "tests/test_no_identifiers.py")
 SKIP_DIRS = {".git", "output", ".venv", "venv", "__pycache__", ".pytest_cache", "node_modules"}
 BINARY_EXT = {".npz", ".npy", ".png", ".jpg", ".jpeg", ".pdf", ".pkl", ".pyc", ".ply",
@@ -112,7 +107,7 @@ def scan_file(path):
                 yield i, rule, m.group(0)
 
 
-def check(root, use_git=True, strict=False, allowlist=ALLOWLIST, out=sys.stdout):
+def check(root, use_git=True, strict=False, allowlist=(), out=sys.stdout):
     root = os.path.abspath(root)
     failures, warnings = 0, 0
     for path in list_files(root, use_git):
@@ -124,8 +119,7 @@ def check(root, use_git=True, strict=False, allowlist=ALLOWLIST, out=sys.stdout)
         for line_no, rule, match in scan_file(path):
             if allowed:
                 warnings += 1
-                out.write("allowlisted (TODO coordinator, after the campaign merge): "
-                          "%s:%d: %s: %s\n" % (rel, line_no, rule, match))
+                out.write("allowlisted: %s:%d: %s: %s\n" % (rel, line_no, rule, match))
             else:
                 failures += 1
                 out.write("%s:%d: %s: %s\n" % (rel, line_no, rule, match))
@@ -139,7 +133,8 @@ def main(argv=None):
     ap.add_argument("--no-git", action="store_true",
                     help="walk the directory instead of asking git for the file list")
     ap.add_argument("--strict", action="store_true",
-                    help="fail on the allowlisted (campaign-owned) files as well")
+                    help="fail on allowlisted files as well (no file is allowlisted; kept for "
+                         "compatibility)")
     args = ap.parse_args(argv)
     n = check(args.root, use_git=not args.no_git, strict=args.strict)
     return 1 if n else 0

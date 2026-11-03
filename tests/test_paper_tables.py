@@ -84,6 +84,46 @@ def test_table3_columns_flags_and_key_numbers(built):
     assert any("S-I axes" in r["metric"] and "gamma" in r["metric"] for r in rows)
 
 
+def test_table3_optimizer_rows_as_measured(built):
+    """Campaign rows (merged at 056334c): the primary endpoint exactly as
+    measured (not significant), the secondary comparisons, N*, packing
+    failures, lambda_tail 0 / 1 V3 rows, the measured eligibility union."""
+    _, out, _, _ = built
+    rows = _rows(out / "table3.csv")
+    if not pt.Repo(ROOT).exists(pt.V3_INST_RED_L0):
+        pytest.skip("campaign files not in this tree")
+    opt = {r["metric"]: r["value"] for r in rows if r["stage"] == "placement optimisation"}
+    prim = next(v for m, v in opt.items() if m.startswith("synthetic benchmark, primary endpoint"))
+    for needle in ("+1.19 pp [95 % CI -0.71, 3.09], n = 15, Wilcoxon p = 0.055", "NOT significant", "+2.14 pp [0.23, 4.05], p = 0.010"):
+        assert needle in prim, needle
+    greedy = next(v for m, v in opt.items() if m.startswith("SA (mean of 3 seeds) - greedy"))
+    assert "N = 8: +2.45 pp" in greedy and "N = 10: +10.16 pp" in greedy
+    assert any(m.startswith("N*:") for m in opt)
+    pack = next(v for m, v in opt.items() if m.startswith("packing failures"))
+    assert "SA never failed where a packing is known to exist" in pack
+    sq = next(v for m, v in opt.items() if m.startswith("search quality"))
+    for needle in ("N 4 -1.0 %", "N 6 -0.5 %", "N 8 -1.8 %", "14/15 instances"):
+        assert needle in sq, needle
+    assert any(m.startswith("objective trade-off") for m in opt)
+    elig = next(v for m, v in opt.items() if m.startswith("eligible wall for the patient arms"))
+    for needle in ("26.5 %", "9 of the 32", "67.3 %", "32/32", "23 tiles on that eligible area", "34 on the whole"):
+        assert needle in elig, needle
+    assert "pending" not in elig
+    patient = next(v for m, v in opt.items() if m.startswith("patient"))
+    for needle in ("as implanted:", "N = 8 count fit:", "6 full + 4 half fit (PENDING OPERATIVE RECORD):", "optimized for RIND5, mean of the SA seeds",
+                   "optimized for RIND5, best seed", "optimized for CTV_GT, mean of the SA seeds", "optimized for CTV_GT, best seed (seed 1)",
+                   "CTV_GT 98.2 % / 6783 cGy", "IMPLANT_REACH(10) 96.0 % / 6700 cGy", "SA 47.7 s"):
+        assert needle in patient, needle
+    assert "sa_seed" not in patient                  # per-seed rows live in Table S4 only
+    s4 = _rows(out / "tableS4_optimizer.csv")
+    blocks = {r["block"] for r in s4}
+    for b in ("V3 search quality (lambda_tail 0, reduced grid, exact bound)", "V3 objective trade-off (lambda_tail 1, reduced grid, exact bound)",
+              "V4 discretisation", "V5 sensitivity", "V6 phantom (as placed vs optimized)", "V7 runtime", "V8 failure modes", "V8 packing failures", "capacity"):
+        assert b in blocks, b
+    assert any("CEILING CAVEAT" in r["value"] for r in s4 if r["block"] == "V5 sensitivity")
+    assert sum(r["block"] == "patient (F8)" and "seed" in r["item"] for r in s4) >= 6
+
+
 def test_campaign_rows_are_pending_until_the_files_land(built):
     _, out, _, _ = built
     rows = _rows(out / "table3.csv")
@@ -158,9 +198,12 @@ def landed_root(tmp_path_factory):
     hdr = "# script: scripts/patient_optimize.py\n# command: python scripts/patient_optimize.py <test>\n# commit: 1234abc\n"
     cols = ["arm", "sa_seed", "RIND5_gtcore_V100", "RIND5_gtcore_D90_cGy", "CTV_GT_V100", "CTV_GT_D90_cGy",
             "REACH10_V100", "REACH10_D90_cGy", "n_overlaps", "n_tiles", "n_full", "n_half"]
-    data = [["as_implanted", "", "0.387", "2653", "0.917", "6167", "0.960", "6700", "0", "6", "6", "0"],
+    data = [["as_implanted", "", "0.387", "2653", "0.917", "6167", "0.960", "6700", "", "", "", ""],
+            ["optimized_rind5_sa_seed1", "1", "0.500", "3400", "0.760", "4800", "0.780", "4950", "0", "8", "8", "0"],
+            ["optimized_rind5_sa_mean", "", "0.500", "3400", "0.760", "4800", "0.780", "4950", "0", "8", "8", "0"],
             ["optimized_rind5_sa_best", "1", "0.500", "3400", "0.760", "4800", "0.780", "4950", "0", "8", "8", "0"],
-            ["optimized_ctv_gt_sa_best", "2", "0.420", "2900", "0.950", "6500", "0.970", "6900", "0", "8", "8", "0"]]
+            ["optimized_ctvgt_sa_mean", "", "0.410", "2890", "0.940", "6450", "0.960", "6850", "0", "8", "8", "0"],
+            ["optimized_ctvgt_sa_best", "2", "0.420", "2900", "0.950", "6500", "0.970", "6900", "0", "8", "8", "0"]]
     with open(root / "docs" / "figures" / "optimize" / "data" / "f8_patient_summary.csv", "w", newline="", encoding="utf-8") as fh:
         fh.write(hdr)
         w = csv.writer(fh)
@@ -182,11 +225,13 @@ def test_campaign_files_landing_replace_the_pending_rows(landed_root, tmp_path, 
     patient = [r for r in t3.rows if r.cells["metric"].startswith("patient")]
     assert len(patient) == 1 and not patient[0].locator.startswith("pending:")
     v = patient[0].cells["value"]
-    for needle in ("as_implanted", "optimized_rind5_sa_best", "optimized_ctv_gt_sa_best", "CTV_GT 76.0 % / 4800 cGy", "RIND5(gtcore) 38.7 % / 2653 cGy"):
+    for needle in ("as implanted:", "optimized for RIND5, best seed (seed 1)", "optimized for CTV_GT, mean of the SA seeds",
+                   "optimized for CTV_GT, best seed (seed 2)", "CTV_GT 76.0 % / 4800 cGy", "RIND5(gtcore) 38.7 % / 2653 cGy"):
         assert needle in v, needle
+    assert "sa_seed1" not in v                       # per-seed rows go to Table S4 only
     t4 = tables["table4"]
     assert [r.cells["seconds"] for r in t4.rows] == ["38.1", "17.6"]
     assert "AMD Ryzen 5 7600X" in t4.preamble[0]
     caps = [r for r in tables["caption_numbers"].rows if r.cells["figure"] == "F8" and r.cells["panel"] == "b"]
-    assert sum(not r.locator.startswith("pending:") and "optimized" in r.cells["item"] for r in caps) == 2
+    assert sum(not r.locator.startswith("pending:") and "optimized" in r.cells["item"] for r in caps) == 4   # mean + best per family
     assert pt.check(repo, str(tmp_path)) == 0

@@ -1,11 +1,9 @@
 """The committed tree carries no machine path, patient folder name, pseudonym
 or DICOM header value (``scripts/check_no_identifiers.py``).
 
-The campaign-owned files (``scripts/validation_optimize.py``,
-``docs/optimize-notes.md``, ``docs/figures/optimize/``) are allowlisted inside
-the script while the Phase 4 campaign runs.  TODO(coordinator): after the
-campaign merges, scrub them, delete ``ALLOWLIST`` and this note; the strict
-test below then becomes the only one.
+No file is allowlisted: the campaign-owned files were scrubbed after the
+Phase 4 merge (Phase 5 ``finish-tables-scrub``), so the strict run is a normal
+test.
 """
 from __future__ import annotations
 
@@ -35,8 +33,6 @@ def test_repository_tree_is_clean():
     assert r.returncode == 0, "forbidden identifiers in the tree:\n" + r.stdout + r.stderr
 
 
-@pytest.mark.xfail(strict=False, reason="campaign-owned files are allowlisted until the "
-                   "Phase 4 campaign merges; TODO(coordinator): remove the allowlist")
 def test_repository_tree_is_clean_strict():
     r = subprocess.run([sys.executable, SCRIPT, "--root", REPO, "--strict"],
                        capture_output=True, text=True, timeout=600)
