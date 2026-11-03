@@ -499,7 +499,7 @@ def sanitised_command(args) -> str:
         parts.append("--crop-mm %g" % args.crop_mm)
     if getattr(args, "skip_phantom_to_patient", False):
         parts.append("--skip-phantom-to-patient")
-    parts.append("--out %s" % getattr(args, "out", "docs/figures/data"))
+    parts.append("--out %s" % str(getattr(args, "out", "docs/figures/data")).replace("\\", "/"))
     return " ".join(parts)
 
 
@@ -865,8 +865,11 @@ def run(ct: Volume, ct_body, ct_seeds_ras, gtcore_cavity, cav_post, mris: Dict[s
         "dice_head_masks_common_fov: the same restricted to the voxels the carried MR covers (the scans cover different extents of head and neck)",
         "# bone_over_brain: median MR intensity inside CT bone (> 300 HU) over the median inside CT brain (0-80 HU); "
         "same patient and aligned -> clearly < 1",
+        "# MR -> CT: stage 1 = whole head (stage1_*), stage 2 = from that pose with the metric on gtcore's CT skull + cranial "
+        "interior grown %g mm (the reported pose; stage1_to_final = how far stage 2 moved it); stability_* = stage 2 repeated with "
+        "sampling seed %d (pose difference; largest displacement of a cranium point)" % (CRANIUM_MARGIN_MM, STABILITY_SEED),
         "# PH0 -> PT-intraMRI: multi-start over the 24 cube orientations about the printed cavity centroid, placed on the "
-        "Cav_Post centroid carried into the MRI; metric samples restricted to the plastic + 3 mm rim + printed cavity"],
+        "Cav_Post centroid carried into the MRI (starts = number of starts); metric samples restricted to metric_region"],
         reg_cols, reg_records)
     write_csv(vol_csv, hdr + [
         "# one row per cavity volume quoted in Table 1 / the F3 caption; rule = how the mask was made; grid_mm = the voxel grid it was counted on",
