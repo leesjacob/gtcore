@@ -1480,3 +1480,212 @@ are the Phase 1 set (13 interface placeholders + the `GT_E2E`-gated run);
 66dc856 (targets + rt-io) during this run; not merged here by the
 coordinator's instruction (conflicts in `metrics.py` / `hrctv.py` resolved
 at merge).
+
+## 2026-11-03 — Phase 3 — engine QA vs TG-43U1S2 and Paper 1 cross-check (task `engine-qa`, branch `p2/engine-qa`)
+
+Pins `gtcore.dose.engine.TG43Engine("tg43u1s2")` to the TG-43U1S2 consensus
+dataset for the IsoRay model CS-1 Rev2 131Cs source (Rivard et al., Med Phys
+44(9):e297, 2017, doi 10.1002/mp.12430; erratum Med Phys 45(2):971, 2018, doi
+10.1002/mp.12728) and cross-checks it against Paper 1's engine. Supplement S3
+material and one Table 3 row. No patient data; everything here is synthetic
+geometry and published tables. Worktree `gt-worktrees/p2-engine-qa`, from
+`paper2/integration` e13a4af.
+
+### Delivered
+
+| Item | Where | Commit |
+|---|---|---|
+| Fixture package: consensus tables as embedded in Paper 1 (`tg43u1s2_cs1rev2.json`, provenance header), erratum Table XII polar QA table (`tg43u1s2_table_xii_erratum.csv`, 143 points), along-away Table XXIII as printed (`tg43u1s2_along_away.csv`, 149 points); loaders; `extract_paper1_interpolator()` (ast slice of the class, exec with numpy only -- Paper 1's code is never imported or copied) | `gtcore/dose/qa_data/` | `29295c5` |
+| Cross-check script (writes the fixtures, compares tables entry by entry, both QA tables with both engines, (r, theta) grid, 32-seed cloud, port-notes probes) | `scripts/engine_crosscheck.py` | `29295c5` |
+| `[tool.setuptools.package-data]` stanza so the fixtures ship with the package (shared file, 4 lines) | `pyproject.toml` | `29295c5` |
+| 15 tests | `tests/test_dose_engine_qa.py` | `7bcc1ba` |
+| S3 rows + per-point QA tables (`engine_crosscheck.csv`, `engine_qa_table_xii.csv`, `engine_qa_table_xxiii.csv`, `#` headers with script / command / commit / gtcore path) | `docs/figures/data/` | `9bc7d20` |
+
+### Sources, and what could and could not be verified
+
+- **Paper 1's engine**: `GammaTile.py` of the GammaTileDosimetry clone (commit
+  `ac47ad6b`, 2026-11-02), class `DoseInterpolator` lines 26-264, dataset
+  `"TG43U1S2"`. The class needs only numpy, so it is sliced out with `ast` and
+  executed alone; the file itself imports slicer/vtk/qt and cannot be imported.
+  Its `tests/tg43_qa_check.py` embeds the erratum-corrected Table XII (143 values)
+  and states so; those values are read with `ast.literal_eval`.
+- **The report**: both Wiley DOI pages return HTTP 403. IROC Houston hosts a
+  free PDF of the 2017 report (`irochouston.mdanderson.org/RPc/BrachySeeds/
+  TG-43-Supplement-2.pdf`, 43 pages); its text was extracted with `pypdf`
+  6.21.4 (installed into the venv for this step only; not a gtcore
+  dependency) and Tables AI, AII, AXIII (consensus), XII and XXIII (QA) were
+  parsed and compared programmatically (`verify_report_tables.py`, scratch; the
+  Table XXIII parser is in the script).
+- **The 2018 erratum**: not retrievable (paywalled; no free copy on IROC, AAPM
+  or PMC). Its content is therefore known only through Paper 1's transcription
+  of Table XII, which is validated indirectly below.
+
+### Consensus tables: Paper 1 vs gtcore vs the printed report (209 entries)
+
+| Quantity | Paper 1 (`DoseInterpolator`) | gtcore (`TG43U1S2_CONSENSUS`) | Report (IROC PDF) | Result |
+|---|---|---|---|---|
+| Lambda | 1.056 | 1.056 | Table AI: 1.056 +/- 0.013 | identical |
+| L | 0.40 cm | 0.40 cm | Table AI: 0.40 | identical |
+| g_L(r), 16 radii 0.1-10 cm | Table AII | same values | Table AII, CS-1 Rev2 column | identical, all 16 |
+| F(r, theta) axes | 15 angles x 10 radii | same | Table AXIII (14 printed rows + 90 deg = 1 by definition) | identical |
+| F(r, theta) values, 143 tabulated + 7 holes | | | | **one difference** (below); hole pattern identical (r = 0.1 cm, theta <= 20 deg) |
+| **F(theta = 80 deg, r = 7 cm)** | **0.999** | **0.998** | **0.998** (80 deg row: 1.000 0.998 0.998 0.997 0.998 0.999 0.999 0.999 0.998 0.998) | gtcore matches the report; Paper 1 has a transcription slip. Effect: +0.100 % on Paper 1's rate at that node only (Paper 1's own QA residual there is +0.200 % vs +0.100 % for gtcore) |
+| phi_an(r) (Table AXIV) | not embedded | not embedded | -- | nothing to compare (both engines are 2-D only; no 1-D mode by decision) |
+| Dose conversion | 335.48 h x 3.5 U | tau = 232.536 h / ln 2 = 335.4785 h, S_K a parameter | Table XXIV T1/2 = 9.689 d | -4.4e-4 % |
+| CLRP v2 tables (bonus) | `_CLRP_*` | `CLRP_V2` and `tg43.py` v1 | -- | identical (7 fit coefficients, 32 x 12 F, axes) |
+
+The fixture JSON keeps Paper 1's 0.999 (it documents Paper 1's engine) and the
+test `test_anisotropy_table_matches_fixture_except_documented_entries` pins
+exactly this one difference, so a change on either side has to be deliberate.
+Suggested fix in Paper 1's repository: `_CON_F_TABLE[13][8]` 0.999 -> 0.998
+(not done here; that repository is outside this task).
+
+### The published QA tables
+
+**Table XII (polar, erratum).** The 2017 print, read from the IROC PDF, is
+defective in exactly the way an erratum would fix: its 13 angle rows are
+labelled 0, 5, 10, ..., 90 but hold the rows for 0, 2, 5, 7, 10, 15, 20, 25,
+30, 40, 50, 60, 70 deg; the 80 and 90 deg rows and the 10 cm column are
+absent; and the 0.7 cm column differs by 0.1-0.5 % in 8 of 13 rows (print ->
+erratum: 1.935 -> 1.933, 1.826 -> 1.824, 1.692 -> 1.689, 1.650 -> 1.648,
+1.747 -> 1.745, 1.864 -> 1.861, 1.957 -> 1.955, 2.11 -> 2.10). Every other
+printed value equals Paper 1's erratum transcription. At 0.7 cm gtcore gives
+2.0404 / 1.9322 / 1.8228 / 1.6895 / 1.6480 / 1.7449 / 1.8615 for 0-20 deg,
+i.e. the erratum values to their 3-4 significant figures. This also explains
+the `docs/tg43-port-notes.md` remark that the printed table was "inconsistent
+with its own consensus parameters (0.75 cm column 13 % low, 0.1 cm column 7 %
+high)": the column is 0.7 cm, not 0.75, and the 0.1 cm values sit in
+mislabelled rows. Paper 1's transcription is therefore validated by structure
+(the full 15 x 10 layout) and by the engine (all 143 values within rounding),
+even though the erratum text itself was not read.
+
+**Table XXIII (along-away, as printed).** Rows are along (0-7 cm, 0.5 cm
+steps), columns away (0, 0.5, 1, 1.5, 2, 3, 4, 5, 6, 7 cm); the (0, 0) cell
+is blank; 149 values. Which axis is which is fixed by the data (the along = 0
+row holds the transverse rates 4.10, 1.056, ... = Table XII's 90 deg column;
+asserted in the test). Whether the erratum touched this table is unknown; the
+printed values agree with Eq. (1) on the consensus parameters to rounding
+level under gtcore's interpolation rules (below), so it is usable as the
+along-away fixture and is flagged "2017 print, erratum status unknown" in its
+header. The brief's expected layout (along mm, away mm, dose rate cGy h^-1
+U^-1) is what `load_along_away()` documents and reads.
+
+| QA table | Engine | n | max abs | median abs | p95 abs | worst point |
+|---|---|---|---|---|---|---|
+| XII (erratum) | gtcore exact | 143 | 0.286 % | 0.054 % | 0.190 % | r = 5 cm, 80 deg (published 0.0222: half a unit in the last place is 0.23 %) |
+| XII (erratum) | Paper 1 | 143 | 0.286 % | 0.054 % | 0.193 % | same point |
+| XII nodes | gtcore vs Paper 1 | 143 | 0.100 % | 0 | 7e-5 % | (7 cm, 80 deg) = the table difference; all other nodes bit-identical |
+| XXIII (print) | gtcore exact | 149 | 0.244 % | 0.066 % | 0.164 % | along 70 mm, away 70 mm |
+| XXIII (print) | Paper 1 | 149 | 1.01 % | 0.301 % | 0.780 % | along 70 mm, away 50 mm (linear g_L) |
+| XXIII points | gtcore vs Paper 1 | 149 | 0.872 % | 0.387 % | 0.762 % | along 65 mm, away 70 mm |
+
+Per-point files: `docs/figures/data/engine_qa_table_xii.csv`,
+`engine_qa_table_xxiii.csv`.
+
+### Cross-check gtcore vs Paper 1's engine (rel = gtcore / Paper 1 - 1)
+
+Grid r = 0.3-10 cm (60 log-spaced radii + table nodes = 73), theta = 0-90 deg
+(0.5 deg + nodes = 181), 13 213 points; cloud: 32 random seeds in a 40 mm
+cube, 1000 uniform points in an 80 mm cube, `default_rng(0)`, S_K 3.5 U.
+
+| Row (S3) | n | max abs | median abs | p95 abs | where / note |
+|---|---|---|---|---|---|
+| grid, all points, exact engine | 13 213 | 0.861 % | 0.0061 % | 0.705 % | r = 9.42 cm, 80 deg |
+| grid, common table nodes (r in g and F nodes, theta in F nodes) | 105 | 0.100 % | 0 | 2e-14 % | only the F(7, 80) entry; arithmetic otherwise bit-identical |
+| grid, between g_L nodes | 10 860 | 0.861 % | 0.019 % | 0.765 % | Paper 1 linear vs gtcore log-linear g_L (TG-43U1S1 Eq. 3); peaks in the 9-10 cm interval (0.874 % at 9.5 cm, 90 deg) |
+| grid, near axis theta < 5 deg | 730 | 0.842 % | 0.0036 % | 0.705 % | no near-axis-specific difference for r >= 0.3 cm |
+| grid, theta >= 5 deg | 12 483 | 0.861 % | 0.0061 % | 0.705 % | |
+| grid, r in [0.3, 1) cm | 4 344 | 0.0036 % | 0.0006 % | 0.0036 % | |
+| grid, r in [1, 3) cm | 3 801 | 0.301 % | 0.019 % | 0.288 % | |
+| grid, r in [3, 6) cm | 2 715 | 0.692 % | 0.314 % | 0.667 % | |
+| grid, r in [6, 10] cm | 2 353 | 0.861 % | 0.347 % | 0.842 % | |
+| grid, gtcore tabulated kernel (compute_dose_grid default) | 13 213 | 0.858 % | 0.010 % | 0.703 % | kernel-table error adds ~0.004 % median |
+| cloud, summed rate per U, all 1000 points | 1 000 | 11.4 % | 0.258 % | 0.420 % | the 11 % point is 1.11 mm from a seed centre (capsule projection vs Paper 1's raw geometry) |
+| cloud, points >= 3 mm from every seed | 992 | 0.512 % | 0.259 % | 0.420 % | |
+| cloud, total-decay dose, each engine's own conversion | 1 000 | 11.4 % | 0.258 % | 0.421 % | tau difference -4.4e-4 % |
+| cloud, gtcore tabulated kernel vs Paper 1 | 1 000 | 11.4 % | 0.257 % | 0.419 % | |
+
+Reading: away from the seeds the two engines agree at interpolation level
+(< 1 % everywhere on the grid, 0.51 % max / 0.26 % median in the cloud), and
+the whole of the off-node difference is one documented rule -- Paper 1
+interpolates the tabulated g_L linearly in r, gtcore log-linearly as
+TG-43U1S1 Sec. III.C prescribes. At the table nodes the arithmetic is
+bit-identical. The expectation in PHASE3_PLAN ("agreement to
+interpolation-level < 1 %") is met; the dose scale in the cloud was median
+15 cGy, max 1 229 cGy, min 2.6 cGy.
+
+### Known port-notes behaviours: still present in Paper 1's source?
+
+| Probe (theta, r) | gtcore | Paper 1 | Status |
+|---|---|---|---|
+| reference point (90 deg, 1 cm) | 1.056 | 1.056 | both = Lambda |
+| on axis inside the can (0 deg, 0.15 cm) | 112.7 | **0** | item 1 still present in Paper 1 (1/(r^2 - L^2/4) < 0, clamped to 0); gtcore projects to the capsule end face |
+| active tip (0 deg, 0.20 cm) | 61.66 | 652.2 | Paper 1's clamped-denominator spike; inside the titanium (no tissue) |
+| (0 deg, 0.21 cm) | 61.66 | 159.4 | same pole, inside the can |
+| just outside the can (0 deg, 0.23 cm) | 50.834 | 50.836 | -0.003 % (g_L rule only) |
+| NaN-hole region (0 deg, 0.1 cm) | 161.3 | 0 | both borrow F from 0.25 cm (identical fill); Paper 1 reads 0 for the geometry reason above |
+| NaN-hole region (20 deg, 0.1 cm) | 176.1 | 171.8 | +2.6 %: gtcore evaluates at the capsule surface; inside the can |
+| radial floor ring (90 deg, 0.045 cm) | 136.2 | 154.0 | -11.6 %: Paper 1 clips r at 0.041 cm, gtcore floors at 0.05 cm (0.09 mm ring beside the capsule side) |
+| between g_L nodes (90 deg, 9.5 cm) | 0.0020045 | 0.0020222 | -0.87 % (the interpolation rule) |
+| beyond the data (90 deg, 12 cm) | 6.47e-4 | 1.584e-3 | -59 %: Paper 1 clips r to 10 cm, freezing the whole rate (item 5); gtcore follows TG-43U1S1 Eq. 4 and 1/r^2 |
+| beyond the data (90 deg, 15 cm) | 1.87e-4 | 1.584e-3 | -88 %, as above |
+
+All rates in cGy h^-1 U^-1. Items 1, 4 and 5 of `docs/tg43-port-notes.md`
+are confirmed still present in Paper 1's engine and absent from gtcore; none
+of them affects a point in tissue except the far-field freeze, which
+over-estimates Paper 1's dose beyond 10 cm (about 1.9 cGy per seed there,
+i.e. < 60 cGy for 32 seeds -- not a clinical concern, recorded for S3).
+
+### Tests (`tests/test_dose_engine_qa.py`, 15)
+
+Fixture provenance; Lambda, L, T1/2 and tau vs fixture; g_L table exact; F
+table exact except the pinned (80 deg, 7 cm) entry, hole pattern; engine
+reproduces every g_L and F node exactly (atol 1e-12); holes filled from
+0.25 cm and all inside the capsule; g_L interpolation monotone and bounded in
+every interval, nearest-neighbour below 0.1 cm; F bilinear bounded by its
+four corners (4000 random points); D(1 cm, 90 deg) = Lambda * S_K for S_K =
+1 and 3.5 U through `dose_rate`, `dose_at_points` / tau and
+`total_dose_at_point`; Table XII reproduced within 0.5 % at all 143 points
+(median < 0.1 %), reference node = Lambda; Table XXIII within 0.5 % at all
+149 points (median < 0.1 %), along = 0 row equals Table XII's 90 deg column,
+skipped with the expected CSV layout in the reason if the file is absent;
+Paper 1's linear-g_L rule vs gtcore on the fixture: 0 at the nodes, < 1 %
+everywhere, 0.874 +/- 0.02 % peak between 9 and 10 cm; live cross-check
+against the extracted Paper 1 class (nodes rel 1e-9 except the pinned
+entry; off-node and 32-seed cloud < 1 %; Paper 1's near-axis zero and 10 cm
+freeze still present) -- runs only when `GT_PAPER1_ENGINE` names Paper 1's
+`GammaTile.py` or its clone root, otherwise skipped with that reason.
+Tolerances: 0.5 % for the QA tables (3-4 significant figures: half a unit in
+the last place of 0.0222 is 0.23 %; measured 0.29 % / 0.24 %) and 1.0 % off
+the nodes (measured 0.86 %, deterministic).
+
+### Commands
+
+```
+# from the worktree root, PYTHONPATH set to it (import-trap rule)
+python scripts/engine_crosscheck.py --paper1 <GammaTileDosimetry clone> --write-fixtures --table-xxiii-text <pypdf text of the IROC-hosted report PDF>
+# (the text file: pypdf PdfReader(...).pages[i].extract_text() of TG-43-Supplement-2.pdf, one '===== PAGE n =====' marker per page)
+python -m pytest -q tests/test_dose_engine_qa.py                                               # 14 passed, 1 skipped
+GT_PAPER1_ENGINE=<GammaTileDosimetry clone> python -m pytest -q tests/test_dose_engine_qa.py   # 15 passed
+GTCORE_STRICT=1 GT_PAPER1_ENGINE=<clone> python -m pytest -q -p no:cacheprovider               # full suite, line below
+```
+
+Script run at `29295c5` (headers say so): `gtcore.__file__` =
+`<worktree>/gtcore/__init__.py`, Paper 1 clone `ac47ad6be`.
+
+### Pending / for the coordinator
+
+- The erratum text (Med Phys 45:971) is still not in hand; Table XII rests on
+  Paper 1's transcription, validated indirectly as above. Table XXIII is the
+  2017 print; if Jacob obtains the erratum, re-run `--write-fixtures` with any
+  corrected along-away values and the test picks them up.
+- Paper 1's repository has the F(7 cm, 80 deg) slip (0.999 -> 0.998); fix it
+  there when convenient. Both papers then rest on one verified dataset.
+- Table 3 row suggestion: "Engine QA vs TG-43U1S2: all 143 Table XII points
+  within 0.29 % (median 0.05 %); all 149 along-away points within 0.25 %; vs
+  Paper 1's engine bit-identical at the table nodes, <= 0.86 % between g_L
+  nodes (interpolation rule), <= 0.51 % on a 32-seed cloud >= 3 mm from the
+  seeds." Calibration/held-out flag: not applicable (published tables).
+- Shared file touched: `pyproject.toml` (package-data stanza only).
+- Installed into the venv: `pypdf` 6.21.4 (PDF text extraction for the
+  verification; not used by gtcore, not declared).
