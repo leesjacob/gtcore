@@ -5392,3 +5392,19 @@ The one failure, `tests/test_paper_tables.py::test_campaign_rows_are_pending_unt
 pre-existing on `paper2/integration` c06b533 (same failure there, 1 failed / 10 passed in that file): the test
 expects the word "three arms" in the patient Table 3 row, which `paper_tables.py` now words "as implanted /
 optimized for RIND5 / optimized for CTV_GT". Not a paper_figures file; left to the paper-tables owner.
+
+### F8(b) display model and tile palette (third review, 2026-11-03)
+
+Code commit after `e7eb5af` (`git log -1 -- scripts/paper_figures.py`); manifest rendered at that commit.
+- F8(b): each optimized tile is now drawn as the bent-sheet tile model -- `gtcore.tiles.deform.fit_deformable`
+  through its 4 conformed seed positions and axes, `deformed_surface_grid` at the tissue face (3 mm toward the wall),
+  the same construction as the fitted sheets of F4(b)/F8(a) -- instead of the wall-draped patch. Seeds are drawn at
+  their exact optimized positions; the model's seed-position RMS per tile is in the manifest
+  (`display_sheet_fit_rms_mm`: RIND5 family 0.7-1.7 mm, CTV_GT family 0.6-2.9 mm -- the conformer drapes
+  non-isometrically, so the seeds are not exactly on a developable sheet).
+- Tile palette (one rule for F4b / F4c / F8a / F8b): 8 hues = Okabe-Ito orange, blue, yellow, reddish purple,
+  bluish green, sky blue + Tol indigo #332288 + Tol dark brown #661100 (grey = cavity, vermilion = leftovers /
+  degraded tile, black = seeds are reserved); ordered so neighbouring slots differ strongly; tiles take the
+  slots in order of their centre's on-screen angle around the implant centroid from the panel's stored camera.
+  Min pairwise OKLab dE x100 (Machado CVD simulation): normal 17.0, deuteranopia 7.6 (purple / green, never
+  adjacent slots), protanopia 9.6, tritanopia 8.5. Camera unchanged (one per cavity).
