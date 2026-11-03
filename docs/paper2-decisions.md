@@ -304,3 +304,27 @@ configuration with 8 tiles exists on every cavity — reported in V8 as the
 optimizer's main failure mode (a feasibility-first start is the obvious fix and is
 future work, not done here). F8(a) moves to S4 (already decided in v7); Table 3
 carries the primary endpoint as measured, not the rev-1 number.
+
+## 2026-11-03 — correction to the V2 entry: packing failures are grid-capacity limits (campaign)
+
+`scripts/packing_failures.py` (campaign e2d4bc3): at N ≤ 8 every SA packing failure in
+V2 is on a cavity where the same-candidate V100 bound **proved that no N-packing exists
+on the candidate grid** (N = 6: 5/18 cavities, N = 8: 6/18; all 0.8-scale cavities).
+Greedy and SA never miss an existing packing there. The truth configurations are
+continuous placements, not grid placements, so "a truth configuration exists" does
+not imply a grid packing exists; the previous entry's wording ("fails … although a
+truth configuration exists") is withdrawn. The limitation to report is the candidate
+grid's capacity on small cavities (V8 table; capacity rows), not the solver. N = 10
+and 12 are classified once the capacity rows land.
+
+## 2026-11-03 — patient run smoke (1 SA seed; final numbers come from the campaign commit)
+
+Eligibility = craniotomy (facing + line of sight, 26.5 %) ∪ 10 mm demonstrated reach
+→ 67.3 % of the wall; 32/32 implanted seeds on eligible wall (craniotomy term alone
+9/32). Arms (`RIND5(gtcore)` V100/D90 | `CTV_GT` | `IMPLANT_REACH(10)`): as implanted
+0.387/2653 | 0.917/6167 | 0.960/6700; optimized for `RIND5` 0.503/3141 | 0.855/5706 |
+0.885/5898; **optimized for `CTV_GT` 0.454/3147 | 0.976/6739 | 0.980/6867** — 8 tiles,
+0 overlaps each. The optimizer given the physician's target improves on the implant
+on all three targets; given the full rind it trades `CTV_GT` for rind coverage. The
+F8 panel pair suggested for the main text: as implanted vs optimized for `CTV_GT`
+(same target the physician planned to), with the `RIND5` arm in S4 / Table 3.
