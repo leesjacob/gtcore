@@ -5362,3 +5362,27 @@ wall time an upper bound): **`1157 passed, 15 skipped, 1 xfailed, 15536 warnings
 `tests/test_export_figures_medphys.py`: 9 passed in 1.5 s. `scripts/check_no_identifiers.py`: 0 forbidden hits.
 Nothing installed; no shared file touched (`pyproject.toml`, `tests/conftest.py`, `README.md`).
 The `--render` dry run rewrote `docs/figures/manifest.json` in the worktree; that was reverted, not committed.
+
+### Campaign panels: F8(b), S4, F8(a) numbers (2026-11-03, after the campaign merge)
+
+`paper2/integration` (c06b533) merged in; code commit `a1b9fb4`, render at `a1b9fb4`.
+
+- **F8(b)** `f8b_optimized_rind5`, `f8b_optimized_ctvgt` from `f8b_patient_optimized.npz` (commit 085fe60): one render
+  per optimized family, best SA seed of each (rind5 seed 0, ctvgt seed 1; the NPZ's `opt_<family>_sa_seed` is checked
+  against `f8_patient_summary.csv` `*_sa_best`, mismatch = error), same patient camera, mesh, style and palette as
+  F4(b)/F8(a). The committed tile sheets are draped on the voxel-scale gtcore wall and render with spikes; they are
+  display-smoothed on their 9 x 9 grid (Taubin, 60 lambda/mu pairs; position and overall curvature kept; committed
+  geometry unchanged). The eligible-wall tint is omitted (the union is 67.3 % of the wall area; it does not read).
+- **F8 numbers** (`f8_patient_summary.csv`, commit 085fe60; manifest key numbers, for the Inkscape titles):
+
+| arm | RIND5(gtcore) V100 / D90 | CTV_GT V100 / D90 | IMPLANT_REACH(10) V100 / D90 | tiles / overlaps |
+|---|---|---|---|---|
+| as implanted (F8a) | 0.387 / 2653 cGy | 0.917 / 6167 cGy | 0.960 / 6700 cGy | — |
+| optimized for RIND5 (best SA seed 0) | 0.503 / 3141 cGy | 0.855 / 5706 cGy | 0.885 / 5898 cGy | 8 / 0 |
+| optimized for CTV_GT (best SA seed 1) | 0.416 / 3165 cGy | 0.982 / 6783 cGy | 0.992 / 7073 cGy | 8 / 0 |
+
+- **S4** `s4_v100_vs_n` from `optimize/data/v2_summary.csv` (commit d2d455e): RIND5 V100 (final 1 mm report grid)
+  mean +- SD across cavities for uniform, greedy, SA (mean of 3 seeds) and the V100 bound (same candidates), grey
+  dashed reference at 0.90, legend below the axes, single column 3.35 x 2.9 in. All columns needed were in
+  v2_summary.csv (v2_rows.csv not used). SA 0.356 / 0.581 / 0.812 / 0.981 / 1.000 at N = 4 / 6 / 8 / 10 / 12; bound
+  0.377 / 0.570 / 0.739 at N = 4 / 6 / 8 (bound only to 8); n_cav per point in the manifest (infeasible cavities drop out).
