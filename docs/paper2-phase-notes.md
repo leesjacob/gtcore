@@ -1789,3 +1789,7 @@ below.
 - `docs/clinical-validation-notes.md` §2 still says "the 8 leftover seeds form no
   square quads (crumpled or stacked tiles the bent-tile model does not explain)";
   the sentence above supersedes it (Phase 5 wording scrub).
+
+Full suite on the final tree (`b20ae00`, same command, one job): **`951 passed,
+14 skipped, 15243 warnings in 593.86s (0:09:53)`**, exit 0 — 950 of `788df9d` plus
+the layer-class test added at `afb96ea`.
