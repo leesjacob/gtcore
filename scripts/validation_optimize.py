@@ -200,6 +200,10 @@ BOUND_ARM = "v100_bound"
 # lower-tail term is dropped for the call (extra["lambda_tail_dropped"]) -- so
 # it is a bound on V100, not on the P1 objective; labelled as such everywhere.
 ARM_ALIASES = {"milp": BOUND_ARM}
+SA_LAMBDA_TAIL: Optional[float] = None
+# ``--sa-lambda-tail x`` (coordinator 2026-11-03): the SA arm alone runs on an objective with
+# lambda_tail = x (0 = pure V100, the V100 bound's own objective -- isolates search quality from the
+# objective trade-off in V3); every other arm and the bound are unchanged; rows carry sa_objective.
 PRIMARY_METRIC = "RIND5_V100"
 # Column names (Paper 2 Phase 4): RIND5_* = volumetric HR-CTV on the final 1 mm
 # grid (final_report metrics_grid["RIND5"]); S5_* = +5 mm shell vertices
@@ -965,7 +969,11 @@ def run_arm(arm: str, inst: Optional[Dict[str, Any]], n: int, sa_seed: int,
         kw = dict(sa_kw or {})
         if start is not None:
             kw["start"] = np.asarray(start, dtype=int)
-        res = plan.solve_sa(inst["objective"], n, seed=int(sa_seed), candidates=cand, **kw)
+        obj = inst["objective"]
+        if SA_LAMBDA_TAIL is not None:
+            obj = plan.make_objective(inst["influence"], inst["conflicts"], rx_cgy=RX_CGY,
+                                      lambda_tail=float(SA_LAMBDA_TAIL))
+        res = plan.solve_sa(obj, n, seed=int(sa_seed), candidates=cand, **kw)
         sel = res.selection
     elif arm == BOUND_ARM:
         if same_candidates:
@@ -1103,6 +1111,8 @@ def csv_header(cfg, section: str, what: str, datasets: str = "synthetic cavities
             "RIND5_* = volumetric HR-CTV RIND5(cavity, clip) on the final %g mm dose grid (final_report); "
             "S5_* = +5 mm shell vertices (surrogate); TGT_* = area-weighted optimizer target (surrogate); "
             "INFL_* = influence-subsample values the solver saw (not for statistics)" % GRID_MM,
+            ("SA ARM OBJECTIVE OVERRIDDEN: lambda_tail = %g for the SA arm only (--sa-lambda-tail; rows "
+             "sa_objective); " % SA_LAMBDA_TAIL if SA_LAMBDA_TAIL is not None else "") +
             "objective frozen: LAMBDA_TAIL = %g, TAIL_Q = %g; SA budget %d restarts x %d sweeps%s; "
             "v100_bound = solve_milp coverage-only (tail term dropped), same candidates as SA: %s"
             % (plan.LAMBDA_TAIL, plan.TAIL_Q, cfg.sa_kw.get("n_restarts", plan.SA_N_RESTARTS),
@@ -1543,7 +1553,11 @@ def section_v3(cfg) -> Dict[str, Any]:
             for j, sa_seed in enumerate(sa_seeds_for(cav["seed"], cfg.sa_seeds)):
                 row = dict(base, sa_seed=sa_seed, sa_rep=j,
                            sa_n_sweeps=cfg.sa_kw.get("n_sweeps", plan.SA_N_SWEEPS),
-                           sa_n_restarts=cfg.sa_kw.get("n_restarts", plan.SA_N_RESTARTS))
+                           sa_n_restarts=cfg.sa_kw.get("n_restarts", plan.SA_N_RESTARTS),
+                           sa_objective=("sa_v100only" if SA_LAMBDA_TAIL == 0 else
+                                         ("sa_lambda_tail_%g" % SA_LAMBDA_TAIL if SA_LAMBDA_TAIL is not None
+                                          else "frozen")),
+                           sa_lambda_tail=(plan.LAMBDA_TAIL if SA_LAMBDA_TAIL is None else SA_LAMBDA_TAIL))
                 sa, r_sa = _try("sa N=%d seed %d" % (n, sa_seed), lambda: run_arm(
                     "sa", inst, n, sa_seed, sa_kw=cfg.sa_kw))
                 sa_start = "greedy"
@@ -2507,6 +2521,9 @@ def parse_args(argv=None) -> Config:
                    help="SA runs per (cavity, N) with distinct seeds (rows carry sa_seed; summary mean +- SD, best)")
     p.add_argument("--sa-sweeps", type=int, default=None, help="override gtcore.plan.SA_N_SWEEPS (smoke tests)")
     p.add_argument("--sa-restarts", type=int, default=None, help="override gtcore.plan.SA_N_RESTARTS (smoke tests)")
+    p.add_argument("--sa-lambda-tail", type=float, default=None, dest="sa_lambda_tail",
+                   help="lower-tail weight of the SA arm's objective only (default: the frozen LAMBDA_TAIL); "
+                        "0 = pure V100 (rows labelled sa_v100only) -- the V3 like-for-like row set")
     p.add_argument("--h-mm", type=float, default=H_MM, help="V2 anchor spacing (default %g)" % H_MM)
     p.add_argument("--n-spins", type=int, default=N_SPINS, help="V2 spins per anchor (default %d)" % N_SPINS)
     p.add_argument("--m-opt", type=int, default=M_OPT, help="V2 influence subsample (default %d)" % M_OPT)
@@ -2547,6 +2564,7 @@ def parse_args(argv=None) -> Config:
     cfg.same_candidates = bool(a.same_candidates)
     cfg.sa_seeds = max(int(a.sa_seeds), 1)
     cfg.sa_kw = {}
+    cfg.sa_lambda_tail = a.sa_lambda_tail
     if a.sa_sweeps is not None:
         cfg.sa_kw["n_sweeps"] = int(a.sa_sweeps)
     if a.sa_restarts is not None:
@@ -2572,6 +2590,8 @@ def main(argv=None) -> Dict[str, Any]:
     except Exception:                                                 # pragma: no cover
         pass
     cfg = parse_args(argv)
+    global SA_LAMBDA_TAIL
+    SA_LAMBDA_TAIL = cfg.sa_lambda_tail
     os.makedirs(cfg.out, exist_ok=True)
     os.makedirs(cfg.cache_dir, exist_ok=True)
     commit = git_commit()
