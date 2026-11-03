@@ -1727,5 +1727,13 @@ scatter and axis evidence above.
 ```
 python scripts/formalism_check.py "$GT_DATA_ROOT/<PT-CT1mm>" "$GT_DATA_ROOT/<PT-RT RTSTRUCT dir>" "$GT_DATA_ROOT/<PT-RT RTDOSE dir>"     # 157 s; writes docs/figures/data/formalism_*.csv
 GTCORE_STRICT=1 python -m pytest -q tests/test_formalism.py                                                                                # 25 passed
-GTCORE_STRICT=1 python -m pytest -q                                                                                                        # full suite: see below
+GTCORE_STRICT=1 python -m pytest -q    # 966 passed, 14 skipped, 15242 warnings in 501.61s (0:08:21) at 538e3f6 (980 collected = the Phase 2 tree + 25 new; other agents ran concurrently, wall time is an upper bound)
 ```
+
+### Notes for the coordinator
+
+- No shared file was touched (`pyproject.toml`, `tests/conftest.py`, `README.md`, `gtcore/dose/__init__.py` unchanged); `gtcore.dose.formalism` is imported by its full path. `scripts/validation_clinical.py` was not edited (owned by `clinical-rebuild`); it can import `angular_symmetry_test`, `rtdose_source_positions`, `match_sources_to_seeds` and `fit_sources_to_reference` from `gtcore.dose.formalism`.
+- Decision needed: which seed-axis convention the F5 / gamma comparison against the RTDOSE uses (physical PCA axes vs the TPS convention, all along S-I) -- see the Conclusion above. Either way the paper has to state that the TPS computed with S-I-aligned seeds.
+- Rev 3's "a 1D plan would give 1.29 -> 0.96" needs the amendment stated above (far field only).
+- Missing data: the RTPLAN (orientations, per-seed S_K, private calc settings); the documented command above runs the comparison when it arrives. Nothing was installed.
+- `docs/figures/data/` did not exist before this branch; `data/` is git-ignored, so the four CSVs were added with `git add -f`.
