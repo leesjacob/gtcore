@@ -4429,3 +4429,8 @@ differ from `scripts/patient_optimize.py` / `validation_optimize.py` as of 4748c
 `RIND5_gtcore_V100`, `CTV_GT_D90_cGy`, `RIND5_V100_mean`), `--check` or the builder says so. The
 F8 patient row lists every arm present in `f8_patient_summary.csv` (three expected). No shared
 file touched; nothing installed.
+
+Full suite at `676de0d` (`GTCORE_STRICT=1 python -m pytest -q -p no:cacheprovider`, worktree root;
+other agents running concurrently, wall time an upper bound): **1105 passed, 15 skipped**, 15262
+warnings in 1159.89 s (0:19:19). The 15 skips are the pre-existing gates (13 interface
+placeholders, `GT_PAPER1_ENGINE`, `GT_E2E`); `tests/test_paper_tables.py` adds 11 passed.
