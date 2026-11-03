@@ -4685,3 +4685,7 @@ Files: `docs/figures/optimize/data/f8_patient_arms.csv` (arm × structure × met
 - The phantom's capacity line for Table 3: rule 14 vs capacity at grid 10 vs placed 8 (h 4 / 6 spins; the
   eligibility-phantom section's h 2.5 numbers are a different grid).
 - Machine-path scan of every new CSV / JSON: clean. Nothing installed. No shared file touched.
+
+### Full suite at the end
+
+`GTCORE_STRICT=1 GT_PAPER1_ENGINE=<scratch>/paper1 python -m pytest -q -p no:cacheprovider` at `40a6bea`: **1095 passed, 14 skipped**, 15262 warnings in 602 s (0:10:01), no failures (same as step 0; the 14 skips are the 13 interface placeholders and the `GT_E2E` gate).
