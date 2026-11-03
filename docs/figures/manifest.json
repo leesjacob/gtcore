@@ -1,8 +1,8 @@
 {
  "script": "scripts/paper_figures.py",
  "style": "scripts/_figstyle.py",
- "script_commit": "c2ea58a",
- "generated": "2026-11-03 09:05",
+ "script_commit": "997e6da",
+ "generated": "2026-11-03 09:34",
  "dpi_png": 600,
  "out_dir": "output/figures",
  "tile_mode": "auto",
@@ -72,6 +72,10 @@
    "f2c": [
     4.2,
     1.7
+   ],
+   "f3a_single": [
+    1.65,
+    1.65
    ],
    "f3c": [
     2.6,
@@ -195,8 +199,8 @@
    "figure": "F2",
    "description": "F2(c): one tile as the bent-sheet model: flat, wall-conformed (kappa = 1/17 mm^-1 on both axes) and folded (kappa1 = 0.35 mm^-1), the collagen sheet (tissue face) as a wireframe with the 2 x 2 seeds.",
    "sources": [],
-   "script_commit": "c2ea58a",
-   "rendered": "2026-11-03 09:05",
+   "script_commit": "997e6da",
+   "rendered": "2026-11-03 09:34",
    "status": "ok",
    "outputs": [
     "output/figures/f2c_tile_model.png",
@@ -260,8 +264,8 @@
      "git_commit": "6f6c80b"
     }
    ],
-   "script_commit": "c2ea58a",
-   "rendered": "2026-11-03 09:05",
+   "script_commit": "997e6da",
+   "rendered": "2026-11-03 09:34",
    "status": "ok",
    "outputs": [
     "output/figures/f3c_phantom_slice.png",
@@ -300,8 +304,8 @@
      "git_commit": "d36db1d"
     }
    ],
-   "script_commit": "c2ea58a",
-   "rendered": "2026-11-03 09:05",
+   "script_commit": "997e6da",
+   "rendered": "2026-11-03 09:34",
    "status": "ok",
    "outputs": [
     "output/figures/f4a_seed_slice.png",
@@ -341,8 +345,8 @@
      "git_commit": "d36db1d"
     }
    ],
-   "script_commit": "c2ea58a",
-   "rendered": "2026-11-03 09:05",
+   "script_commit": "997e6da",
+   "rendered": "2026-11-03 09:34",
    "status": "ok",
    "outputs": [
     "output/figures/f4b_patient_implant.png",
@@ -416,11 +420,11 @@
      "path": "docs/figures/data/f4c_phantom_wall.npz",
      "exists": true,
      "header_commit": "102eb12",
-     "git_commit": null
+     "git_commit": "ab22718"
     }
    ],
-   "script_commit": "c2ea58a",
-   "rendered": "2026-11-03 09:05",
+   "script_commit": "997e6da",
+   "rendered": "2026-11-03 09:34",
    "status": "ok",
    "outputs": [
     "output/figures/f4c_phantom_implant.png",
@@ -448,7 +452,7 @@
      "#D55E00"
     ],
     "mode": "auto",
-    "mesh": "registered PH0 wall (phantom_wall_and_cavity), cropped to the implant region",
+    "mesh": "registered PH0 wall (phantom_wall_and_cavity): holes <= 15 mm filled, small pieces dropped, Taubin-smoothed, clipped by a sphere r = 48.1 mm (seed half-diagonal + 15 mm) around the implant",
     "camera": {
      "focal_point": [
       -16.6,
@@ -514,8 +518,8 @@
      "git_commit": "8ea0434"
     }
    ],
-   "script_commit": "c2ea58a",
-   "rendered": "2026-11-03 09:05",
+   "script_commit": "997e6da",
+   "rendered": "2026-11-03 09:34",
    "status": "ok",
    "outputs": [
     "output/figures/f5a_isodoses.png",
@@ -565,8 +569,8 @@
      "git_commit": "1104fcb"
     }
    ],
-   "script_commit": "c2ea58a",
-   "rendered": "2026-11-03 09:05",
+   "script_commit": "997e6da",
+   "rendered": "2026-11-03 09:34",
    "status": "ok",
    "outputs": [
     "output/figures/f5b_dvh.png",
@@ -624,8 +628,8 @@
      "git_commit": "8ea0434"
     }
    ],
-   "script_commit": "c2ea58a",
-   "rendered": "2026-11-03 09:05",
+   "script_commit": "997e6da",
+   "rendered": "2026-11-03 09:34",
    "status": "ok",
    "outputs": [
     "output/figures/f6_target_definition.png",
@@ -678,8 +682,8 @@
      "git_commit": "8ea0434"
     }
    ],
-   "script_commit": "c2ea58a",
-   "rendered": "2026-11-03 09:06",
+   "script_commit": "997e6da",
+   "rendered": "2026-11-03 09:34",
    "status": "ok",
    "outputs": [
     "output/figures/f8a_patient_implant.png",
@@ -761,8 +765,8 @@
      "git_commit": null
     }
    ],
-   "script_commit": "c2ea58a",
-   "rendered": "2026-11-03 09:06",
+   "script_commit": "997e6da",
+   "rendered": "2026-11-03 09:35",
    "status": "skipped",
    "note": "campaign output docs/figures/data/f8b_patient_optimized.npz not committed yet (scripts/patient_optimize.py)"
   },
@@ -777,8 +781,8 @@
      "git_commit": "bdaa073"
     }
    ],
-   "script_commit": "c2ea58a",
-   "rendered": "2026-11-03 09:06",
+   "script_commit": "997e6da",
+   "rendered": "2026-11-03 09:35",
    "status": "ok",
    "outputs": [
     "output/figures/s2a_recall_error_vs_spacing.png",
@@ -858,8 +862,8 @@
      "git_commit": null
     }
    ],
-   "script_commit": "c2ea58a",
-   "rendered": "2026-11-03 09:06",
+   "script_commit": "997e6da",
+   "rendered": "2026-11-03 09:35",
    "status": "pending",
    "outputs": [
     "output/figures/s2b_axis_boxplot.PENDING.md"
@@ -878,8 +882,8 @@
      "git_commit": "cca2120"
     }
    ],
-   "script_commit": "c2ea58a",
-   "rendered": "2026-11-03 09:06",
+   "script_commit": "997e6da",
+   "rendered": "2026-11-03 09:35",
    "status": "skipped",
    "note": "docs/figures/optimize/data/v2_summary.csv is not the Phase 4 campaign output yet (no '# commit' header)"
   },
@@ -912,8 +916,8 @@
      "git_commit": "d36db1d"
     }
    ],
-   "script_commit": "c2ea58a",
-   "rendered": "2026-11-03 09:06",
+   "script_commit": "997e6da",
+   "rendered": "2026-11-03 09:35",
    "status": "ok",
    "outputs": [
     "output/figures/s3_gamma_map.png",
@@ -942,10 +946,76 @@
      "git_commit": "d36db1d"
     }
    ],
-   "script_commit": "c2ea58a",
-   "rendered": "2026-11-03 09:06",
+   "script_commit": "997e6da",
+   "rendered": "2026-11-03 09:35",
    "status": "skipped",
    "note": "only docs/figures/data/clinical_dvh_hrctv.csv is committed; validation_clinical.py exports no per-target DVH for the rind / reach (their D90s are F6 caption numbers)"
+  },
+  "f3a": {
+   "figure": "F3",
+   "description": "F3(a): the same axial slice and crop on the three registered MRIs (pre-, intra-, post-operative) and the post-operative CT; CT with the Cav_Post outline (F6 style), MRIs without outlines, one 10 mm bar on the first image; each image also saved on its own.",
+   "sources": [
+    {
+     "path": "docs/figures/data/f3a_scans_slice.npz",
+     "exists": true,
+     "header_commit": "0f8e30d",
+     "git_commit": "cacaa68"
+    }
+   ],
+   "script_commit": "997e6da",
+   "rendered": "2026-11-03 09:34",
+   "status": "ok",
+   "outputs": [
+    "output/figures/f3a_scans.png",
+    "output/figures/f3a_scans.pdf",
+    "output/figures/f3a_scans.svg",
+    "output/figures/f3a_preop.png",
+    "output/figures/f3a_preop.pdf",
+    "output/figures/f3a_preop.svg",
+    "output/figures/f3a_intraop.png",
+    "output/figures/f3a_intraop.pdf",
+    "output/figures/f3a_intraop.svg",
+    "output/figures/f3a_postop.png",
+    "output/figures/f3a_postop.pdf",
+    "output/figures/f3a_postop.svg",
+    "output/figures/f3a_ct.png",
+    "output/figures/f3a_ct.pdf",
+    "output/figures/f3a_ct.svg"
+   ],
+   "key_numbers": {
+    "slice_k": 117,
+    "slice_z_ras_mm": -511.20000000000005,
+    "crop_mm": 110.0,
+    "crop_center_ras_xy": [
+     31.198848543825054,
+     207.08888213371202
+    ],
+    "windows_W_L": {
+     "PT-preMRI": [
+      784.2,
+      434.5
+     ],
+     "PT-intraMRI": [
+      164.4,
+      91.1
+     ],
+     "PT-postMRI": [
+      1277.4,
+      682.9
+     ],
+     "PT-CT1mm": [
+      400.0,
+      40.0
+     ]
+    },
+    "order": [
+     "PT-preMRI",
+     "PT-intraMRI",
+     "PT-postMRI",
+     "PT-CT1mm"
+    ]
+   },
+   "note": "MRIs rigidly registered to PT-CT1mm (cavity_change.py), sampled at the CT slice; MRI windows = 1st-99th percentile"
   }
  }
 }

@@ -25,7 +25,7 @@ def _run(args, tmp_path):
 def test_list_prints_every_panel(tmp_path):
     r = _run(["--list"], tmp_path)
     assert r.returncode == 0, r.stderr
-    for pid in ("f2c", "f3c", "f4a", "f4b", "f4c", "f5a", "f5b", "f6", "f8a", "f8b", "s2a", "s2b", "s4"):
+    for pid in ("f2c", "f3a", "f3c", "f4a", "f4b", "f4c", "f5a", "f5b", "f6", "f8a", "f8b", "s2a", "s2b", "s4"):
         assert any(line.split()[:1] == [pid] for line in r.stdout.splitlines()), pid
     # sources are listed with their header commits
     assert "clinical_dvh_hrctv.csv @ " in r.stdout

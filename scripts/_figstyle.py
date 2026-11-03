@@ -78,6 +78,7 @@ DPI = 600
 # ---------------------------------------------------------------- panel sizes (inches) from the v7 mockups
 SIZE: Dict[str, Tuple[float, float]] = {
     "f2c": (4.2, 1.7),        # three sheets in a row (half of a double column)
+    "f3a_single": (1.65, 1.65),  # four in a row across 6.9 in (gap F3A_GAP_IN)
     "f3c": (2.6, 2.6),        # square phantom slice
     "f4a": (2.2, 2.2),        # square clinical slice, one of three across 6.9 in
     "f5a": (2.8, 2.8),        # square clinical slice, left half of F5
@@ -93,7 +94,10 @@ SIZE: Dict[str, Tuple[float, float]] = {
 RENDER = {"window_px": (2400, 2400), "panel_in": 3.3, "mesh_culling": "front",
           "mesh_opacity": ALPHA["mesh"], "tile_opacity": ALPHA["tile"], "tile_opacity_highlight": 0.92, "tile_edge_lw": 3.0,
           "silhouette_lw": 2.0, "silhouette_colour": "#7A7A7A",
-          "mesh_smooth_iter": 40, "mesh_smooth_pass_band": 0.05, "phantom_mesh_opacity": 0.25}
+          "mesh_smooth_iter": 80, "mesh_smooth_pass_band": 0.02, "phantom_mesh_opacity": 0.25,
+          "remesh_pitch_mm": 0.4, "remesh_sigma_mm": (0.7, 0.7, 1.0),
+          "context_hole_mm": 15.0, "context_clip_margin_mm": 15.0,
+          "context_smooth_iter": 120, "context_smooth_pass_band": 0.01, "context_border_trim_mm": 2.5}
 
 # ---------------------------------------------------------------- CT display
 # window / level in HU; vmin = L - W/2, vmax = L + W/2
@@ -107,6 +111,7 @@ CLINICAL_CROP = {"center_xy": (31.0, 209.5), "half_mm": 42.0}
 # the export helper from the seeds and stored in the NPZ, this is the fallback
 PHANTOM_CROP = {"half_mm": 36.0}
 SCALE_BAR_MM = 10.0
+F3A_GAP_IN = 0.05
 
 # ---------------------------------------------------------------- cameras (RAS mm)
 # One stored camera per cavity: every render of the same cavity uses the same

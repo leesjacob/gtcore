@@ -4936,3 +4936,16 @@ text; `tests/test_cavity_change.py` 9 passed at it.
   parameter, and it is applied identically to all three MRIs.
 - Nothing installed. Shared files untouched (`pyproject.toml`,
   `tests/conftest.py`, `README.md`).
+
+### Second coordinator review + F3(a) (2026-11-03)
+
+Commits `6a5ccb5` (render fixes), `21e2aac` (merge of `paper2/integration` 89818e5), then the F3(a) commit
+and the manifest/notes commit; final render at the F3(a) commit.
+
+| Panel | Before | After |
+|---|---|---|
+| F4b / F8a | short dark hairlines (silhouette/feature fragments) and star-shaped specks on the smoothed cavity | no edge lines at all on context meshes (shading only, specular 0.2, ambient 0.25); the cavity display surface is a volume-preserving voxel remesh (trimesh voxelisation 0.4 mm, interior filled, Gaussian sigma 0.7 / 0.7 / 1.0 mm, marching cubes at the iso-level that keeps the enclosed volume within 0.5 %, light Taubin); committed geometry unchanged; falls back to Taubin on a non-closed mesh |
+| F4c | wall cropped by a jagged box, white holes | registered PH0 wall: holes <= 15 mm filled, pieces < 2 % of the largest dropped, Taubin 120 / 0.01, saw-tooth borders trimmed along a 2.5 mm distance-to-border contour, clipped by a sphere around the implant (seed half-diagonal 33.1 mm + 15 mm) on an interpolated field, so every boundary is a smooth curve; 25 %, no edges |
+| F3(a) (new) | — | `f3a_scans` (one row, 4 x 1.65 in, gap 0.05 in) + `f3a_preop`, `f3a_intraop`, `f3a_postop`, `f3a_ct` from `f3a_scans_slice.npz` (cavity_change.py, commit 0f8e30d): slice k = 117, 110 mm crop centred on the Cav_Post centroid, isotropic, no axes; MRI windows = the NPZ's 1st-99th percentile W/L, CT W 400 / L 40 with the Cav_Post outline in the F6 style; one 10 mm bar on the first image (pre-op) only |
+
+Full suite at `31bc726` (`GTCORE_STRICT=1`, concurrent load): **`1148 passed, 15 skipped, 1 xfailed, 15536 warnings in 669.63s`**, exit 0.
