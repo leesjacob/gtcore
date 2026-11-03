@@ -35,10 +35,22 @@ seeds):
    marks every dose row "TPS volume check pending";
 8. writes the Table 3 rows and the panel data CSV/NPZ under ``--out``.
 
+Seed-axis convention (``--axes``; Phase 3 ``formalism``: the TPS computed
+every source with its long axis along the patient S-I direction).
+``physical`` (default) is the current behaviour: the PCA long axis of each
+seed / matched contour, the pipeline result.  ``si`` ADDS the TPS-convention
+columns ``gtcore@32 TPS sources (S-I axes)`` and ``gtcore@32 gtcore seeds
+(S-I axes)`` -- every seed axis set to RAS (0, 0, 1); the sign is irrelevant
+for the symmetric anisotropy function -- to the structure x dose matrix and
+to ``clinical_table3_rows.csv``, plus the implied-S_K diagnostic line with
+S-I axes.  The physical columns, the diagnostics and the panel data are
+unchanged by ``si`` (they are always written: the F4(a)/F5/F6 panels show
+the pipeline result; the S-I column is the like-for-like equivalence row).
+
 Usage::
 
     python scripts/validation_clinical.py "<PT-CT1mm dir>" "<RTSTRUCT dir>" "<RTDOSE dir>"
-        [--rx 6000] [--out docs/figures/data] [--mim-dvh <csv>]
+        [--rx 6000] [--out docs/figures/data] [--mim-dvh <csv>] [--axes physical|si]
 
 Hooks only (not implemented here): the optimizer arm (Phase 4/5); gamma
 (``gtcore.dose.gamma``) and formalism (``gtcore.dose.formalism``) are
@@ -64,6 +76,7 @@ sys.path.insert(0, REPO_ROOT)
 
 import gtcore                                                    # noqa: E402
 from gtcore.dose.engine import TG43Engine, dose_at_points        # noqa: E402
+from gtcore.dose.formalism import rtdose_source_positions        # noqa: E402
 from gtcore.dose.metrics import dose_stats                       # noqa: E402
 from gtcore.dose.targets import (Target, dice, hrctv_phys, implant_reach,  # noqa: E402
                                  rind5, target_doses_exact,
@@ -116,6 +129,26 @@ COL_RTDOSE = "RTDOSE"
 COL_TPS32 = "gtcore@32 TPS sources"
 COL_GT32 = "gtcore@32 gtcore seeds"
 COL_TPS30 = "gtcore@30 contoured seeds"
+# TPS seed-axis convention (formalism check): every axis along RAS z (S-I)
+COL_TPS32_SI = "gtcore@32 TPS sources (S-I axes)"
+COL_GT32_SI = "gtcore@32 gtcore seeds (S-I axes)"
+AXES_CONVENTIONS = ("physical", "si")
+SI_AXIS_RAS = np.array([0.0, 0.0, 1.0])
+
+
+def parse_axes(text):
+    """``--axes`` value -> tuple of conventions (``physical`` is always
+    computed; ``si`` adds the S-I columns)."""
+    conv = tuple(c.strip() for c in str(text).split(",") if c.strip())
+    for c in conv:
+        if c not in AXES_CONVENTIONS:
+            raise ValueError("unknown --axes convention %r (choose from %s)" % (c, ", ".join(AXES_CONVENTIONS)))
+    return conv or ("physical",)
+
+
+def si_axes(n):
+    """``(n, 3)`` seed axes all along the patient S-I direction, RAS (0, 0, 1)."""
+    return np.tile(SI_AXIS_RAS, (int(n), 1))
 
 
 # -------------------------------------------------------------------- helpers
@@ -151,6 +184,9 @@ def sanitized_command(args, datasets):
         parts.append("--out %s" % out)
     if args.mim_dvh:
         parts.append("--mim-dvh <MIM DVH export>")
+    axes = getattr(args, "axes", "physical")
+    if axes and axes != "physical":
+        parts.append("--axes %s" % axes)
     return " ".join(parts)
 
 
@@ -277,18 +313,11 @@ def tps_seed_contours(rs, vol, seeds_mask=None):
 
 def plan_sources_from_rtdose(dv, source_gy=SOURCE_GY, merge_mm=SOURCE_MERGE_MM):
     """The plan's source positions as the RTDOSE local maxima above
-    ``source_gy`` (merged within ``merge_mm``), RAS mm, sorted by dose."""
-    arr = np.asarray(dv.array, float)
-    peaks = (arr == ndimage.maximum_filter(arr, size=3)) & (arr > source_gy * 100.0)
-    pk = np.argwhere(peaks)
-    if pk.shape[0] == 0:
-        return np.zeros((0, 3))
-    pk = pk[np.argsort(-arr[tuple(pk.T)])]
-    src = []
-    for p in dv.index_to_ras(pk[:, ::-1].astype(float)):
-        if not src or np.min(np.linalg.norm(np.asarray(src) - p, axis=1)) > merge_mm:
-            src.append(p)
-    return np.asarray(src, float)
+    ``source_gy`` (merged within ``merge_mm``), RAS mm, sorted by dose
+    (``gtcore.dose.formalism.rtdose_source_positions``: the same 3 x 3 x 3
+    maximum filter and greedy merge the Phase 3 run used inline)."""
+    src = rtdose_source_positions(dv, min_cgy=source_gy * 100.0, merge_mm=merge_mm)
+    return np.asarray(src, float).reshape(-1, 3)
 
 
 def match_one_to_one(a, b, gate_mm):
@@ -498,8 +527,11 @@ def print_structure_table(targets, ctv):
 
 
 # --------------------------------------------------------- structure x dose
-def dose_columns(dv, src, gt_centers, gt_axes, cs_ras, cs_axes, engine=None, sk=SK_NOMINAL_U):
-    """``{column: (callable(Target) -> doses cGy, description)}``."""
+def dose_columns(dv, src, gt_centers, gt_axes, cs_ras, cs_axes, engine=None, sk=SK_NOMINAL_U,
+                 axes=("physical",)):
+    """``{column: (callable(Target) -> doses cGy, description)}``.  The four
+    physical-axis columns always; with ``"si"`` in ``axes`` the two
+    TPS-convention columns (every seed axis along RAS z) follow them."""
     eng = engine if engine is not None else TG43Engine()
     cols = {
         COL_RTDOSE: (lambda t: target_doses_from_grid(t, dv),
@@ -513,6 +545,15 @@ def dose_columns(dv, src, gt_centers, gt_axes, cs_ras, cs_axes, engine=None, sk=
                     "TG-43 exact at %d contoured TPS seeds (contour centroids, PCA axes), "
                     "S_K %.2f U nominal" % (len(cs_ras), sk)),
     }
+    if "si" in axes:
+        src_si = si_axes(src["centers"].shape[0])
+        gt_si = si_axes(len(gt_centers))
+        cols[COL_TPS32_SI] = (lambda t: target_doses_exact(t, src["centers"], src_si, sk, engine=eng),
+                              "TG-43 exact at %d plan sources (RTDOSE maxima), every axis along RAS z "
+                              "(S-I, the TPS convention), S_K %.2f U nominal" % (src["centers"].shape[0], sk))
+        cols[COL_GT32_SI] = (lambda t: target_doses_exact(t, gt_centers, gt_si, sk, engine=eng),
+                             "TG-43 exact at %d gtcore seeds, every axis along RAS z (S-I, the TPS "
+                             "convention), S_K %.2f U nominal" % (len(gt_centers), sk))
     return cols
 
 
@@ -540,12 +581,13 @@ def print_matrix(targets, columns, cells, rx_cgy):
     cols = list(columns)
     print("structure x dose matrix (rx %.0f cGy; cell = D90 cGy / V100 %% / V150 %% ; volume cc "
           "in the row label; S_K %.2f U nominal everywhere):" % (rx_cgy, SK_NOMINAL_U))
-    print("  %-46s" % "" + "".join("%-30s" % c for c in cols))
+    w = max(30, max(len(c) for c in cols) + 2)
+    print("  %-46s" % "" + "".join(("%-" + str(w) + "s") % c for c in cols))
     for label, t in targets:
         cell = []
         for c in cols:
             s = cells[(label, c)]
-            cell.append("%6.0f / %5.1f / %5.1f        " % (s["D90"], 100 * s["V100"], 100 * s["V150"]))
+            cell.append(("%6.0f / %5.1f / %5.1f" % (s["D90"], 100 * s["V100"], 100 * s["V150"])).ljust(w))
         print("  %-46s" % ("%s  %.1f cc" % (label, t.volume_cc)) + "".join(cell))
     print("  dose sources:")
     for c, (_fn, desc) in columns.items():
@@ -578,11 +620,13 @@ def table3_rows(targets, columns, cells, grid, tps_check, extra_rows=()):
 # ------------------------------------------ implied S_K and delivered fraction
 def dose_ratio_check(dv, hrctv, src, rx_cgy, engine=None, sk=SK_NOMINAL_U,
                      min_dist_mm=RATIO_MIN_DIST_MM, min_dose_cgy=RATIO_MIN_DOSE_CGY,
-                     subsample=RATIO_SUBSAMPLE):
+                     subsample=RATIO_SUBSAMPLE, label="32 TPS sources"):
     """RTDOSE / TG-43(total decay, nominal S_K, 32 TPS sources) at HRCTV_PHYS
     voxels farther than ``min_dist_mm`` from any source.  Returns a dict
     with the ratio statistics, the implied S_K (diagnostic, not used) and
-    the ``delivered_fraction`` conclusion; prints both lines."""
+    the ``delivered_fraction`` conclusion; prints both lines.  ``label``
+    names the source set in the printed line (e.g. ``"32 TPS sources, S-I
+    axes"`` for the TPS-convention variant)."""
     eng = engine if engine is not None else TG43Engine()
     pts = hrctv.voxel_centers_ras()[::max(1, int(subsample))]
     if pts.shape[0] == 0 or src["centers"].shape[0] == 0:
@@ -603,10 +647,10 @@ def dose_ratio_check(dv, hrctv, src, rx_cgy, engine=None, sk=SK_NOMINAL_U,
     med_tg = float(np.median(r_tg))
     med_cl = float(np.median(r_cl))
     implied_sk = sk / med_tg
-    print("  TG-43 (%.2f U, 32 TPS sources) / RTDOSE at HRCTV_PHYS voxels > %.0f mm from a source: "
+    print("  TG-43 (%.2f U, %s) / RTDOSE at HRCTV_PHYS voxels > %.0f mm from a source: "
           "median %.3f, p5 %.3f, p95 %.3f (n=%d) -> implied S_K %.2f U  [diagnostic, not used; "
           "every table row uses S_K %.2f U nominal]"
-          % (sk, min_dist_mm, med_tg, np.percentile(r_tg, 5), np.percentile(r_tg, 95), n,
+          % (sk, label, min_dist_mm, med_tg, np.percentile(r_tg, 5), np.percentile(r_tg, 95), n,
              implied_sk, sk))
     # delivered-fraction check: a dose-to-time export would read fraction * (S_K_true / S_K_nominal)
     # with fraction = 1 - exp(-t / tau) < 1.
@@ -927,10 +971,15 @@ def optional_hooks(verbose=True):
 
 # ---------------------------------------------------------------------- driver
 def run_analysis(vol, rs, dv, res, rx_cgy, out_dir, command, commit, datasets=DEFAULT_DATASETS,
-                 mim_dvh=None, verbose=True):
+                 mim_dvh=None, verbose=True, axes=("physical",)):
     """Everything after loading and reconstruction; returns a dict of results
-    and the paths written.  Used by ``main`` and by the smoke test."""
+    and the paths written.  Used by ``main`` and by the smoke test.
+    ``axes``: ``("physical",)`` is the Phase 3 run; with ``"si"`` present the
+    TPS-convention columns (every seed axis along RAS z) and the S-I
+    implied-S_K line are added -- nothing else changes."""
     os.makedirs(out_dir, exist_ok=True)
+    axes = tuple(axes)
+    with_si = "si" in axes
     eng = TG43Engine()
     header = header_lines(command, commit, datasets)
     dataset_ct = datasets[0] if datasets else "CT"
@@ -979,7 +1028,7 @@ def run_analysis(vol, rs, dv, res, rx_cgy, out_dir, command, commit, datasets=DE
     print_structure_table(targets, ctv)
 
     # matrix
-    columns = dose_columns(dv, src, gt_centers, gt_axes, cs_ras, cs_axes, engine=eng)
+    columns = dose_columns(dv, src, gt_centers, gt_axes, cs_ras, cs_axes, engine=eng, axes=axes)
     t0 = time.perf_counter()
     cells, doses = structure_dose_matrix(targets, columns, rx_cgy, ctv=ctv, verbose=verbose)
     print("  (matrix %.1f s)" % (time.perf_counter() - t0))
@@ -994,6 +1043,18 @@ def run_analysis(vol, rs, dv, res, rx_cgy, out_dir, command, commit, datasets=DE
           "(maxima positions: %.0f / %.1f)" % (st_h["D90"], 100 * st_h["V100"],
                                                cells[(ROW_HRCTV, COL_TPS32)]["D90"],
                                                100 * cells[(ROW_HRCTV, COL_TPS32)]["V100"]))
+    ratio_si = None
+    if with_si:
+        # the TPS convention: the same 32 sources, every axis along RAS z
+        src_si = dict(src, axes=si_axes(src["centers"].shape[0]))
+        ratio_si = dose_ratio_check(dv, ctv, src_si, rx_cgy, engine=eng, label="32 TPS sources, S-I axes")
+        print("  S-I axes vs physical axes on %s: %s D90 %.0f vs %.0f cGy, V100 %.1f vs %.1f %%; "
+              "%s D90 %.0f vs %.0f cGy, V100 %.1f vs %.1f %%"
+              % (ROW_HRCTV, COL_TPS32_SI, cells[(ROW_HRCTV, COL_TPS32_SI)]["D90"],
+                 cells[(ROW_HRCTV, COL_TPS32)]["D90"], 100 * cells[(ROW_HRCTV, COL_TPS32_SI)]["V100"],
+                 100 * cells[(ROW_HRCTV, COL_TPS32)]["V100"], COL_GT32_SI,
+                 cells[(ROW_HRCTV, COL_GT32_SI)]["D90"], cells[(ROW_HRCTV, COL_GT32)]["D90"],
+                 100 * cells[(ROW_HRCTV, COL_GT32_SI)]["V100"], 100 * cells[(ROW_HRCTV, COL_GT32)]["V100"]))
 
     # TPS check
     tps_status, tps_rows = tps_volume_check(dv, rs, rx_cgy, mim_dvh=mim_dvh)
@@ -1040,6 +1101,15 @@ def run_analysis(vol, rs, dv, res, rx_cgy, out_dir, command, commit, datasets=DE
          "metric": "dice", "value": dice_masks(cav, masks["Cav_Post"]), "unit": "-", "grid": grid,
          "flag": FLAG, "tps_check": "n/a"},
     ]
+    if ratio_si is not None:
+        extra[2:2] = [
+            {"row": "diagnostic", "structure": ctv.describe(), "dose_source": "RTDOSE / %s" % COL_TPS32_SI,
+             "metric": "ratio_median_far_from_sources", "value": ratio_si["ratio_median"], "unit": "-",
+             "grid": grid, "flag": FLAG, "tps_check": "n/a"},
+            {"row": "diagnostic", "structure": ctv.describe(), "dose_source": "%s / RTDOSE" % COL_TPS32_SI,
+             "metric": "implied_SK_not_used", "value": ratio_si["implied_sk_u"], "unit": "U",
+             "grid": grid, "flag": FLAG, "tps_check": "n/a"},
+        ]
     for n in names:
         extra.append({"row": "RTSTRUCT", "structure": "RTSTRUCT:%s" % n, "dose_source": "-",
                       "metric": "volume_cc", "value": masks[n].sum() * vmm3 / 1000.0, "unit": "cc",
@@ -1056,9 +1126,12 @@ def run_analysis(vol, rs, dv, res, rx_cgy, out_dir, command, commit, datasets=DE
                       "unit": "-", "grid": "-", "flag": FLAG, "tps_check": "n/a"})
     rows3 = table3_rows(targets, columns, cells, grid, tps_check, extra_rows=extra)
     p = os.path.join(out_dir, "clinical_table3_rows.csv")
-    write_csv(p, rows3, TABLE3_COLUMNS,
-              header + ["# S_K %.2f U nominal in every gtcore cell; implied S_K is a diagnostic line only" % SK_NOMINAL_U,
-                        "# tps_check: verify_against_tps status (pass / FAIL / 'TPS volume check pending' when no MIM reference)"])
+    t3_extra = ["# S_K %.2f U nominal in every gtcore cell; implied S_K is a diagnostic line only" % SK_NOMINAL_U,
+                "# tps_check: verify_against_tps status (pass / FAIL / 'TPS volume check pending' when no MIM reference)"]
+    if with_si:
+        t3_extra.append("# axes: dose_source columns without a suffix use the physical (PCA) seed axes; "
+                        "'(S-I axes)' = every seed axis along RAS z, the TPS convention (formalism check)")
+    write_csv(p, rows3, TABLE3_COLUMNS, header + t3_extra)
     paths["table3_csv"] = p
 
     p = os.path.join(out_dir, "clinical_seed_residuals.csv")
@@ -1087,8 +1160,8 @@ def run_analysis(vol, rs, dv, res, rx_cgy, out_dir, command, commit, datasets=DE
             print("  wrote %s" % paths[key])
     return {"targets": targets, "cells": cells, "doses": doses, "sources": src, "cs_ras": cs_ras,
             "cs_axes": cs_axes, "residual_rows": residual_rows, "match_summary": match_summary,
-            "ratio": ratio, "tps_status": tps_status, "tps_rows": tps_rows, "hooks": hooks,
-            "paths": paths, "slice": slice_info, "masks": masks}
+            "ratio": ratio, "ratio_si": ratio_si, "axes": axes, "tps_status": tps_status,
+            "tps_rows": tps_rows, "hooks": hooks, "paths": paths, "slice": slice_info, "masks": masks}
 
 
 def parse_args(argv=None):
@@ -1102,6 +1175,11 @@ def parse_args(argv=None):
     ap.add_argument("--mim-dvh", default=None, help="MIM DVH / plan export for verify_against_tps")
     ap.add_argument("--datasets", default=",".join(DEFAULT_DATASETS),
                     help="dataset ids for the CSV headers (comma separated)")
+    ap.add_argument("--axes", default="physical",
+                    help="seed-axis convention: 'physical' (default; PCA axes, the pipeline result) or "
+                         "'si' -- adds the TPS-convention columns (every seed axis along RAS z, the "
+                         "patient S-I direction; formalism check) and the S-I implied-S_K diagnostic "
+                         "line next to the physical ones, which are always written")
     return ap.parse_args(argv)
 
 
@@ -1114,6 +1192,10 @@ def main(argv=None):
     print("git commit: %s" % commit)
     print("command: %s" % command)
     print("S_K %.2f U nominal for every seed (never fitted); rx %.0f cGy" % (SK_NOMINAL_U, args.rx))
+    axes = parse_axes(args.axes)
+    print("seed axes: %s%s" % (", ".join(axes),
+                               " (si = every seed axis along RAS z, the TPS convention; physical "
+                               "columns are always written)" if "si" in axes else " (PCA axes)"))
 
     t0 = time.perf_counter()
     vol = load_volume(args.ct)
@@ -1128,7 +1210,7 @@ def main(argv=None):
     dv = load_rtdose(args.rtdose)
     out_dir = args.out if os.path.isabs(args.out) else os.path.join(REPO_ROOT, args.out)
     run_analysis(vol, rs, dv, res, args.rx, out_dir, command, commit, datasets=datasets,
-                 mim_dvh=args.mim_dvh)
+                 mim_dvh=args.mim_dvh, axes=axes)
     return 0
 
 

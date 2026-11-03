@@ -8,6 +8,9 @@ usage::
         --n-full 8 --out docs/figures/data
     GTCORE_STRICT=1 python scripts/leftover_seeds.py "$GT_DATA_ROOT/<PH8>" \
         --dataset PH8 --n-full 8 --out docs/figures/data
+    GTCORE_STRICT=1 python scripts/leftover_seeds.py "$GT_DATA_ROOT/<PT-CT1mm>" \
+        --dataset PT-CT1mm --rtstruct "$GT_DATA_ROOT/<PT-RT RTSTRUCT dir>" \
+        --n-full 8 --halves 6,4 --out docs/figures/data
 
 Run from the repository root with ``PYTHONPATH`` pointing at it (the script
 prints which ``gtcore`` it imported).  Three tile fits are run on the SAME
@@ -25,7 +28,16 @@ shape-filtered, vault-filtered seed candidates (``gtcore.pipeline.reconstruct``)
     the planner's count-known fit, ``fit_tiles_prior(ImplantPrior(N), mesh)``
     on the pass-1 seeds with the wall mesh the planner conforms to (the
     cavity, else the scanned object's shell) -- the call
-    ``scripts/strict_pipeline_check.py`` makes.
+    ``scripts/strict_pipeline_check.py`` makes;
+``count<F>full<H>half`` (only with ``--halves F,H``)
+    the count-known fit with half tiles in the prior,
+    ``fit_tiles_prior(ImplantPrior(n_full=F, n_half=H), mesh)`` (same path
+    as ``prior<N>``): the row the Phase 3 leftover diagnostic asked for
+    (the eight leftovers are four 2-seed pairs at the manufactured pitch,
+    i.e. 6 full + 4 half tiles = 32 seeds).  The chord-scored
+    ``fit_tiles(F, H, complete_degraded=True)`` partition is printed and
+    stored in the finding JSON as a cross-check (not a mode).  Which
+    count-known row the paper quotes waits for the operative record.
 
 For every mode the per-tile table gives the chord residual, the bent-tile
 RMS (``gtcore.tiles.deform.fit_deformable``; computed here for tiles the
@@ -110,7 +122,8 @@ from gtcore.tiles.fit import (  # noqa: E402
     SIDE_MIN_MM,
 )
 
-__all__ = ["ModeFit", "run_modes", "tile_rows", "leftover_indices",
+__all__ = ["ModeFit", "run_modes", "run_halves_mode", "halves_chord_crosscheck",
+           "halves_mode_name", "parse_halves", "tile_rows", "leftover_indices",
            "pairwise_tables", "seed_rows", "quad_gate_rows", "pair_gate_rows",
            "triplet_rows", "cluster_finding", "best_quad", "sheet_faces",
            "tile_sheets", "export_implant", "write_patch", "write_csv",
@@ -333,6 +346,55 @@ def run_modes(centers, axes, n_full: int, cavity_center_ras=None, mesh=None,
                                     "count-known N=%d (planner, fit_tiles_prior)" % n_full,
                                     prior, centers, axes, time.perf_counter() - t0)
     return out
+
+
+def parse_halves(text) -> tuple:
+    """``--halves "F,H"`` -> ``(n_full, n_half)``; both non-negative ints."""
+    parts = [p.strip() for p in str(text).split(",")]
+    if len(parts) != 2 or not all(p.lstrip("-").isdigit() for p in parts):
+        raise ValueError("--halves expects 'N_FULL,N_HALF' (e.g. 6,4), got %r" % (text,))
+    n_full, n_half = int(parts[0]), int(parts[1])
+    if n_full < 0 or n_half < 0:
+        raise ValueError("--halves counts must be >= 0, got %r" % (text,))
+    return n_full, n_half
+
+
+def halves_mode_name(n_full: int, n_half: int) -> str:
+    return "count_%dfull_%dhalf" % (int(n_full), int(n_half))
+
+
+def run_halves_mode(centers, axes, n_full: int, n_half: int, cavity_center_ras=None,
+                    mesh=None, spacing_mm=None) -> ModeFit:
+    """The count-known fit with half tiles in the prior (module docstring):
+    ``fit_tiles_prior(ImplantPrior(n_full, n_half), mesh, spacing,
+    complete_degraded=True)`` -- the same planner path as ``prior<N>`` with
+    ``n_half`` half tiles allowed.  Returns one :class:`ModeFit` named
+    ``count_<F>full_<H>half``.  Nothing is tuned: the prior is an input."""
+    centers = np.asarray(centers, dtype=float).reshape(-1, 3)
+    axes = np.asarray(axes, dtype=float).reshape(-1, 3)
+    t0 = time.perf_counter()
+    res = fit_tiles_prior(centers, axes, ImplantPrior(n_full=int(n_full), n_half=int(n_half)),
+                          cavity_center_ras=cavity_center_ras, mesh=mesh,
+                          spacing_mm=spacing_mm, complete_degraded=True)
+    return _mode(halves_mode_name(n_full, n_half),
+                 "count-known %d full + %d half (planner, fit_tiles_prior)" % (n_full, n_half),
+                 res, centers, axes, time.perf_counter() - t0)
+
+
+def halves_chord_crosscheck(centers, axes, n_full: int, n_half: int,
+                            cavity_center_ras=None) -> ModeFit:
+    """The chord-scored pipeline selector with the same counts,
+    ``fit_tiles(n_full, n_half, complete_degraded=True)`` (what
+    ``reconstruct(n_full_tiles=N)`` runs, plus the half tiles) -- printed
+    and stored as a cross-check of :func:`run_halves_mode`, not a mode."""
+    centers = np.asarray(centers, dtype=float).reshape(-1, 3)
+    axes = np.asarray(axes, dtype=float).reshape(-1, 3)
+    t0 = time.perf_counter()
+    res = fit_tiles(centers, axes, int(n_full), int(n_half),
+                    cavity_center_ras=cavity_center_ras, complete_degraded=True)
+    return _mode("chord_%dfull_%dhalf" % (n_full, n_half),
+                 "count-known %d full + %d half (pipeline, chord)" % (n_full, n_half),
+                 res, centers, axes, time.perf_counter() - t0)
 
 
 def tile_rows(mode: ModeFit, centers, axes) -> List[dict]:
@@ -1009,8 +1071,11 @@ def export_implant(npz_path: str, dataset: str, centers, axes, modes: Dict[str, 
                    primary: str, wall_mesh=None, wall_source: str = "none",
                    cavity_rt_mesh=None, cavity_center_ras=None, seeds=None,
                    spacing_mm=None, shape_kji=None, command: str = "",
-                   n_full: Optional[int] = None, n: int = SHEET_N, notes: str = "") -> str:
-    """Write the render NPZ and its JSON index (``<stem>.json``)."""
+                   n_full: Optional[int] = None, n: int = SHEET_N, notes: str = "",
+                   halves=None) -> str:
+    """Write the render NPZ and its JSON index (``<stem>.json``).  ``halves``
+    = ``(n_full, n_half)`` of the ``--halves`` mode when one was run (recorded
+    as ``halves_requested`` in the index)."""
     centers = np.asarray(centers, dtype=float).reshape(-1, 3)
     axes = np.asarray(axes, dtype=float).reshape(-1, 3)
     N = centers.shape[0]
@@ -1079,6 +1144,9 @@ def export_implant(npz_path: str, dataset: str, centers, axes, modes: Dict[str, 
         gtcore_file=os.path.relpath(gtcore.__file__, os.path.dirname(os.path.dirname(
             os.path.dirname(os.path.abspath(__file__))))),
         n_seeds=int(N), n_full_requested=n_full, primary_mode=primary,
+        halves_requested=(None if halves is None else
+                          dict(n_full=int(halves[0]), n_half=int(halves[1]),
+                               mode=halves_mode_name(halves[0], halves[1]))),
         wall_mesh_source=wall_source, has_cavity_rt=cavity_rt_mesh is not None,
         normals_oriented=cavity_center_ras is not None,
         conventions=dict(
@@ -1091,7 +1159,10 @@ def export_implant(npz_path: str, dataset: str, centers, axes, modes: Dict[str, 
             leftover="seed_tile_id == -1 / seed_leftover True: no tile of that mode owns the seed",
             modes=("auto = count-free pipeline (reconstruct n_full_tiles='auto'); count<N> = "
                    "count-known pipeline path (reconstruct n_full_tiles=N, chord score, degraded "
-                   "completion); prior<N> = planner path fit_tiles_prior(ImplantPrior(N), mesh)")),
+                   "completion); prior<N> = planner path fit_tiles_prior(ImplantPrior(N), mesh); "
+                   "count_<F>full_<H>half = planner path fit_tiles_prior(ImplantPrior(n_full=F, "
+                   "n_half=H), mesh) with half tiles in the prior (--halves F,H); a half tile has "
+                   "tile_kind 'half', two member seeds (-1 padded) and a half-width sheet")),
         modes=index_modes, arrays=doc, notes=notes)
     json_path = os.path.splitext(npz_path)[0] + ".json"
     with open(json_path, "w", encoding="utf-8") as fh:
@@ -1137,10 +1208,17 @@ def main(argv=None) -> int:
                     help="RTSTRUCT directory/file (Cav_Post mesh for the render data)")
     ap.add_argument("--cavity-roi", default="Cav_Post")
     ap.add_argument("--n-full", type=int, default=8)
+    ap.add_argument("--halves", default=None, metavar="N_FULL,N_HALF",
+                    help="also run the count-known fit with half tiles in the prior, "
+                         "fit_tiles_prior(ImplantPrior(n_full=N_FULL, n_half=N_HALF), mesh), as the "
+                         "additional mode count_<F>full_<H>half (e.g. 6,4 for the clinical case: the "
+                         "eight leftovers are four 2-seed pairs); the chord-path partition with the "
+                         "same counts is printed as a cross-check")
     ap.add_argument("--out", default=os.path.join("docs", "figures", "data"))
     ap.add_argument("--no-patches", action="store_true")
     ap.add_argument("--sheet-n", type=int, default=SHEET_N)
     args = ap.parse_args(argv)
+    halves = None if args.halves is None else parse_halves(args.halves)
 
     from gtcore.io import load_volume
     from gtcore.pipeline import reconstruct
@@ -1149,9 +1227,11 @@ def main(argv=None) -> int:
     print("gtcore.strict_mode() =", gtcore.strict_mode())
     ds = args.dataset
     cmd = ('python scripts/leftover_seeds.py "$GT_DATA_ROOT/<%s>" --dataset %s%s '
-           '--n-full %d --out %s' % (ds, ds,
-                                     ' --rtstruct "$GT_DATA_ROOT/<PT-RT RTSTRUCT>"' if args.rtstruct else "",
-                                     args.n_full, args.out.replace(os.sep, "/")))
+           '--n-full %d%s --out %s' % (ds, ds,
+                                       ' --rtstruct "$GT_DATA_ROOT/<PT-RT RTSTRUCT>"' if args.rtstruct else "",
+                                       args.n_full,
+                                       "" if halves is None else " --halves %d,%d" % halves,
+                                       args.out.replace(os.sep, "/")))
     out = args.out
     os.makedirs(out, exist_ok=True)
     stem = os.path.join(out, "f4_leftover_%%s_%s.csv" % ds)
@@ -1195,23 +1275,51 @@ def main(argv=None) -> int:
     modes["auto"].seconds = res_auto.timings.get("tile fitting", float("nan"))
     if same:
         modes["count%d" % args.n_full].seconds = res_cnt.timings.get("tile fitting", float("nan"))
+    chord_halves = None
+    if halves is not None:
+        hm = run_halves_mode(centers, axes, halves[0], halves[1], cavity_center_ras=cav_c,
+                             mesh=mesh, spacing_mm=vol.spacing)
+        modes[hm.name] = hm
+        chord_halves = halves_chord_crosscheck(centers, axes, halves[0], halves[1],
+                                               cavity_center_ras=cav_c)
     for m in modes.values():
         print("[%s] %s" % (ds, m.summary()))
         if hasattr(m.result, "summary"):
             print("      %s" % m.result.summary())
+        if halves is not None and m.name == halves_mode_name(*halves):
+            for p in m.tiles:
+                print("      tile %d (%s%s): seeds %s, chord residual %.2f mm"
+                      % (p.tile_id, p.kind, ", degraded" if getattr(p, "degraded", False) else "",
+                         list(int(i) for i in p.seed_indices), float(p.residual_mm)))
+    if chord_halves is not None:
+        print("[%s] cross-check, %s: %d full + %d half tiles, %d degraded; leftovers %s"
+              % (ds, chord_halves.label, sum(1 for p in chord_halves.tiles if p.kind == "full"),
+                 sum(1 for p in chord_halves.tiles if p.kind == "half"), chord_halves.n_degraded,
+                 chord_halves.leftovers))
+        for p in chord_halves.tiles:
+            print("      tile %d (%s%s): seeds %s, chord residual %.2f mm"
+                  % (p.tile_id, p.kind, ", degraded" if getattr(p, "degraded", False) else "",
+                     list(int(i) for i in p.seed_indices), float(p.residual_mm)))
 
     tree = os.path.basename(os.path.dirname(os.path.dirname(os.path.abspath(gtcore.__file__))))
-    hdr = header(cmd, ds, ["gtcore imported from tree: %s" % tree,
-                           "strict_mode: %s" % gtcore.strict_mode(),
-                           "n_seeds: %d; n_full requested: %d" % (len(seeds), args.n_full)])
+    hdr_extra = ["gtcore imported from tree: %s" % tree,
+                 "strict_mode: %s" % gtcore.strict_mode(),
+                 "n_seeds: %d; n_full requested: %d" % (len(seeds), args.n_full)]
+    if halves is not None:
+        hdr_extra.append("halves requested: %d full + %d half tiles (mode %s = fit_tiles_prior("
+                         "ImplantPrior(n_full=%d, n_half=%d), mesh); the prior is an input, not a "
+                         "fitted count; which count-known row the paper quotes waits for the operative record)"
+                         % (halves[0], halves[1], halves_mode_name(*halves), halves[0], halves[1]))
+    hdr = header(cmd, ds, hdr_extra)
     # ---- per-tile table, all modes
     trows = []
     for m in modes.values():
         trows.extend(tile_rows(m, centers, axes))
     write_csv(stem % "tiles", trows, hdr + [
         "one row per fitted tile and mode; bent_rms_mm from gtcore.tiles.deform.fit_deformable "
-        "(attached by the fit, or computed here for chord-path tiles); seed_indices into the "
-        "pass-1 seed list; surface_* from the cavity-mesh cross-check when a mesh existed"])
+        "(attached by the fit, or computed here for chord-path tiles; rigid fallback for 2-seed half "
+        "tiles); seed_indices into the pass-1 seed list; surface_* from the cavity-mesh cross-check "
+        "when a mesh existed"])
     mrows = [dict(mode=m.name, label=m.label, result_type=type(m.result).__name__,
                   n_tiles=m.n_tiles, n_supported=m.n_supported, n_tentative=m.n_tentative,
                   n_degraded=m.n_degraded, n_assigned=len(m.assigned),
@@ -1274,11 +1382,29 @@ def main(argv=None) -> int:
     finding = cluster_finding(centers, left, qrows)
     bq = best_quad(qrows)
     fpath = os.path.join(out, "f4_leftover_finding_%s.json" % ds)
+    def _mode_summary(m):
+        return dict(n_tiles=m.n_tiles, n_degraded=m.n_degraded, n_tentative=m.n_tentative,
+                    n_full=sum(1 for p in m.tiles if p.kind == "full"),
+                    n_half=sum(1 for p in m.tiles if p.kind == "half"),
+                    tiles=[dict(tile_id=int(p.tile_id), kind=p.kind,
+                                degraded=bool(getattr(p, "degraded", False)),
+                                seeds=[int(i) for i in p.seed_indices],
+                                chord_residual_mm=float(p.residual_mm),
+                                bent_rms_mm=float(m.deforms[p.tile_id].rms_mm)
+                                if p.tile_id in m.deforms else None) for p in m.tiles],
+                    assigned=m.assigned, leftovers=m.leftovers, seconds=m.seconds)
+
     with open(fpath, "w", encoding="utf-8") as fh:
         json.dump(dict(dataset=ds, command=cmd, commit=git_commit(),
                        modes={m.name: dict(n_tiles=m.n_tiles, n_degraded=m.n_degraded,
                                            n_tentative=m.n_tentative, leftovers=m.leftovers)
                               for m in modes.values()},
+                       halves=(None if halves is None else dict(
+                           n_full=halves[0], n_half=halves[1], mode=halves_mode_name(*halves),
+                           prior_path=_mode_summary(modes[halves_mode_name(*halves)]),
+                           chord_crosscheck=_mode_summary(chord_halves),
+                           note="the prior (F full + H half) is an input; which count-known row the "
+                                "paper quotes waits for the operative record")),
                        leftovers=left, best_quad=bq, cluster_finding=finding,
                        n_pairs_pass=sum(r["pair_pass"] for r in prows),
                        n_triplets_pass=sum(r["triplet_pass"] for r in trip)),
@@ -1311,9 +1437,14 @@ def main(argv=None) -> int:
                          wall_mesh=mesh, wall_source=wall_source, cavity_rt_mesh=cavity_rt,
                          cavity_center_ras=cav_c, seeds=seeds, spacing_mm=vol.spacing,
                          shape_kji=vol.array.shape, command=cmd, n_full=args.n_full,
-                         n=args.sheet_n,
+                         n=args.sheet_n, halves=halves,
                          notes=("count-free auto is the F4(b)/F4(c) primary (figure plan v6/v7); "
-                                "count-known modes are exported alongside for Table 3 / S-figures."))
+                                "count-known modes are exported alongside for Table 3 / S-figures."
+                                + ("" if halves is None else
+                                   " %s = count-known fit with %d full + %d half tiles in the prior "
+                                   "(the leftover diagnostic's reading of the eight leftovers); the "
+                                   "paper's count-known row awaits the operative record."
+                                   % (halves_mode_name(*halves), halves[0], halves[1]))))
     print("[%s] render data -> %s (+ .json index)" % (ds, npz))
     return 0
 
