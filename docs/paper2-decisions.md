@@ -264,3 +264,22 @@ for the operative record.
    PT-CT1mm; `Cav_Post` 35.1 cc), stated as implant-informed (14 mm reach from
    the seed hull). An implant-independent print volume would need the STL or a
    hand-placed mouth plane; neither exists.
+
+## 2026-11-03 — F8(b) patient run: eligibility corrected, third arm added (trial numbers)
+
+Trial run at 4748ccb (campaign agent): as implanted (32 seeds) on `RIND5(gtcore)`
+V100 0.387 / D90 2653 cGy, `CTV_GT` 0.917 / 6167, `IMPLANT_REACH(10)` 0.960 / 6700;
+optimized 8 full tiles for `RIND5` on the facing + line-of-sight wall (26.5 %):
+`RIND5` 0.462 / 3293, **`CTV_GT` 0.750 / 4749**, reach 0.771 / 4936, 0 overlaps,
+62 s. Two consequences: (1) only 9/32 implanted seeds lie on wall that rule calls
+reachable, so the rule under-states what the surgeon reached; the patient arms use
+**eligible = craniotomy(facing + LOS) ∪ wall within 10 mm of any implanted seed
+("demonstrated reach")**, which contains the implant by construction and still
+excludes the far wall. (2) Optimizing for the full rind trades the physician's
+target away (−17 pp on `CTV_GT`), the circularity rev 3 warned about, now
+quantified. The figure therefore carries **three arms**: as implanted; optimized
+for `RIND5`; optimized for the physician's target (`HRCTV_PHYS`); each scored on
+all three targets. The caption states that the optimizer optimizes the target it
+is given and that the target choice (F6) is the clinical decision; the comparison
+is one case, an illustration. Jacob chooses which arms the main-text panel shows;
+all three are in Table 3 / S4.
