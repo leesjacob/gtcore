@@ -91,6 +91,65 @@ def dice(a, b):
     return 2.0 * (a & b).sum() / max(1, a.sum() + b.sum())
 
 
+def print_seed_match_detail(vol, res, cs_ras, dv, gate_mm=2.0, source_gy=200.0,
+                            source_gate_mm=3.0):
+    """Printing only (vault-filter acceptance, Phase 1): a one-to-one
+    (Hungarian) match of the detections to the contoured ``Seeds``, the
+    plan's source count read from the RTDOSE local maxima (the ``Seeds`` ROI
+    omits two of the plan's sources), and where every detection sits
+    relative to gtcore's cranial interior (the extracranial check)."""
+    from scipy.optimize import linear_sum_assignment
+
+    ours = np.asarray(res.seeds.centers_ras, float)
+    n_tps, n_det = len(cs_ras), len(ours)
+    D = np.linalg.norm(cs_ras[:, None, :] - ours[None, :, :], axis=2)
+    ri, ci = linear_sum_assignment(D)
+    ok = D[ri, ci] <= gate_mm
+    md = D[ri, ci][ok] if ok.any() else np.array([np.nan])
+    print("  one-to-one match (gate %.0f mm): %d/%d contoured seeds matched; "
+          "distance median %.2f, p95 %.2f, max %.2f mm"
+          % (gate_mm, int(ok.sum()), n_tps, np.median(md), np.percentile(md, 95), md.max()))
+    for t in sorted(set(range(n_tps)) - set(ri[ok].tolist())):
+        print("    contoured seed %d unmatched: nearest detection %.2f mm" % (t, D[t].min()))
+    # every detection's distance to gtcore's cranial interior (0 = inside)
+    interior = np.asarray(res.masks["cranial_interior"], bool)
+    d_int = ndimage.distance_transform_edt(~interior, sampling=vol.spacing[::-1])
+
+    def outside_mm(p):
+        return ndimage.map_coordinates(
+            d_int, np.atleast_2d(vol.ras_to_index(p))[:, ::-1].T, order=1, mode="nearest")
+
+    d_out, d_tps = outside_mm(ours), outside_mm(cs_ras)
+    print("  vault filter meta: %r" % (vol.meta.get("vault_filter"),))
+    print("  detections outside the cranial interior: %d of %d (max %.1f mm); "
+          "contoured seeds outside it: %d of %d (max %.1f mm)"
+          % (int((d_out > 0).sum()), n_det, d_out.max() if n_det else 0.0,
+             int((d_tps > 0).sum()), n_tps, d_tps.max()))
+    # plan sources = RTDOSE local maxima above source_gy, merged within 3 mm
+    arr = np.asarray(dv.array, float)
+    peaks = (arr == ndimage.maximum_filter(arr, size=3)) & (arr > source_gy * 100.0)
+    pk = np.argwhere(peaks)
+    pk = pk[np.argsort(-arr[tuple(pk.T)])]
+    src = []
+    for p in dv.index_to_ras(pk[:, ::-1].astype(float)):
+        if not src or np.min(np.linalg.norm(np.asarray(src) - p, axis=1)) > 3.0:
+            src.append(p)
+    src = np.asarray(src)
+    Ds = np.linalg.norm(src[:, None, :] - ours[None, :, :], axis=2)
+    rs_, cs_ = linear_sum_assignment(Ds)
+    oks = Ds[rs_, cs_] <= source_gate_mm
+    ms = Ds[rs_, cs_][oks] if oks.any() else np.array([np.nan])
+    print("  plan sources: %d RTDOSE local maxima > %.0f Gy (merged at 3 mm); detections "
+          "matched one-to-one within %.0f mm: %d/%d, distance median %.2f, max %.2f mm; "
+          "sources without a detection: %d; detections without a source: %d"
+          % (len(src), source_gy, source_gate_mm, int(oks.sum()), len(src),
+             np.median(ms), ms.max(), len(src) - int(oks.sum()), n_det - int(oks.sum())))
+    for e in sorted(set(range(n_det)) - set(ci[ok].tolist())):
+        print("    detection %d has no contoured seed (nearest %.2f mm); nearest plan "
+              "source %.2f mm; %.1f mm outside the cranial interior"
+              % (e, D[:, e].min(), Ds[:, e].min(), d_out[e]))
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("ct")
@@ -147,6 +206,7 @@ def main(argv=None):
     print("seeds: TPS %d, detected %d; detected->nearest TPS seed median %.2f mm, p95 %.2f, max %.2f; "
           "TPS seeds with no detection within 2 mm: %d"
           % (n, len(ours), np.median(dd), np.percentile(dd, 95), dd.max(), int((d2 > 2.0).sum())))
+    print_seed_match_detail(vol, res, cs_ras, dv)
 
     def stats(mask, d):
         s = hrctv_stats(d, args.rx, vmm3)
