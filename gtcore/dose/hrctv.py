@@ -38,15 +38,19 @@ under a second for a 32-seed implant.
 """
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from typing import Dict, Optional
 
 import numpy as np
 from scipy import ndimage
 
+from .._strict import swallow_or_raise
 from ..volume import Volume
 from .engine import TG43Engine, dose_at_points
 from .metrics import DVH
+
+_log = logging.getLogger(__name__)
 
 __all__ = ["HRCTV_DEPTH_MM", "HRCTV_SPACING_MM", "HRCTV", "build_hrctv",
            "hrctv_stats"]
@@ -289,8 +293,12 @@ def build_hrctv(mesh, depth_mm: float = HRCTV_DEPTH_MM,
                 shell.update_faces(far)
                 shell.remove_unreferenced_vertices()
             out_mesh = shell
-        except Exception:
+        except Exception as exc:
+            # the rind VOLUME is complete; only the display shell is missing.
+            # logged, re-raised under GTCORE_STRICT=1
             out_mesh = None
+            swallow_or_raise(_log, "HR-CTV display-shell extraction failed "
+                             "(source %r, depth %g mm)" % (source, depth_mm), exc)
 
     return HRCTV(mask=rind, affine=affine, depth_mm=float(depth_mm),
                  spacing_mm=sp, source=source, mesh=out_mesh)
