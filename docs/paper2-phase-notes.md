@@ -1480,3 +1480,197 @@ are the Phase 1 set (13 interface placeholders + the `GT_E2E`-gated run);
 66dc856 (targets + rt-io) during this run; not merged here by the
 coordinator's instruction (conflicts in `metrics.py` / `hrctv.py` resolved
 at merge).
+
+## 2026-11-03 — Phase 3 — clinical validation rebuilt on Phase 2 (task `clinical-rebuild`, branch `p2/clinical-rebuild`)
+
+Requirements rev 3 §3 F5 / F6, §6 Phase 3 first checkbox; PHASE3_PLAN row
+`clinical-rebuild`. Branched from `paper2/integration` at `e13a4af`. Code
+commit **`fe0dc81`** (`scripts/validation_clinical.py` rewritten,
+`tests/test_validation_clinical_smoke.py` new); the panel data under
+`docs/figures/data/clinical_*` and this section are the follow-up commit
+(`git log -1 -- docs/figures/data/clinical_table3_rows.csv`). Every real-data
+number below is **calibration-set** (one clinical case, no held-out scan;
+`docs/paper2-decisions.md`). S_K is 3.5 U nominal in every gtcore cell and
+is never fitted; rx 6000 cGy. Hardware as in the Phase 1 notes; other
+agents ran concurrently, so wall times are upper bounds.
+
+### What the script is now
+
+`scripts/validation_clinical.py` is the single source of the clinical rows
+of Table 3 and of the F4(a), F5(a), F5(b), F6 panel data. It consumes only
+Phase 2 interfaces: `gtcore.io.rt` (`load_rtstruct`, `load_rtdose`,
+`rasterize_rois`, `check_references`, `verify_against_tps`,
+`reference_from_dvh_sequence`, `parse_mim_dvh_export`),
+`gtcore.dose.targets` (`hrctv_phys`, `rind5`, `implant_reach`, `dice`,
+`target_doses_exact`, `target_doses_from_grid`),
+`gtcore.dose.metrics.dose_stats` and `gtcore.pipeline.reconstruct`. Nothing
+is tuned; the old inline rasteriser, the `build_hrctv` call and the
+`hrctv_stats` calls are gone.
+
+```
+python scripts/validation_clinical.py "$GT_DATA_ROOT/<PT-CT1mm dir>" "$GT_DATA_ROOT/<PT-RT RTSTRUCT dir>" "$GT_DATA_ROOT/<PT-RT RTDOSE dir>" --rx 6000 --out docs/figures/data
+#   [--mim-dvh <MIM DVH export>]  [--datasets PT-CT1mm,PT-RT]
+# run from the worktree root with PYTHONPATH=<worktree>; the first output line is gtcore.__file__, the second the commit
+```
+
+Definitions used (Methods-quotable; all from the Phase 2 notes):
+
+- **Dose columns.** *RTDOSE*: the clinical dose grid (1 x 1 x 1.667 mm, GY to
+  cGy, `DoseSummationType` PLAN, no `DVHSequence`) sampled trilinearly at the
+  CT voxel centres of each structure. *gtcore @ 32 TPS sources*: the exact
+  TG-43U1S2 engine at the plan's 32 source positions = the 32 RTDOSE local
+  maxima > 200 Gy merged at 3 mm; each source takes the PCA long axis of the
+  contoured `Seeds` component matched to it one-to-one within 3 mm (30
+  sources); the two uncontoured sources take the axis of the gtcore detection
+  matched within 3 mm. *gtcore @ 32 gtcore seeds*: the engine at
+  `reconstruct`'s 32 detections with their own axes. *gtcore @ 30 contoured
+  seeds*: the engine at the 30 `Seeds` contour centroids (26-connected
+  components of the rasterised ROI on the CT grid) with their PCA axes. Every
+  cell is `dose_stats(doses, 6000, voxel_volume_mm3=target.voxel_volume_mm3)`
+  (type-1 quantile, >= rule).
+- **Structures (CT grid, 0.52 x 0.52 x 1.0 mm).** `HRCTV_PHYS` = the RTSTRUCT
+  `CTV_GT` rasterised with the Phase 2 rule; `RIND5(Cav_Post, clip Brain)`;
+  `RIND5(gtcore cavity, clip gtcore cranial interior)`;
+  `IMPLANT_REACH(r)` = `RIND5(Cav_Post, Brain)` within r mm of a gtcore seed
+  centre, r = 10 mm (the F6 calibration, `docs/paper2-decisions.md`) and
+  r = 12 mm as a labelled second line.
+
+### Real run — PT-CT1mm + PT-RT at `fe0dc81` (wall 129 s, suite running concurrently)
+
+Reconstruct: 32 seeds, gtcore cavity 41.3 cc; RTSTRUCT volumes on the CT
+grid `Cav_Post` 35.10 cc, `CTV_GT` 19.01 cc, `Brain` 1383.98 cc, `Seeds`
+0.36 cc; gtcore cavity vs `Cav_Post` Dice 0.665 (covers 72 % of it, 62 % of
+ours inside it). `check_references`: no warnings (RTSTRUCT, CT and RTDOSE
+share one frame of reference; the RTSTRUCT references the PT-CT1mm series).
+
+**Seed match table** (`clinical_seed_match.csv`, `clinical_seed_residuals.csv`,
+`clinical_source_match.csv`):
+
+| | value |
+|---|---|
+| contoured `Seeds` components / gtcore detections | 30 / 32 |
+| one-to-one match, 2 mm gate | **30/30**; distance median 0.15, p95 0.73, max 0.89 mm |
+| residual vectors gtcore - TPS (RAS mm, n = 30) | mean -0.03 / -0.06 / +0.04; SD 0.25 / 0.11 / 0.16; RMS 0.25 / 0.13 / 0.17; norm median 0.15, p95 0.73, max 0.89 |
+| plan sources = RTDOSE maxima > 200 Gy merged at 3 mm | **32**; detections matched one-to-one within 3 mm **32/32**, median 0.92, max 1.45 mm; 0 sources without a detection, 0 detections without a source |
+| the two uncontoured sources | detections 10 and 17: 0.90 / 0.83 mm from an RTDOSE maximum, 7.90 / 8.74 mm from any contour, inside the cranial interior |
+| 32-source model | 30 sources take a contoured seed's axis (maximum-to-centroid distance median 0.85, max 1.51 mm: the 1 x 1 x 1.667 mm dose-grid quantisation of the maxima), 2 take the matched detection's axis |
+| detections outside gtcore's cranial interior | 2 of 32 (max 1.9 mm); contoured seeds outside it 2 of 30 (max 2.0 mm); vault filter applied, 1339.7 mL, 21 dropped, margin 4.0 mm |
+
+Identical to the Phase 1 vault-filter acceptance (30/30, 32/32, same
+distances). `clinical_seed_residuals.csv` (columns
+`seed_id,dx_mm,dy_mm,dz_mm,dist_mm`) is the input of the `uncertainty`
+agent's primary band.
+
+**Structures** (volume, Dice vs `CTV_GT`): `HRCTV_PHYS` 19.01 cc;
+`RIND5(Cav_Post, Brain)` 35.35 cc / 0.692; `RIND5(gtcore, cranial interior)`
+53.82 cc / 0.284; `IMPLANT_REACH(10)` 16.83 cc / **0.881**; `IMPLANT_REACH(12)`
+25.29 cc / 0.846 -- the Phase 2 `targets` numbers reproduced exactly.
+
+**Structure x dose matrix** (cell = D90 cGy / V100 % / V150 %; rx 6000 cGy;
+S_K 3.5 U nominal; every dose cell flagged *TPS volume check pending*, see
+below; `clinical_table3_rows.csv` carries D90 / D50 / Dmin / Dmean / V100 /
+V150 / V200 / volume / n / Dice per cell):
+
+| structure (CT grid) | volume | RTDOSE | gtcore @ 32 TPS sources | gtcore @ 32 gtcore seeds | gtcore @ 30 contoured seeds |
+|---|---|---|---|---|---|
+| `HRCTV_PHYS` (`CTV_GT`) | 19.0 cc | **6365 / 93.7 / 48.2** | 6224 / 92.3 / 47.0 | **6167 / 91.7 / 46.8** | 5790 / 87.3 / 37.7 |
+| `RIND5(Cav_Post, clip Brain)` | 35.4 cc | **4646 / 67.8 / 28.1** | 4564 / 67.7 / 27.4 | 4538 / 67.8 / 27.4 | 4350 / 61.1 / 22.0 |
+| `RIND5(gtcore cavity, clip cranial interior)` | 53.8 cc | **2725 / 38.3 / 20.0** | 2671 / 38.5 / 19.6 | 2653 / 38.7 / 19.8 | 2528 / 35.4 / 17.7 |
+| `IMPLANT_REACH(r = 10 mm)` | 16.8 cc | 6881 / 97.4 / 56.7 | 6776 / 96.5 / 55.2 | 6700 / 96.0 / 54.8 | 6173 / 92.0 / 44.5 |
+| `IMPLANT_REACH(r = 12 mm)` (second line) | 25.3 cc | 5859 / 88.0 / 39.3 | 5801 / 87.2 / 38.3 | 5765 / 86.9 / 38.2 | 5404 / 80.2 / 30.8 |
+
+Reading. The sanity anchors hold to the cGy: `CTV_GT` 19.0 cc, RTDOSE D90
+6365 / V100 93.7 %, gtcore @ 32 gtcore seeds 6167 cGy (Phase 1: 6168; the
+1 cGy is the Phase 2 supersampled boundary voxels), `RIND5(Cav_Post, Brain)`
+35.4 cc / 4646, `RIND5(gtcore)` 53.8 cc / 2725, `IMPLANT_REACH(10)` Dice
+0.88. Column to column on `CTV_GT`: gtcore at the TPS's own 32 sources is
+-2.2 % in D90 against the RTDOSE (6224 vs 6365) and -1.4 pp in V100; the 32
+gtcore seeds are -3.1 % / -2.0 pp; dropping the two uncontoured sources
+(30-seed column) costs a further -6 % in D90, which is the whole of the
+Phase 1 "5790 vs 6365" gap. The same ordering holds on every structure, so
+the structure choice moves D90 by a factor 2.3 (6365 to 2725 cGy under the
+same RTDOSE) while the dose source moves it by <= 3 % at 32 sources. Matrix
+wall 12-22 s (exact engine at ~560 k voxel centres x 3 gtcore columns).
+
+**Diagnostics (printed; in the CSV as `row = diagnostic`; never used in a
+table cell):**
+
+- *Implied S_K*: TG-43 (3.50 U, 32 TPS sources) / RTDOSE at `HRCTV_PHYS`
+  voxels > 5 mm from any source and > 100 cGy (every 5th voxel, n = 13 476):
+  median **0.989**, p5 0.923, p95 1.048 -> implied S_K **3.54 U**
+  (diagnostic, not used). The Phase 1 line (0.931 -> 3.76 U) was computed
+  with the 30 contoured seeds only; with the plan's 32 sources the far-field
+  ratio is within 1.1 % of unity at nominal S_K, i.e. the earlier 7 % was the
+  two missing sources, not the strength. The +-5 % spread (p5-p95) is the
+  residual angular / positional structure the `formalism` agent is testing.
+- *`delivered_fraction` check*: RTDOSE / TG-43 total-decay dose at the same
+  voxels median **1.011** (p5 0.954, p95 1.083), tau = 335.5 h. A dose-to-time
+  export of t days would read `1 - exp(-t/tau)` times the strength ratio
+  (0.883 at 30 d), and no finite time reproduces a ratio >= 1 at nominal S_K.
+  **Conclusion: the RTDOSE is the total dose to decay**; gtcore compares its
+  total-decay dose with no `delivered_fraction` correction (decision rule in
+  the script: ratio >= 0.97 -> total decay, else flag for the RTPLAN).
+- *Position variant*: the 32-source column with the contour centroid in place
+  of the RTDOSE maximum where a contour matched gives `HRCTV_PHYS` D90
+  6172 cGy / V100 91.8 % (vs 6224 / 92.3 with the raw maxima); the maxima
+  positions are kept as the column (the task's specification), the variant
+  is one printed line.
+
+**TPS volume / D90 check (`verify_against_tps`).** The RTDOSE has no
+`DVHSequence` and the MIM DVH / plan export is not on this machine, so the
+check is **pending**: every Table 3 dose row carries
+`tps_check = "TPS volume check pending"`. The script prints the command to
+run when the export arrives:
+
+```
+python scripts/validation_clinical.py "$GT_DATA_ROOT/<PT-CT1mm dir>" "$GT_DATA_ROOT/<PT-RT RTSTRUCT dir>" "$GT_DATA_ROOT/<PT-RT RTDOSE dir>" --rx 6000 --mim-dvh "$GT_DATA_ROOT/<MIM DVH export file>"
+```
+
+(`parse_mim_dvh_export` auto-detects the layout; `roi_col=` / `volume_col=` /
+`d90_col=` / `dose_units=` are the overrides.) The rows then land in
+`clinical_table3_rows.csv` as `row = verify_against_tps` and `tps_check`
+becomes `pass` / `FAIL` on every dose row.
+
+**Hooks.** `gtcore.dose.gamma` and `gtcore.dose.formalism`: *not merged* at
+`fe0dc81` (imported inside `try/except ImportError`; the status is printed
+and written as `row = hook`). Optimizer arm: Phase 4/5, not run here.
+
+### Panel data (`docs/figures/data/`, `git add -f`; every file has a header comment with script, sanitised command, commit, dataset ids, flag)
+
+| file | content | panels |
+|---|---|---|
+| `clinical_table3_rows.csv` | one row per statistic: `row,structure,dose_source,metric,value,unit,grid,flag,tps_check` (`flag` = `calibration-set`; `structure` = `Target.describe()` provenance; `tps_check` is a ninth column added to the specified eight) -- 183 lines incl. the matrix, Dice, RTSTRUCT volumes, gtcore cavity, seed-match summary, diagnostics, hooks | Table 3 (`paper_tables.py`) |
+| `clinical_seed_residuals.csv` | `seed_id,dx_mm,dy_mm,dz_mm,dist_mm`, 30 rows, gtcore - TPS RAS mm | `uncertainty` input |
+| `clinical_seed_match.csv`, `clinical_source_match.csv` | the 30 contoured seeds with their match; the 32 plan sources with origin (`contour` / `rtdose-max`), axis, contour and detection match | F4(a) supplement |
+| `clinical_slice.npz` | the one axial slice through the implant centroid (k = 117 on the CT grid; `slice_z_ras`, `affine`, `spacing_mm`, `x_ras` / `y_ras` voxel-centre arrays): `ct_hu` (HU), `rtdose_cgy`, `gtcore32src_cgy`, `gtcore32gt_cgy`, `gtcore30_cgy`, masks `cav_post`, `ctv_gt`, `rind5_cavpost`, `rind5_gtcore`, `implant_reach_r10`, `gtcore_cavity`; `window_level_note` (W 400 / L 40); `header` | F4(a), F5(a), F6 share this slice and crop |
+| `clinical_slice_contours.csv` | `layer,level_cgy,polyline_id,vertex,x_ras,y_ras,z_ras`: 30 / 60 Gy iso-contours of the four dose fields (matplotlib `contour` on the slice), the 0.5-level outlines of every mask above, and the TPS `Seeds` contour polylines within 3 mm of the slice | F5(a) isodoses, F6 fills / outlines, F4(a) seed contours |
+| `clinical_slice_seeds.csv` | `set,seed_id,x_ras,y_ras,z_ras,dz_mm,ax,ay,az,contoured,near_slice` for the 32 gtcore seeds, 30 contour centroids and 32 plan sources (6 of each within 3 mm of the slice) | F4(a) markers |
+| `clinical_dvh_hrctv.csv` | `dose_cgy,rtdose,gtcore_32_tps_sources,gtcore_32_gtcore_seeds,gtcore_30_contoured_seeds`, 0-15 000 cGy in 50 cGy steps (301 rows), cumulative fraction >= dose on `HRCTV_PHYS`; the header states the D90s. **MC band hook:** the band is not in this file -- `paper_figures.py` joins the `uncertainty` agent's `docs/figures/data/f5c_*.csv` on `dose_cgy` | F5(b) |
+
+### Tests
+
+`tests/test_validation_clinical_smoke.py` (8 tests, synthetic only): a
+`make_head_phantom(spacing=1, n_tiles=2)` CT, an RTSTRUCT written with
+pydicom as `tests/test_io_rt.py` does (`Cav_Post` = the truth cavity traced
+per slice, `CTV_GT` = half of its 5 mm rind, `Brain` sphere, `Seeds` = the
+capsule footprint per slice for 7 of the 8 truth seeds, so one source is
+uncontoured as in the clinical case) and an RTDOSE = gtcore's own TG-43
+dose at the truth seeds on a 2 mm grid. Checks: `reconstruct` finds 8/8, 7/7
+contoured matched, 8 RTDOSE maxima = 8 sources matched, 7 contour-axis + 1
+detection-axis sources; residual CSV columns and rows; Table 3 CSV columns,
+labels, `calibration-set`, `tps_check` pending, the 32-source column
+reproduces the RTDOSE D90 within 15 % on the 2 mm grid; ratio 0.9-1.1 and
+the "total dose to decay" conclusion, implied S_K within 0.4 U of 3.5;
+every panel file with its documented columns / arrays (DVH monotone, 301
+rows); `main()` end to end on the synthetic files with no machine path in
+the headers; the polyline / DVH / matching / CSV helpers.
+
+```
+GTCORE_STRICT=1 python -m pytest -q tests/test_validation_clinical_smoke.py   # 8 passed in 54 s
+GTCORE_STRICT=1 python -m pytest -q -p no:cacheprovider                        # full suite: see the line below
+```
+
+Full suite at `fe0dc81` (`GTCORE_STRICT=1 python -m pytest -q -p no:cacheprovider` from the
+worktree root; the real-data run and other agents ran concurrently, so the wall time
+is an upper bound): **949 passed, 14 skipped**, 15248 warnings in 874.59 s (0:14:34).
+The 14 skips are the Phase 1 set; 941 -> 949 = the 8 new smoke tests.
