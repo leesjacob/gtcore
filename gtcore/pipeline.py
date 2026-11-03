@@ -176,6 +176,65 @@ def seed_detection_params(spacing):
                 min_elong=0.0, max_elong=float("inf"))
 
 
+# Cranial-vault filter margin, in physical millimetres.  A GammaTile seed
+# lies inside the cranial vault, but the segmented "cranial interior" is
+# bounded by the skull, and the skull is missing under the craniotomy: there
+# the tiles sit against the dura under the bone defect (flap or plate), i.e.
+# just OUTSIDE the segmented interior.  On the clinical thin-cut CT the
+# contoured seeds lie up to 2.1 mm outside it (docs/clinical-audit on
+# notes/clinical-audit); 4 mm keeps them with headroom for a slice of
+# segmentation error while still rejecting dental work and jaw streaks, which
+# sit tens of millimetres away.  The margin is a Euclidean distance in mm on
+# the voxel spacing, so it means the same thing in-plane and through-slice.
+# The rule it replaces, binary_dilation(cranial_interior, iterations=2), was
+# two VOXELS -- 1 mm in-plane / 2 mm through-slice on the 0.52 x 0.52 x 1 mm
+# clinical grid -- and dropped that contoured seed.
+VAULT_MARGIN_MM = 4.0
+
+
+def seed_vault_distance_mm(interior, vol: Volume, centers_ras,
+                           margin_mm=VAULT_MARGIN_MM):
+    """Euclidean distance [mm] from each seed centre to the cranial interior.
+
+    The Euclidean distance transform of ``~interior`` on the volume's own
+    voxel spacing (``sampling``, so a millimetre is a millimetre on every
+    axis) is sampled trilinearly at each seed's continuous voxel position; a
+    centre inside the interior reads 0.  The transform is computed on the
+    candidates' bounding box padded by ``margin_mm`` plus two voxel
+    diagonals rather than on the whole grid (seconds and ~1 GB on a
+    204 x 512 x 512 scan): a cropped transform can only OVER-estimate, and
+    only for voxels whose nearest interior voxel lies beyond the padding, so
+    every value up to ``margin_mm`` equals the full-grid value (tested in
+    tests/test_vault_filter_mm.py).  Values above ``margin_mm`` are upper
+    bounds; a crop that holds no interior voxel at all reads ``inf``.
+    """
+    centers = np.atleast_2d(np.asarray(centers_ras, dtype=float))
+    if centers.shape[0] == 0:
+        return np.zeros(0)
+    interior = np.asarray(interior, dtype=bool)
+    kji = np.atleast_2d(vol.ras_to_index(centers))[:, ::-1]      # array order
+    sp = np.asarray(vol.spacing, dtype=float)[::-1]               # (sk, sj, si)
+    reach_mm = float(margin_mm) + 2.0 * float(np.sqrt(np.sum(sp ** 2)))
+    pad = np.ceil(reach_mm / sp).astype(int) + 1
+    lo = np.clip(np.floor(kji.min(axis=0)).astype(int) - pad, 0, None)
+    hi = np.minimum(np.ceil(kji.max(axis=0)).astype(int) + pad + 1,
+                    np.asarray(interior.shape))
+    sub = interior[lo[0]:hi[0], lo[1]:hi[1], lo[2]:hi[2]]
+    if not sub.any():
+        return np.full(centers.shape[0], np.inf)
+    dist = ndimage.distance_transform_edt(~sub, sampling=sp)
+    return ndimage.map_coordinates(dist, (kji - lo).T, order=1, mode="nearest")
+
+
+def in_cranial_vault(interior, vol: Volume, centers_ras,
+                     margin_mm=VAULT_MARGIN_MM):
+    """Keep-mask for the vault filter: seed centres whose Euclidean distance
+    to the cranial interior (:func:`seed_vault_distance_mm`) is at most
+    ``margin_mm``.  Both filter sites in :func:`reconstruct` use this."""
+    d = seed_vault_distance_mm(interior, vol, centers_ras, margin_mm)
+    return d <= float(margin_mm)
+
+
 # coarse-scan threshold search when the implanted seed count is known:
 # each step re-detects at a lower HU floor and is kept only while it moves
 # the in-implant count toward the expected one without flooding
@@ -341,14 +400,15 @@ def reconstruct(vol: Volume, verbose: bool = True,
                   lambda: segment_head(clean, metal_mask=metal if metal.any() else None))
 
     # anatomical filter: a GammaTile seed lies inside the cranial vault, so
-    # drop candidates outside it (dental work and jaw streaks live there).
+    # drop candidates farther than VAULT_MARGIN_MM (physical mm, see there)
+    # from it (dental work and jaw streaks live there).
     # Fail OPEN when no credible vault exists -- a 3D-printed phantom has no
     # skull (plastic ~300 HU), so its "cranial interior" is empty and the
     # filter would silently discard every real seed. 300 mL is well under any
     # adult cranial volume (~1300-1500 mL) and well over segmentation noise.
     interior_ml = float(masks["cranial_interior"].sum()) * float(np.prod(vol.spacing)) / 1000.0
     vault_info = {"applied": False, "interior_ml": round(interior_ml, 1),
-                  "n_dropped": 0}
+                  "n_dropped": 0, "margin_mm": float(VAULT_MARGIN_MM)}
     if len(seeds) and interior_ml < 300.0:
         import warnings as _warnings
 
@@ -360,16 +420,13 @@ def reconstruct(vol: Volume, verbose: bool = True,
             print("  vault filter SKIPPED: cranial interior %.0f mL is not credible"
                   " (phantom / failed skull segmentation)" % interior_ml)
     elif len(seeds):
-        interior = ndimage.binary_dilation(masks["cranial_interior"], iterations=2)
-        ijk = np.atleast_2d(vol.ras_to_index(seeds.centers_ras))
-        kji = np.clip(np.round(ijk[:, ::-1]).astype(int), 0,
-                      np.array(interior.shape) - 1)
-        inside = interior[kji[:, 0], kji[:, 1], kji[:, 2]]
+        inside = in_cranial_vault(masks["cranial_interior"], vol, seeds.centers_ras)
         vault_info["applied"] = True
         vault_info["n_dropped"] = int(len(seeds) - int(inside.sum()))
         seeds = seeds.subset(inside)
         if verbose:
-            print("  vault filter: %d seeds inside the cranial interior" % len(seeds))
+            print("  vault filter: %d seeds within %.0f mm of the cranial interior"
+                  % (len(seeds), VAULT_MARGIN_MM))
     vol.meta["vault_filter"] = vault_info
 
     # count-driven threshold search (coarse scans only; see docstring)
@@ -382,7 +439,6 @@ def reconstruct(vol: Volume, verbose: bool = True,
         have = _count_near(seeds.centers_ras, ref, SEED_SEARCH_RADIUS_MM)
         search_log.append(dict(hu=params["hu_threshold"], near=have,
                                total=int(len(seeds)), kept=True))
-        interior = ndimage.binary_dilation(masks["cranial_interior"], iterations=2)
         for thr in SEED_SEARCH_THRESHOLDS_HU:
             if have >= expected or thr >= params["hu_threshold"]:
                 break
@@ -395,11 +451,8 @@ def reconstruct(vol: Volume, verbose: bool = True,
                                     min_elong=params["min_elong"],
                                     max_elong=params["max_elong"])
             if len(s2):
-                ijk = np.atleast_2d(vol.ras_to_index(s2.centers_ras))
-                kji = np.clip(np.round(ijk[:, ::-1]).astype(int), 0,
-                              np.array(interior.shape) - 1)
-                inside = interior[kji[:, 0], kji[:, 1], kji[:, 2]]
-                s2 = s2.subset(inside)
+                s2 = s2.subset(in_cranial_vault(masks["cranial_interior"], vol,
+                                                s2.centers_ras))
             near2 = _count_near(s2.centers_ras, ref, SEED_SEARCH_RADIUS_MM)
             keep = (near2 > have and near2 <= max(expected + 8, have)
                     and near2 <= SEED_SEARCH_MAX_CANDIDATES)
