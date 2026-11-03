@@ -130,3 +130,20 @@ are kept as optional Supplement panels (S3, S5-equivalent) for reviewers;
 (ii) F9 still lists an Artec crop — no Artec export exists on this machine
 (see the F9 entry above); (iii) "structure-volume reproduction vs MIM" needs
 the MIM export, still missing.
+
+## 2026-11-03 — F6 implant-reach radius calibrated: r = 10 mm (Phase 2 `targets`)
+
+Rev 3 rule: "DECIDE r for `IMPLANT_REACH` by Dice vs `CTV_GT` on this case,
+and say so in Table 2 (calibration set = this case)". Measured on PT-CT1mm
+with the 32 gtcore seeds on `RIND5(Cav_Post, clip = Brain)` (CT grid):
+Dice vs `CTV_GT` 0.214 / 0.578 / **0.881** / 0.846 / 0.740 at r = 6 / 8 /
+**10** / 12 / 14 mm (volumes 2.4 / 8.5 / 16.8 / 25.3 / 31.8 cc; `CTV_GT`
+19.0 cc). The rule picks **r = 10 mm**; the v6/v7 sketch's "12 mm, Dice 0.80"
+is replaced. Table 2 row: `IMPLANT_REACH` r = 10 mm, calibration set = this
+case, criterion = Dice vs `CTV_GT`. (12 mm covers 98.5 % of `CTV_GT` at a
+lower Dice; if Jacob prefers coverage over Dice he reverts this entry.)
+Convention recorded for Methods: `RIND5` is the set of voxel centres whose
+Euclidean distance to the nearest cavity voxel centre is <= 5 mm, outside the
+cavity, inside the clip — a centre-to-centre EDT, which makes the rind about
+0.2 mm thinner than a surface-based shell (−4 to −5 % volume on a digital
+sphere); the same definition is used in every table.
