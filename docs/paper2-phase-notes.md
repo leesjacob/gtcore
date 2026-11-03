@@ -3532,6 +3532,23 @@ python scripts/validation_optimize.py --section v6 --phantom "$GT_DATA_ROOT/<PH8
 python scripts/validation_optimize.py --section v2,v3,v4,v5,v7,v8 --sa-seeds 3 --same-candidates --capacity --out <dir>
 ```
 
+### Full suite
+
+`GTCORE_STRICT=1 python -m pytest -q -p no:cacheprovider` from the worktree
+root: at `a7f2ddc` **1039 passed, 15 skipped**, 15 254 warnings in 645 s
+(0:10:45; run while the V6 phantom run and the V4/V5/V7 drivers were
+executing concurrently); at the final commit `12fb2d3` **1040 passed, 15
+skipped**, 15 254 warnings in 577 s (0:09:36; other agents' suites running).
+The 15 skips, listed with `-rs`, are the 13 `tests/test_plan_interface.py`
+placeholders ("… is implemented (see its own test module)"), the
+`GT_PAPER1_ENGINE` gate of `tests/test_dose_engine_qa.py:283` (Phase 3
+engine QA; the live Paper 1 cross-check) and the `GT_E2E` gate of
+`tests/test_planner_optimize.py:714` — all pre-existing environment gates,
+none from this branch (the "14 skips" baseline of the common brief predates
+the Phase 3 engine-QA gate). No test changed its own SA budget: the solver
+tests pass explicit `n_sweeps` / `n_restarts`, and the `solver="sa"` calls in
+`test_plan_api.py` / `test_planner_optimize.py` run on toy instances.
+
 ### Notes for the coordinator / open points
 
 - **Bound arm at the campaign grid.** With `--same-candidates` at h 4 mm /
