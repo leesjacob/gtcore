@@ -757,3 +757,22 @@ requirements doc was not re-measured (no full-suite run without rtree).
   `pyproject.toml`)". The "805 tests" strings and other README drift are left
   for Phase 5.
 - `tests/test_tiles_fuse.py` — one test + the module docstring only.
+
+## 2026-11-03 — Phase 1 close-out — planner drag test made deterministic (coordinator)
+
+`tests/test_planner_interaction.py::test_ctrl_left_drag_relocates_and_stays_conformed`
+failed intermittently on `origin/main` aff83c0 (1 of 4 full runs today;
+"seed 1.02 mm from wall after drag") and once on the Phase 1 tree, passing
+alone every time. Cause: `_PlannerApp._drag_move` paces re-conforms by
+wall-clock time (`drag_min_interval_s`), so under load only some of the nine
+synthetic mouse moves applied, and the test's end point (80 px / 25 px from
+the anchor) is off the wall, so the tile landed at whichever intermediate
+step last passed the pacing gate; with that pose one seed sat 1.9–2.0 mm
+from the lumpy marching-cubes wall, at the test's 2.0 mm bound. Repro script
+(four repeats per setting): default pacing moved 6.2 mm once and 23.7 mm
+three times; pacing off always 23.7 mm; release-only 0.0 mm (end point off
+the wall). Fix (test only, no planner change): `drag_min_interval_s = 0`,
+end point 60 px / 15 px asserted on the wall. Three consecutive module runs:
+32 passed each. Full-suite reference at the Phase 1 merge d063c23:
+875 passed, 14 skipped, 1 failed (this test); the four-merge tree 2630550:
+876 passed, 14 skipped.

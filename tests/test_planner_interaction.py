@@ -142,15 +142,25 @@ def test_ctrl_left_drag_relocates_and_stays_conformed(app):
     start = app.tiles[0]
     gx, gy = _display_xy(app, start.anchor_ras)
 
+    # Deterministic drag: the live planner paces re-conforms by wall-clock
+    # time, so which intermediate steps apply depends on machine load and the
+    # landing pose (and the seed-to-wall distances) varied run to run.  Apply
+    # every step, and end on a point that is on the wall (the pacing itself
+    # is covered by test_drag_release_lands_at_final_cursor_even_when_paced).
+    app.drag_min_interval_s = 0.0
+    end_xy = (gx + 60, gy + 15)
+    assert app._pick_cavity_point(*end_xy) is not None, (
+        "test geometry: the drag end point must be on the wall")
+
     iren = _iren(app)
     iren.SetControlKey(1)
     iren.SetEventPosition(gx, gy)
     iren.InvokeEvent("LeftButtonPressEvent")
     assert app._drag_idx == 0, "Ctrl+left-press on the tile must grab it"
 
-    # slide the cursor ~80 px across the cavity in small steps
+    # slide the cursor ~60 px across the cavity in small steps
     for frac in np.linspace(0.0, 1.0, 9):
-        iren.SetEventPosition(int(gx + 80 * frac), int(gy + 25 * frac))
+        iren.SetEventPosition(int(gx + 60 * frac), int(gy + 15 * frac))
         iren.InvokeEvent("MouseMoveEvent")
     iren.InvokeEvent("LeftButtonReleaseEvent")
     iren.SetControlKey(0)
