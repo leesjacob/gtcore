@@ -12,6 +12,10 @@ Implements, with the signatures frozen in ``gtcore.plan.__init__``:
 - :func:`visible_faces`: first-hit faces from an interior point (the inner
   wall of a closed shell mesh).
 - :func:`recommend_tile_count`: the section 10 manufacturer rule.
+- :func:`craniotomy_opening` / :func:`craniotomy_faces` /
+  :func:`eligible_faces`: the craniotomy-side eligibility of Paper 2 F8(b)
+  (the wall the surgeon could reach through the skull opening); see the
+  "craniotomy-side eligibility" section.
 
 Read-only use of ``gtcore.interact``; never edit it.  Tests in
 ``tests/test_plan_candidates.py``.
@@ -41,10 +45,12 @@ strip, and the rule rejected 30 of 63 good tiles.  It survives here as
 from __future__ import annotations
 
 import math
-from typing import Dict, List, Optional, Sequence, Tuple
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 import trimesh
+from scipy import ndimage
 
 from ..interact import (
     SEED_WALL_OFFSET_MM,
@@ -555,10 +561,14 @@ def _select_first(centre, k, locs, ray_idx, tri_idx, hit_tri, hit_loc):
     return hit_tri, hit_loc
 
 
-def _first_hits_angular(mesh, centre: np.ndarray, dirs: np.ndarray,
-                        chunk: int = VISIBLE_RAY_CHUNK):
-    """Same as :func:`_first_hits_trimesh` for rays from ONE origin, with an
-    angular broad phase instead of trimesh's ray-box one.
+def _forward_hits_angular(mesh, centre: np.ndarray, dirs: np.ndarray,
+                          chunk: int = VISIBLE_RAY_CHUNK):
+    """Every forward hit of the rays ``centre + t * dirs[k]`` (``t >= 0``) for
+    rays from ONE origin, with an angular broad phase instead of trimesh's
+    ray-box one.  Yields ``(lo, hi, ray_idx, tri_idx, loc)`` per chunk of
+    rays ``[lo, hi)`` with ``ray_idx`` relative to the chunk; chunks without
+    a hit are skipped.  :func:`_first_hits_angular` (visible_faces) and
+    :func:`hits_before` (craniotomy eligibility) are built on it.
 
     Seen from ``centre``, a triangle occupies a spherical triangle that lies
     inside the cap of angular radius ``theta_t`` = max angle between its
@@ -578,10 +588,8 @@ def _first_hits_angular(mesh, centre: np.ndarray, dirs: np.ndarray,
     from trimesh.constants import tol as _tol
 
     k = dirs.shape[0]
-    hit_tri = np.full(k, -1, dtype=int)
-    hit_loc = np.full((k, 3), np.nan)
     if k == 0:
-        return hit_tri, hit_loc
+        return
     tris = np.asarray(mesh.triangles, dtype=float)
     face_n = np.asarray(mesh.face_normals, dtype=float)
     rel_c = tris.mean(axis=1) - centre[None, :]
@@ -648,9 +656,24 @@ def _first_hits_angular(mesh, centre: np.ndarray, dirs: np.ndarray,
         forward = ((loc - centre[None, :]) * d).sum(axis=1) > -1e-6
         if not forward.any():
             continue
+        yield lo, hi, ri[forward], ti[forward], loc[forward]
+
+
+
+
+def _first_hits_angular(mesh, centre: np.ndarray, dirs: np.ndarray,
+                        chunk: int = VISIBLE_RAY_CHUNK):
+    """Same as :func:`_first_hits_trimesh` for rays from ONE origin: the
+    smallest-distance forward hit per ray from :func:`_forward_hits_angular`
+    (the angular broad phase), ``-1`` / NaN for misses."""
+    k = dirs.shape[0]
+    hit_tri = np.full(k, -1, dtype=int)
+    hit_loc = np.full((k, 3), np.nan)
+    for lo, hi, ri, ti, loc in _forward_hits_angular(mesh, centre, dirs, chunk=chunk):
+        m = hi - lo
         sub_tri = np.full(m, -1, dtype=int)
         sub_loc = np.full((m, 3), np.nan)
-        _select_first(centre, m, loc[forward], ri[forward], ti[forward], sub_tri, sub_loc)
+        _select_first(centre, m, loc, ri, ti, sub_tri, sub_loc)
         hit_tri[lo:hi] = sub_tri
         hit_loc[lo:hi] = sub_loc
     return hit_tri, hit_loc
@@ -714,6 +737,516 @@ def visible_faces_trimesh(mesh, center_ras, chunk: int = VISIBLE_RAY_CHUNK) -> n
         hit_tri, hit_loc = _first_hits_trimesh(mesh, centre, dirs[f])
         out |= _visible_from_hits(cents, f, hit_tri, hit_loc, n_faces)
     return out
+
+
+# ------------------------------------------- craniotomy-side eligibility
+# Paper 2 F8(b) (docs/paper2-decisions.md, "F8(c) conditions"): the optimizer
+# may only use the wall the surgeon could reach through the craniotomy.
+CRANIOTOMY_MARGIN_MM = 3.0
+# craniotomy_opening: a cranial-interior boundary voxel farther than this from
+# any skull voxel is "not covered by bone".  The sealed vault (segment_head:
+# close_mm on a 2 mm working grid) sits 1-2 mm inside the true inner table, so
+# 1-2 mm flags most of the surface; 3 mm flags a defect, burr holes and thin
+# skull-base bone, and the component choice below picks the one at the cavity.
+
+OPENING_MIN_AREA_MM2 = 100.0
+# Components of the opening set smaller than 1 cm^2 are noise, not an opening.
+
+CONE_DEG = 90.0
+# craniotomy_faces (b): the face's inward normal must point toward the view
+# point within this angle; 90 deg = the hemisphere facing the opening.
+
+FOOTPRINT_TOL_MM = 5.0
+# craniotomy_faces (a): a ray from the view point that enters the lumen once
+# must enter within this in-plane distance of the opening's projected voxels
+# (the rind depth: the cavity lid may sit a little beside the bony edge).
+
+VIEW_OFFSET_MM = 10.0
+# The view point is the opening centroid pushed this far out along the
+# opening's outward normal (the surgeon looks in from outside the skull), so
+# the cavity's own lid -- its contact with the vault -- faces away from it.
+
+ELIGIBLE_RULES = ("all", "visible", "craniotomy")
+
+
+@dataclass
+class Opening:
+    """The craniotomy opening derived from the pipeline masks
+    (:func:`craniotomy_opening`): the voxel centres of the chosen patch of the
+    cranial-interior boundary, its centroid and outward unit normal (RAS mm),
+    its area estimate and how it was found (``info``)."""
+
+    centroid_ras: np.ndarray
+    normal_ras: np.ndarray
+    points_ras: np.ndarray
+    area_mm2: float
+    info: Dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self):
+        self.centroid_ras = np.asarray(self.centroid_ras, dtype=float).reshape(3)
+        n = np.asarray(self.normal_ras, dtype=float).reshape(3)
+        self.normal_ras = n / max(float(np.linalg.norm(n)), 1e-12)
+        self.points_ras = np.asarray(self.points_ras, dtype=float).reshape(-1, 3)
+        self.area_mm2 = float(self.area_mm2)
+
+    def view_point(self, offset_mm: float = VIEW_OFFSET_MM) -> np.ndarray:
+        """The centroid pushed ``offset_mm`` out along the outward normal."""
+        return self.centroid_ras + float(offset_mm) * self.normal_ras
+
+    def summary(self) -> Dict[str, Any]:
+        """JSON-able summary (no voxel list)."""
+        return {"centroid_ras": [float(v) for v in self.centroid_ras],
+                "normal_ras": [float(v) for v in self.normal_ras],
+                "area_mm2": self.area_mm2, "n_voxels": int(self.points_ras.shape[0]),
+                "info": dict(self.info)}
+
+    def describe(self) -> str:
+        i = self.info
+        return ("craniotomy opening: %.1f cm^2 (%d boundary voxels; %s), centroid RAS "
+                "(%.1f, %.1f, %.1f), outward normal (%.2f, %.2f, %.2f); margin %.1f mm; "
+                "%d candidate component(s) >= %.0f mm^2"
+                % (self.area_mm2 / 100.0, self.points_ras.shape[0],
+                   i.get("source", "?"), *self.centroid_ras, *self.normal_ras,
+                   float(i.get("margin_mm", float("nan"))), int(i.get("n_components", 0)),
+                   float(i.get("min_area_mm2", float("nan")))))
+
+
+@dataclass
+class EligibleFaces:
+    """A face eligibility mask with its provenance (:func:`eligible_faces`).
+
+    ``mask`` is ``(F,)`` bool; ``fraction`` the eligible share of the wall
+    AREA, ``fraction_faces`` of the face count; ``info`` the JSON-able record
+    (rule, criterion counts, opening summary, parameters) stored in the
+    optimizer report's ``parameters["eligible"]``.
+    """
+
+    mask: np.ndarray
+    rule: str
+    fraction: float
+    fraction_faces: float
+    info: Dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self):
+        self.mask = np.asarray(self.mask, dtype=bool).reshape(-1)
+        self.fraction = float(self.fraction)
+        self.fraction_faces = float(self.fraction_faces)
+
+    @property
+    def n_eligible(self) -> int:
+        return int(self.mask.sum())
+
+    def summary(self) -> Dict[str, Any]:
+        """JSON-able record for the report parameters (no mask)."""
+        return {"rule": self.rule, "fraction": self.fraction,
+                "fraction_faces": self.fraction_faces, "n_eligible": self.n_eligible,
+                "n_faces": int(self.mask.size), "info": dict(self.info)}
+
+    def describe(self) -> str:
+        return ("eligible faces (%s): %d of %d (%.1f %% of the wall area)"
+                % (self.rule, self.n_eligible, self.mask.size, 100.0 * self.fraction))
+
+
+def pack_face_mask(mask) -> str:
+    """``(F,)`` bool -> a ``'0'``/``'1'`` string (one character per face):
+    compact in JSON / CSV reports, decoded by :func:`unpack_face_mask`."""
+    m = np.asarray(mask, dtype=bool).reshape(-1)
+    return "".join("1" if v else "0" for v in m)
+
+
+def unpack_face_mask(text: str) -> np.ndarray:
+    """Inverse of :func:`pack_face_mask`."""
+    return np.frombuffer(str(text).encode("ascii"), dtype=np.uint8) == ord("1")
+
+
+def _interior_point(mesh) -> np.ndarray:
+    """The planner's interior reference (``interact._interior_reference``):
+    the mesh centroid, else the vertex mean."""
+    try:
+        c = np.asarray(mesh.centroid, dtype=float).reshape(3)
+        if np.all(np.isfinite(c)):
+            return c
+    except Exception:
+        pass
+    return np.asarray(mesh.vertices, dtype=float).mean(axis=0)
+
+
+def _inward_face_normals(mesh) -> np.ndarray:
+    """Unit face normals flipped to point into the cavity (toward the interior
+    reference), robust to either winding -- the conformer's convention."""
+    n = np.asarray(mesh.face_normals, dtype=float).copy()
+    n /= np.maximum(np.linalg.norm(n, axis=1), 1e-12)[:, None]
+    to_in = _interior_point(mesh)[None, :] - np.asarray(mesh.triangles_center, dtype=float)
+    flip = (n * to_in).sum(axis=1) < 0.0
+    n[flip] *= -1.0
+    return n
+
+
+def craniotomy_opening(masks, affine, cavity_mask=None, margin_mm: float = CRANIOTOMY_MARGIN_MM,
+                       min_area_mm2: float = OPENING_MIN_AREA_MM2, reference_ras=None) -> Opening:
+    """The craniotomy opening from the pipeline masks (``segment_head``).
+
+    Candidate voxels are the boundary voxels of the sealed cranial interior
+    (``masks["cranial_interior"]`` minus its one-voxel erosion) that are
+    either (i) the **skull defect**: farther than ``margin_mm`` from any
+    ``masks["skull"]`` voxel, or (ii) the **cavity mouth**: adjacent to
+    ``cavity_mask`` (the cavity touching the vault is where the surgeon went
+    in -- the only trace of the craniotomy when the bone flap has been put
+    back and reads as skull again).  Their 26-connected components of at
+    least ``min_area_mm2`` (area = voxels x voxel_volume^(2/3)) are ranked:
+    the one with the most mouth voxels when a cavity is given, else the one
+    nearest ``reference_ras`` (the cavity or interior centroid), else the
+    largest.  The opening's outward normal is the smallest principal axis of
+    the chosen voxels, signed away from the interior centroid.
+
+    Raises ``ValueError`` when no component qualifies (no defect and no
+    cavity contact): pass an explicit face mask instead.
+    """
+    try:
+        interior = np.asarray(masks["cranial_interior"], dtype=bool)
+        skull = np.asarray(masks["skull"], dtype=bool)
+    except (KeyError, TypeError):
+        raise ValueError("craniotomy_opening: masks must carry 'cranial_interior' and 'skull'")
+    affine = np.asarray(affine, dtype=float)
+    if interior.ndim != 3 or skull.shape != interior.shape:
+        raise ValueError("craniotomy_opening: masks must be 3-D [k, j, i] of one shape")
+    if not interior.any():
+        raise ValueError("craniotomy_opening: the cranial interior is empty")
+    spacing = np.linalg.norm(affine[:3, :3], axis=0)           # (si, sj, sk)
+    sampling = (spacing[2], spacing[1], spacing[0])
+    vox_area = float(np.prod(spacing)) ** (2.0 / 3.0)
+    margin = float(margin_mm)
+
+    # crop to the interior's bounding box (+ margin) -- the EDT of a whole CT is large
+    kji = np.argwhere(interior)
+    pad = np.ceil(margin / np.asarray(sampling)).astype(int) + 2
+    lo = np.maximum(kji.min(axis=0) - pad, 0)
+    hi = np.minimum(kji.max(axis=0) + pad, np.asarray(interior.shape) - 1)
+    box = tuple(slice(int(a), int(b) + 1) for a, b in zip(lo, hi))
+    inter = interior[box]
+    boundary = inter & ~ndimage.binary_erosion(inter)
+    dist_skull = ndimage.distance_transform_edt(~skull[box], sampling=sampling)
+    defect = boundary & (dist_skull > margin)
+    mouth = np.zeros_like(boundary)
+    cav_centroid = None
+    if cavity_mask is not None:
+        cav = np.asarray(cavity_mask, dtype=bool)
+        if cav.shape != interior.shape:
+            raise ValueError("craniotomy_opening: cavity_mask must share the mask grid")
+        if cav.any():
+            mouth = boundary & ndimage.binary_dilation(cav[box], iterations=1)
+            cav_centroid = _voxel_centroid_ras(np.argwhere(cav), affine)
+    cand = defect | mouth
+    interior_centroid = _voxel_centroid_ras(kji, affine)
+    if reference_ras is not None:
+        ref = np.asarray(reference_ras, dtype=float).reshape(3)
+    else:
+        ref = cav_centroid if cav_centroid is not None else interior_centroid
+
+    labels, n_lab = ndimage.label(cand, structure=np.ones((3, 3, 3), dtype=bool))
+    comps: List[Dict[str, Any]] = []
+    if n_lab:
+        idx = np.arange(1, n_lab + 1)
+        n_vox = ndimage.sum(cand, labels, idx)
+        n_mouth = ndimage.sum(mouth, labels, idx) if mouth.any() else np.zeros(n_lab)
+        for ci in range(n_lab):
+            area = float(n_vox[ci]) * vox_area
+            if area < float(min_area_mm2):
+                continue
+            vox = np.argwhere(labels == ci + 1) + lo[None, :]
+            pts = _voxel_centres_ras(vox, affine)
+            d_ref = float(np.linalg.norm(pts - ref[None, :], axis=1).min())
+            comps.append({"label": ci + 1, "n_voxels": int(n_vox[ci]),
+                          "n_mouth": int(n_mouth[ci]), "n_defect": int(n_vox[ci] - n_mouth[ci]),
+                          "area_mm2": area, "centroid_ras": pts.mean(axis=0).tolist(),
+                          "distance_to_reference_mm": d_ref, "_points": pts})
+    if not comps:
+        raise ValueError("craniotomy_opening: no opening found -- no cranial-interior boundary "
+                         "patch >= %.0f mm^2 is farther than %.1f mm from skull%s; the bone flap "
+                         "may be back in place: pass an explicit eligible face mask"
+                         % (float(min_area_mm2), margin,
+                            " or touches the cavity" if cavity_mask is not None else ""))
+    if any(c["n_mouth"] > 0 for c in comps):
+        chosen = max(comps, key=lambda c: (c["n_mouth"], c["area_mm2"]))
+        how = "most cavity-mouth voxels"
+    elif reference_ras is not None or cav_centroid is not None:
+        chosen = min(comps, key=lambda c: c["distance_to_reference_mm"])
+        how = "nearest the reference point"
+    else:
+        chosen = max(comps, key=lambda c: c["area_mm2"])
+        how = "largest"
+    pts = chosen["_points"]
+    centroid = pts.mean(axis=0)
+    normal = _patch_normal(pts, centroid, interior_centroid)
+    source = ("mouth" if chosen["n_mouth"] >= 0.5 * chosen["n_voxels"] else "defect")
+    comps_sorted = sorted(comps, key=lambda c: -c["area_mm2"])[:8]
+    info = {
+        "margin_mm": margin, "min_area_mm2": float(min_area_mm2),
+        "source": source, "chosen_by": how,
+        "n_boundary_voxels": int(boundary.sum()), "n_defect_voxels": int(defect.sum()),
+        "n_mouth_voxels": int(mouth.sum()), "n_components": len(comps),
+        "chosen": {k: v for k, v in chosen.items() if not k.startswith("_")},
+        "components": [{k: v for k, v in c.items() if not k.startswith("_")}
+                       for c in comps_sorted],
+        "interior_centroid_ras": interior_centroid.tolist(),
+        "reference_ras": ref.tolist(), "voxel_area_mm2": vox_area,
+        "spacing_mm": [float(v) for v in spacing],
+    }
+    return Opening(centroid_ras=centroid, normal_ras=normal, points_ras=pts,
+                   area_mm2=chosen["area_mm2"], info=info)
+
+
+def _voxel_centres_ras(vox_kji, affine) -> np.ndarray:
+    v = np.asarray(vox_kji, dtype=float)[:, ::-1]                 # (i, j, k)
+    return v @ np.asarray(affine, float)[:3, :3].T + np.asarray(affine, float)[:3, 3]
+
+
+def _voxel_centroid_ras(vox_kji, affine) -> np.ndarray:
+    return _voxel_centres_ras(np.asarray(vox_kji, dtype=float).mean(axis=0)[None, :], affine)[0]
+
+
+def _patch_normal(points, centroid, interior_centroid) -> np.ndarray:
+    """Smallest principal axis of a voxel patch, signed away from the interior."""
+    c = points - centroid[None, :]
+    if c.shape[0] >= 3:
+        _w, vecs = np.linalg.eigh(c.T @ c / float(c.shape[0]))
+        n = vecs[:, 0]
+    else:
+        n = centroid - interior_centroid
+    n = np.asarray(n, dtype=float)
+    if float(n @ (centroid - interior_centroid)) < 0.0:
+        n = -n
+    return n / max(float(np.linalg.norm(n)), 1e-12)
+
+
+def _count_unique_hits(n_before, rays, t_hit, decimals: int = 6) -> None:
+    """Add one crossing per distinct ``(ray, distance)``: a ray through a
+    shared edge or vertex is reported once per adjacent triangle by the
+    narrow phase but crosses the surface once."""
+    keys = np.unique(np.column_stack([rays.astype(np.int64),
+                                      np.round(t_hit, decimals)]), axis=0)
+    np.add.at(n_before, keys[:, 0].astype(int), 1)
+
+
+def hits_before(mesh, origin_ras, targets_ras, chunk: int = VISIBLE_RAY_CHUNK,
+                tol_mm: float = VISIBLE_TOL_MM):
+    """For the segments ``origin -> targets[k]``: how many times each one
+    crosses ``mesh`` strictly before reaching its target (hits closer than
+    ``|target - origin| - tol_mm``) and the location of the first crossing
+    (NaN when none).  Rays share one origin, so the broad phase is the
+    angular one of :func:`visible_faces`; the narrow phase is trimesh's.
+    Returns ``(n_before (K,) int, first_loc (K, 3))``.
+    """
+    _check_mesh(mesh, "hits_before")
+    origin = np.asarray(origin_ras, dtype=float).reshape(3)
+    targets = np.atleast_2d(np.asarray(targets_ras, dtype=float))
+    dirs = targets - origin[None, :]
+    dist = np.linalg.norm(dirs, axis=1)
+    k = targets.shape[0]
+    n_before = np.zeros(k, dtype=int)
+    first = np.full((k, 3), np.nan)
+    good = np.flatnonzero(dist > 1e-9)
+    if good.size == 0:
+        return n_before, first
+    for lo, hi, ri, ti, loc in _forward_hits_angular(mesh, origin, dirs[good], chunk=chunk):
+        ray = good[lo + ri]
+        t_hit = np.linalg.norm(loc - origin[None, :], axis=1)
+        before = t_hit < dist[ray] - float(tol_mm)
+        if not before.any():
+            continue
+        _count_unique_hits(n_before, ray[before], t_hit[before])
+        m = hi - lo
+        sub_tri = np.full(m, -1, dtype=int)
+        sub_loc = np.full((m, 3), np.nan)
+        _select_first(origin, m, loc[before], ri[before], ti[before], sub_tri, sub_loc)
+        first[good[lo:hi]] = np.where(np.isfinite(sub_loc), sub_loc, first[good[lo:hi]])
+    return n_before, first
+
+
+def hits_before_trimesh(mesh, origin_ras, targets_ras, chunk: int = VISIBLE_RAY_CHUNK,
+                        tol_mm: float = VISIBLE_TOL_MM):
+    """Reference :func:`hits_before` through ``mesh.ray.intersects_location``
+    (``chunk`` rays per call; same memory caveat as
+    :func:`visible_faces_trimesh`)."""
+    _check_mesh(mesh, "hits_before_trimesh")
+    origin = np.asarray(origin_ras, dtype=float).reshape(3)
+    targets = np.atleast_2d(np.asarray(targets_ras, dtype=float))
+    dirs = targets - origin[None, :]
+    dist = np.linalg.norm(dirs, axis=1)
+    k = targets.shape[0]
+    n_before = np.zeros(k, dtype=int)
+    first = np.full((k, 3), np.nan)
+    good = np.flatnonzero(dist > 1e-9)
+    chunk = max(1, int(chunk))
+    for lo in range(0, good.size, chunk):
+        sel = good[lo:lo + chunk]
+        locs, ray_idx, tri_idx = mesh.ray.intersects_location(
+            ray_origins=np.tile(origin, (sel.size, 1)), ray_directions=dirs[sel],
+            multiple_hits=True)
+        locs = np.atleast_2d(np.asarray(locs, dtype=float)).reshape(-1, 3)
+        ray_idx = np.asarray(ray_idx, dtype=int).reshape(-1)
+        tri_idx = np.asarray(tri_idx, dtype=int).reshape(-1)
+        if ray_idx.size == 0:
+            continue
+        t_hit = np.linalg.norm(locs - origin[None, :], axis=1)
+        before = t_hit < dist[sel[ray_idx]] - float(tol_mm)
+        if not before.any():
+            continue
+        _count_unique_hits(n_before, sel[ray_idx[before]], t_hit[before])
+        sub_tri = np.full(sel.size, -1, dtype=int)
+        sub_loc = np.full((sel.size, 3), np.nan)
+        _select_first(origin, sel.size, locs[before], ray_idx[before], tri_idx[before],
+                      sub_tri, sub_loc)
+        first[sel] = np.where(np.isfinite(sub_loc), sub_loc, first[sel])
+    return n_before, first
+
+
+def craniotomy_faces(mesh, opening: Opening, implant_center_ras=None,
+                     cone_deg: float = CONE_DEG, footprint_tol_mm: float = FOOTPRINT_TOL_MM,
+                     view_offset_mm: float = VIEW_OFFSET_MM,
+                     chunk: int = VISIBLE_RAY_CHUNK) -> EligibleFaces:
+    """Craniotomy-side eligibility (Paper 2 F8(b)): the wall faces the
+    surgeon could reach through ``opening``.
+
+    With the view point ``v`` = the opening centroid pushed ``view_offset_mm``
+    out along the opening's outward normal, a face is eligible when
+
+    (a) *line of sight*: the segment from ``v`` to the face centroid crosses
+        the cavity wall at most once before reaching the face, and when it
+        does, that entry point lies within ``footprint_tol_mm`` (in the
+        opening's plane) of the opening's voxels -- the ray enters the lumen
+        through the cavity's lid beneath the opening, not through tissue
+        elsewhere (:func:`hits_before`); zero crossings count only on an
+        open (non-watertight) mesh -- a lid-less pocket -- since on a closed
+        one a facing face reached without a crossing is a grazing silhouette
+        hit;
+    (b) *facing*: the face's inward normal (the conformer's convention) makes
+        at most ``cone_deg`` with the direction to ``v`` -- the lid and any
+        undercut facing away from the surgeon are out;
+    (c) *visible from the implant centre*: the existing rule
+        (:func:`visible_faces` from ``implant_center_ras``; skipped when None).
+
+    ``fraction`` is the eligible share of the wall area; ``info`` records the
+    counts per criterion and the opening summary.
+    """
+    area_faces = _check_mesh(mesh, "craniotomy_faces")
+    if not isinstance(opening, Opening):
+        raise ValueError("craniotomy_faces: opening must be a candidates.Opening "
+                         "(from craniotomy_opening)")
+    cone = float(cone_deg)
+    if not (0.0 < cone <= 180.0):
+        raise ValueError("cone_deg must be in (0, 180], got %r" % (cone_deg,))
+    cents = np.asarray(mesh.triangles_center, dtype=float)
+    view = opening.view_point(view_offset_mm)
+    to_view = view[None, :] - cents
+    dist = np.linalg.norm(to_view, axis=1)
+    unit = to_view / np.maximum(dist, 1e-12)[:, None]
+    inward = _inward_face_normals(mesh)
+    facing = (inward * unit).sum(axis=1) >= math.cos(math.radians(cone)) - 1e-12
+
+    n_before, first = hits_before(mesh, view, cents, chunk=chunk)
+    # a facing face reached with no crossing is approached from its tissue
+    # side: on a closed mesh that is a grazing silhouette hit (within the
+    # self-hit tolerance), on an open mesh (a lid-less pocket) the open mouth
+    try:
+        open_mesh = not bool(mesh.is_watertight)
+    except Exception:
+        open_mesh = True
+    clear = (n_before == 0) & open_mesh
+    one = n_before == 1
+    in_fp = np.zeros(cents.shape[0], dtype=bool)
+    if one.any():
+        from scipy.spatial import cKDTree
+        e1, e2 = _plane_basis(opening.normal_ras)
+        q_open = _project_2d(opening.points_ras, opening.centroid_ras, e1, e2)
+        q_hit = _project_2d(first[one], opening.centroid_ras, e1, e2)
+        d, _i = cKDTree(q_open).query(q_hit)
+        in_fp[one] = d <= float(footprint_tol_mm)
+    sight = clear | (one & in_fp)
+    if implant_center_ras is not None:
+        vis = visible_faces(mesh, implant_center_ras, chunk=chunk)
+    else:
+        vis = np.ones(cents.shape[0], dtype=bool)
+    mask = facing & sight & vis
+    total = float(area_faces.sum())
+    info = {
+        "cone_deg": cone, "footprint_tol_mm": float(footprint_tol_mm),
+        "view_offset_mm": float(view_offset_mm), "view_point_ras": view.tolist(),
+        "implant_center_ras": (None if implant_center_ras is None
+                               else [float(v) for v in np.asarray(implant_center_ras).reshape(3)]),
+        "n_faces": int(cents.shape[0]), "mesh_watertight": (not open_mesh),
+        "n_facing": int(facing.sum()), "n_line_of_sight": int(sight.sum()),
+        "n_sight_no_crossing": int((n_before == 0).sum()),
+        "n_sight_clear": int(clear.sum()), "n_sight_one_hit_in_footprint": int((one & in_fp).sum()),
+        "n_sight_one_hit_outside": int((one & ~in_fp).sum()), "n_sight_blocked": int((n_before > 1).sum()),
+        "n_visible_from_implant": int(vis.sum()), "n_eligible": int(mask.sum()),
+        "area_fraction_facing": float(area_faces[facing].sum() / total),
+        "area_fraction_line_of_sight": float(area_faces[sight].sum() / total),
+        "area_fraction_visible": float(area_faces[vis].sum() / total),
+        "opening": opening.summary(),
+    }
+    return EligibleFaces(mask=mask, rule="craniotomy",
+                         fraction=float(area_faces[mask].sum() / total),
+                         fraction_faces=float(mask.mean()), info=info)
+
+
+def _plane_basis(normal) -> Tuple[np.ndarray, np.ndarray]:
+    n = np.asarray(normal, dtype=float).reshape(3)
+    n = n / max(float(np.linalg.norm(n)), 1e-12)
+    helper = np.array([0.0, 0.0, 1.0]) if abs(n[2]) < 0.9 else np.array([1.0, 0.0, 0.0])
+    e1 = np.cross(n, helper)
+    e1 /= max(float(np.linalg.norm(e1)), 1e-12)
+    e2 = np.cross(n, e1)
+    return e1, e2
+
+
+def _project_2d(points, origin, e1, e2) -> np.ndarray:
+    p = np.atleast_2d(np.asarray(points, dtype=float)) - np.asarray(origin, float)[None, :]
+    return np.column_stack([p @ e1, p @ e2])
+
+
+def eligible_faces(mesh, rule="all", implant_center_ras=None, opening: Optional[Opening] = None,
+                   **kw) -> EligibleFaces:
+    """One entry point for the optimizer's eligibility mask.
+
+    ``rule`` is ``"all"`` (every face), ``"visible"`` (:func:`visible_faces`
+    from ``implant_center_ras``, else from the mesh centroid),
+    ``"craniotomy"`` (:func:`craniotomy_faces`; needs ``opening`` and takes
+    ``cone_deg`` / ``footprint_tol_mm`` / ``view_offset_mm`` / ``chunk``),
+    an explicit face mask or index array (rule ``"explicit"``), or an
+    :class:`EligibleFaces` (returned as is).  ``None`` means ``"all"``.
+    """
+    if isinstance(rule, EligibleFaces):
+        return rule
+    area_faces = _check_mesh(mesh, "eligible_faces")
+    total = float(area_faces.sum())
+    if rule is None or (isinstance(rule, str) and rule.lower() == "all"):
+        mask = np.ones(area_faces.size, dtype=bool)
+        return EligibleFaces(mask=mask, rule="all", fraction=1.0, fraction_faces=1.0,
+                             info={"n_faces": int(mask.size)})
+    if isinstance(rule, str):
+        r = rule.lower()
+        if r == "visible":
+            centre = (np.asarray(implant_center_ras, dtype=float).reshape(3)
+                      if implant_center_ras is not None else _interior_point(mesh))
+            mask = visible_faces(mesh, centre, **({"chunk": kw["chunk"]} if "chunk" in kw else {}))
+            info = {"implant_center_ras": centre.tolist(), "n_faces": int(mask.size),
+                    "n_eligible": int(mask.sum())}
+            return EligibleFaces(mask=mask, rule="visible",
+                                 fraction=float(area_faces[mask].sum() / total),
+                                 fraction_faces=float(mask.mean()), info=info)
+        if r == "craniotomy":
+            if opening is None:
+                raise ValueError("eligible_faces: rule 'craniotomy' needs an Opening "
+                                 "(candidates.craniotomy_opening(masks, affine, cavity_mask))")
+            return craniotomy_faces(mesh, opening, implant_center_ras=implant_center_ras, **kw)
+        raise ValueError("eligible_faces: unknown rule %r (choose from %s, or give a face mask)"
+                         % (rule, ", ".join(ELIGIBLE_RULES)))
+    mask = _eligible_mask(mesh, rule)
+    return EligibleFaces(mask=mask, rule="explicit",
+                         fraction=float(area_faces[mask].sum() / total),
+                         fraction_faces=float(mask.mean()),
+                         info={"n_faces": int(mask.size), "n_eligible": int(mask.sum())})
 
 
 # ------------------------------------------------------------ tile count
@@ -796,4 +1329,8 @@ __all__ = [
     "count_ray_fallbacks_trimesh",
     "grid_fallback_flags", "build_candidates", "visible_faces", "visible_faces_trimesh",
     "ellipsoid_area_mm2", "recommend_tile_count",
+    "CRANIOTOMY_MARGIN_MM", "OPENING_MIN_AREA_MM2", "CONE_DEG", "FOOTPRINT_TOL_MM",
+    "VIEW_OFFSET_MM", "ELIGIBLE_RULES", "Opening", "EligibleFaces", "craniotomy_opening",
+    "hits_before", "hits_before_trimesh", "craniotomy_faces", "eligible_faces",
+    "pack_face_mask", "unpack_face_mask",
 ]

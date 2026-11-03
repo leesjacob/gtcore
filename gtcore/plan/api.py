@@ -45,6 +45,7 @@ import scipy.sparse as sp
 
 from .. import plan as _plan
 from ..interact import PlacedTile, find_overlapping_tiles, tiles_to_seed_arrays
+from . import candidates as _cand
 from . import (
     CONFLICT_GAP_MM,
     DEFAULT_H_MM,
@@ -114,6 +115,27 @@ def _logger(verbose: bool, log: Optional[Callable[[str], None]]):
             except Exception:
                 pass
     return say
+
+
+# -------------------------------------------------------------- eligibility
+def _resolve_eligible(mesh, eligible, eligible_faces, implant_center_ras, opening):
+    """The ``eligible`` option of :func:`optimize` as a
+    :class:`candidates.EligibleFaces` (None when neither ``eligible`` nor
+    ``eligible_faces`` is given).  An explicit ``eligible_faces`` mask is
+    recorded as rule ``"explicit"``; with both given they must agree."""
+    if eligible is None:
+        if eligible_faces is None:
+            return None
+        return _cand.eligible_faces(mesh, eligible_faces)
+    elig = _cand.eligible_faces(mesh, eligible, implant_center_ras=implant_center_ras,
+                                opening=opening)
+    if eligible_faces is not None:
+        given = _cand._eligible_mask(mesh, eligible_faces)
+        if not np.array_equal(given, elig.mask):
+            raise ValueError("optimize: eligible_faces and eligible=%r disagree (%d vs %d "
+                             "eligible faces); pass one of them" % (elig.rule, int(given.sum()),
+                                                                     int(elig.mask.sum())))
+    return elig
 
 
 # ------------------------------------------------------------------ metrics
@@ -521,7 +543,8 @@ def optimize(mesh, n_full: int, n_half: int = 0, rx_cgy: float = DEFAULT_RX_CGY,
              cavity_mask=None, cavity_affine=None,
              clip_mask=None, clip_affine=None,
              cavity_source: str = "gtcore:cavity",
-             clip_source: Optional[str] = None
+             clip_source: Optional[str] = None,
+             eligible=None, implant_center_ras=None, opening=None
              ) -> Tuple[List[PlacedTile], OptimizeReport]:
     """Section 3 H entry point: candidates -> influence -> conflicts ->
     objective -> solver -> optional E5 refine -> report.
@@ -557,6 +580,23 @@ def optimize(mesh, n_full: int, n_half: int = 0, rx_cgy: float = DEFAULT_RX_CGY,
         report carries only the S5 coverage surrogate and says so in
         ``notes``.  The optimizer itself still works on ``target`` (the S5
         shell); these inputs change what is *reported*, not what is solved.
+    eligible : None, str, face mask, or candidates.EligibleFaces
+        The eligibility rule (Paper 2 Phase 4): ``"all"`` (every face),
+        ``"visible"`` (faces seen from ``implant_center_ras``, else from the
+        mesh centroid), ``"craniotomy"`` (the wall the surgeon could reach
+        through ``opening``, a :class:`candidates.Opening` from
+        :func:`candidates.craniotomy_opening`; combined with the visible
+        rule), an explicit face mask, or a precomputed
+        :class:`candidates.EligibleFaces` (the ``gt optimize`` path, which
+        carries the cone and footprint parameters).  Resolved by
+        :func:`candidates.eligible_faces`; the mask becomes
+        ``eligible_faces`` (both may be given only when they agree).  The
+        report's ``parameters`` get ``eligible`` (rule, fraction of the wall
+        area, criterion counts, opening summary) and ``eligible_mask`` (the
+        face mask packed as a ``'0'``/``'1'`` string,
+        :func:`candidates.unpack_face_mask`) so a renderer can show it.
+        ``implant_center_ras`` and ``opening`` are the context for the string
+        rules.
 
     Returns ``(tiles, report)`` with ``tiles`` the ``n_full + n_half`` new
     :class:`PlacedTile` objects.  Raises ``ValueError`` for bad inputs or an
@@ -586,6 +626,9 @@ def optimize(mesh, n_full: int, n_half: int = 0, rx_cgy: float = DEFAULT_RX_CGY,
                                 "used, the only solver that honours a fixed set"
                                 % (solver, len(fixed)))
         solver = "greedy"
+    elig = _resolve_eligible(mesh, eligible, eligible_faces, implant_center_ras, opening)
+    if elig is not None:
+        eligible_faces = elig.mask
     continuous = solver == "continuous"
     solve_continuous = getattr(_plan, "solve_continuous", None)
     if continuous and solve_continuous is None:
@@ -704,6 +747,10 @@ def optimize(mesh, n_full: int, n_half: int = 0, rx_cgy: float = DEFAULT_RX_CGY,
         "milp_time_limit_s": MILP_TIME_LIMIT_S, "refine": bool(refine),
         "eligible_faces": (None if eligible_faces is None
                            else int(np.asarray(eligible_faces, dtype=bool).sum())),
+        "eligible": (None if elig is None else elig.summary()),
+        "eligible_rule": (None if elig is None else elig.rule),
+        "eligible_fraction": (None if elig is None else float(elig.fraction)),
+        "eligible_mask": (None if elig is None else _cand.pack_face_mask(elig.mask)),
         "oars": sorted(oars.keys()) if oars else [],
         "oar_limits": dict(oar_limits) if oar_limits else {},
         "planner_overlap_threshold_mm": PLANNER_OVERLAP_THRESHOLD_MM,
