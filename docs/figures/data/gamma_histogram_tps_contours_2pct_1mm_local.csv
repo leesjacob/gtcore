@@ -1,0 +1,29 @@
+# script: scripts/validation_gamma.py
+# command: python scripts/validation_gamma.py "$GT_DATA_ROOT/<PT-CT1mm>" "$GT_DATA_ROOT/<PT-RT RTSTRUCT dir>" "$GT_DATA_ROOT/<PT-RT RTDOSE dir>"
+# commit: ab85b1c
+# datasets: PT-CT1mm (CT + gtcore seeds), PT-RT (RTSTRUCT Seeds contours, RTDOSE)
+# flag: calibration-set (one clinical case, reference not validation cohort)
+# date: 2026-11-03
+# seed_source=tps_contours dose_pct=2 dist_mm=1 normalisation=local; last bin is gamma >= 2 (capped)
+bin_lo,bin_hi,count_30_200Gy,count_ge30Gy
+0,0.1000,1854,1988
+0.1000,0.2000,11252,12226
+0.2000,0.3000,12374,13496
+0.3000,0.4000,13053,13975
+0.4000,0.5000,11292,12099
+0.5000,0.6000,9880,10618
+0.6000,0.7000,7982,8609
+0.7000,0.8000,5803,6304
+0.8000,0.9000,3265,3662
+0.9000,1,1978,2323
+1,1.1000,1102,1352
+1.1000,1.2000,615,800
+1.2000,1.3000,301,480
+1.3000,1.4000,138,252
+1.4000,1.5000,51,155
+1.5000,1.6000,22,87
+1.6000,1.7000,27,101
+1.7000,1.8000,30,97
+1.8000,1.9000,13,65
+1.9000,2,14,55
+2,inf,481,895
