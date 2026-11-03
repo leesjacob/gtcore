@@ -454,13 +454,13 @@ class Builder:
             md_locator(DECISIONS, "`PT-preMRI`", "`PT-intraMRI`", "`PT-postMRI`", "printed from `JD-MRI-intra`"))
         row("PT-CT1mm (= JD-1mm)",
             "post-operative thin-cut CT, the series the RTSTRUCT references (the clinical case)",
-            "204 slices, 0.52 x 0.52 x 1.0 mm, contiguous, Hr40 kernel (series 2)",
+            "204 slices, 0.52 x 0.52 x 1.0 mm, contiguous (series 2)",
             "seed localisation, tile recovery, cavity, every dose comparison (F4-F6, F8a, Table 3)",
             "one clinical case; reference, not validation cohort; every row calibration-set",
             NOTES + "; " + DECISIONS, "bcb7a22",
-            md_locator(NOTES, "204 slices", "0.52 × 0.52 × 1.0 mm") + " ;; " + md_locator(DECISIONS, "series 2, 204 slices, Hr40"))
+            md_locator(NOTES, "204 slices", "0.52 × 0.52 × 1.0 mm") + " ;; " + md_locator(DECISIONS, "series 2, 204 slices"))
         row("PT-CT-s3 (= JD-CT-s3)",
-            "second reconstruction of the same acquisition (series 3, no Hr40 kernel)",
+            "second reconstruction of the same acquisition (series 3, a different kernel)",
             "178 contiguous 1 mm slices",
             "S2 substitute (ii) for the lost gapped export: seed positions across two reconstructions of one acquisition",
             "identity with PT-CT1mm certain (timestamp to 3 ms, table position, slice positions, seed voxels; slice correlation 0.985)",
@@ -1348,7 +1348,7 @@ Every line: mock -> measured (commit of the measurement). The mock numbers are n
 - "Voxels > 200 Gy lie within ~3 mm of a seed" -> they are the tiles' seed planes: median 3.82 mm, p95 6.05 mm from the nearest seed; 9.05 % of the >= 30 Gy voxels (ab85b1c).
 - "Global-to-rx is lenient near seeds" -> reversed above the prescription dose: local normalisation is the lenient one above rx, global-to-rx the strict one; below rx the opposite (ab85b1c).
 - Tile count on the clinical case: "8 full tiles = 32 sources" -> the geometry says **6 full + 4 half tiles** (four 2-seed pairs at 9.0-9.6 mm pitch; clusters span 18.0 / 25.5 mm > 14.1 mm); count-free 6/8 with 8 leftovers; count-known N = 8: 7/8 with one degraded completion; `ImplantPrior(6, 4)` explains 32/32 -- which count-known row the paper quotes is pending the operative record (afb96ea, 378b819).
-- Held-out scan: "Case 54 held-out run" -> **none**: Case 54 is the same patient (CT identity certain); one clinical case, every real-data row calibration-set; `scripts/heldout_case54.py` dropped (decisions 2026-11-03).
+- Held-out scan: the planned held-out run on the separately delivered MRI/CT folder -> **none**: that folder is the same patient (CT identity certain); one clinical case, every real-data row calibration-set; `scripts/heldout_case54.py` dropped (decisions 2026-11-03).
 - Seed match vs the TPS contours: 29/30, residual "0.23 mm median, 0.9 mm max" -> **30/30**, median 0.15 mm, p95 0.73, max 0.89 mm; detections 31 -> **32** = the plan's 32 sources (vault filter in physical mm, fad8701; fe0dc81).
 - CTV_GT volume on the dose grid: 21.6 cc (+14 %) -> 19.39 cc (+2.0 %) with the supersampled rasteriser; the MIM volume check itself is still pending (d40bb32).
 - Implied S_K (diagnostic only): 3.76 U with 30 contoured seeds -> 3.54 U with the plan's 32 sources (physical axes), 3.53 U with S-I axes; nominal 3.5 U kept (fe0dc81, 378b819).
