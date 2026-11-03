@@ -3504,7 +3504,7 @@ patch PNGs came out byte-identical.
 ```
 export PYTHONPATH=<worktree>; export GTCORE_STRICT=1; export GT_DATA_ROOT=...     # from the worktree root
 python scripts/validation_gamma.py "$GT_DATA_ROOT/<PT-CT1mm>" "$GT_DATA_ROOT/<PT-RT RTSTRUCT dir>" "$GT_DATA_ROOT/<PT-RT RTDOSE dir>" --axes physical,si
-#   about 5.5 min wall (reconstruct 17.5 s; evaluation 35-45 s physical / 30-32 s si per seed set; gamma 0.9-7 s per run)
+#   about 5 min wall, 02:53:51-02:58:49 (reconstruct 17.5 s; evaluation 35-45 s physical / 30-32 s si per seed set; gamma 0.9-7 s per run)
 python scripts/validation_clinical.py "$GT_DATA_ROOT/<PT-CT1mm dir>" "$GT_DATA_ROOT/<PT-RT RTSTRUCT dir>" "$GT_DATA_ROOT/<PT-RT RTDOSE dir>" --rx 6000 --out docs/figures/data --axes si
 #   about 2 min wall (reconstruct 17.5 s, matrix 22.7 s for 6 gtcore columns)
 python scripts/leftover_seeds.py "$GT_DATA_ROOT/<PT-CT1mm>" --dataset PT-CT1mm --rtstruct "$GT_DATA_ROOT/<PT-RT RTSTRUCT>" --n-full 8 --halves 6,4 --out docs/figures/data
@@ -3682,4 +3682,4 @@ The full-tile sheets are unaffected.
 - The half-tile template orientation above is a pre-existing behaviour of `RigidTile("half")`;
   nothing in `gtcore/` was changed. It matters only for rendering the half tiles.
 - Missing data unchanged (RTPLAN, MIM DVH export); nothing installed.
-- Full suite on the final tree: see the line appended below.
+- Full suite on the final tree (code `378b819`; the two later commits are data and docs), `GTCORE_STRICT=1 python -m pytest -q -p no:cacheprovider` from the worktree root, run concurrently with the three real-data runs and another agent's jobs (wall time an upper bound): **`1059 passed, 15 skipped, 15253 warnings in 628.81s (0:10:28)`**, exit 0. The three files touched here ran with no skips (5 + 9 + 14 passed); the skips are the pre-existing set of the tree at 608da78.
