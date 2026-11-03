@@ -260,14 +260,15 @@ def main():
     syn = [r for r in rows if r["case"] == "synthetic"]
     n_ok = sum(1 for r in syn if r["n_auto"] == r["n_truth"])
     n_exact = sum(1 for r in syn if r["exact"])
-    print("\nsynthetic: count correct %d/%d, exact partition %d/%d, "
-          "centre err mean %.2f mm (max %.2f), normal err mean %.1f deg, "
-          "%.2f s/case" % (
-              n_ok, len(syn), n_exact, len(syn),
-              np.nanmean([r["center_err_mean"] for r in syn]),
-              np.nanmax([r["center_err_max"] for r in syn]),
-              np.nanmean([r["normal_err_mean"] for r in syn]),
-              np.mean([r["seconds"] for r in syn])))
+    if syn:
+        print("\nsynthetic: count correct %d/%d, exact partition %d/%d, "
+              "centre err mean %.2f mm (max %.2f), normal err mean %.1f deg, "
+              "%.2f s/case" % (
+                  n_ok, len(syn), n_exact, len(syn),
+                  np.nanmean([r["center_err_mean"] for r in syn]),
+                  np.nanmax([r["center_err_max"] for r in syn]),
+                  np.nanmean([r["normal_err_mean"] for r in syn]),
+                  np.mean([r["seconds"] for r in syn])))
     for r in rows:
         if r["case"] != "synthetic":
             print("%s: n_auto=%d (truth %s), %d crumpled, %.1f s" % (
