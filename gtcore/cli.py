@@ -87,6 +87,33 @@ def _implant_center(result, mesh):
     return np.asarray(mesh.vertices, dtype=float).mean(axis=0)
 
 
+def _rind5_inputs(result, wall_label):
+    """Cavity and clip masks for the report's volumetric HR-CTV (``RIND5``),
+    chosen exactly as the planner's HR-CTV does (``planner._ensure_hrctv``):
+    the pipeline's cavity mask when the wall IS the cavity, clipped by the
+    cranial interior (else the brain).  On a phantom shell there is no
+    cavity mask, so every entry is None and the report says RIND5 is absent.
+    """
+    import numpy as np
+
+    out = dict(cavity_mask=None, cavity_affine=None, clip_mask=None, clip_affine=None,
+               clip_source=None)
+    if wall_label != "cavity wall":
+        return out
+    cav = getattr(result, "cavity_mask", None)
+    if cav is None or not np.any(cav):
+        return out
+    aff = result.volume.affine
+    out.update(cavity_mask=cav, cavity_affine=aff)
+    masks = getattr(result, "masks", {}) or {}
+    for key in ("cranial_interior", "brain"):
+        m = masks.get(key)
+        if m is not None and np.any(m):
+            out.update(clip_mask=m, clip_affine=aff, clip_source="gtcore:%s" % key)
+            break
+    return out
+
+
 def cmd_optimize(args):
     """``gt optimize``: pipeline -> wall -> tile-count recommendation ->
     gtcore.plan.optimize (or sweep_n with --min-n) -> JSON + CSV + seed CSV."""
@@ -108,6 +135,16 @@ def cmd_optimize(args):
         print("no cavity or body surface in this scan -- nothing to optimize on")
         return 2
     print("wall: %s (%d faces)" % (label, len(mesh.faces)))
+    # the report's HR-CTV is the volumetric RIND5 of the pipeline's cavity mask
+    # on the final 1 mm grid; the S5 shell numbers are a surrogate (Phase 2 D)
+    rind_kw = _rind5_inputs(result, label)
+    if rind_kw["cavity_mask"] is None:
+        print("HR-CTV: no cavity mask on this wall (%s) -- the report carries S5 "
+              "coverage (surrogate) only, no RIND5" % label)
+    else:
+        print("HR-CTV: RIND5 of the gtcore cavity (clip %s), scored on the final "
+              "1 mm dose grid; shell rows are S5 coverage (surrogate)"
+              % (rind_kw["clip_source"] or "none"))
 
     try:
         eligible = None
@@ -183,7 +220,8 @@ def cmd_optimize(args):
                 chosen = n_tiles
             n_full = int(chosen)
         tiles, rep = plan.optimize(mesh, n_full, args.half, refine=bool(args.refine),
-                                   report=not args.no_report, verbose=True, **kw)
+                                   report=not args.no_report, verbose=True, **kw,
+                                   **rind_kw)
     except NotImplementedError as exc:
         print("optimizer not available yet:", exc)
         return 2

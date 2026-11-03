@@ -2078,3 +2078,247 @@ Script run at `29295c5` (headers say so): `gtcore.__file__` =
 - Shared file touched: `pyproject.toml` (package-data stanza only).
 - Installed into the venv: `pypdf` 6.21.4 (PDF text extraction for the
   verification; not used by gtcore, not declared).
+
+## 2026-11-03 — Phase 2 — volumetric RIND5 in `final_report`; shell = S5 coverage (task `report-rind5`, branch `p2/report-rind5`)
+
+Requirements rev 3 §3 F8 "FIX scoring", §6 Phase 2 fourth checkbox; Phase 2
+contract section D. Branched from `paper2/integration` at `e13a4af` (A
+`dose_stats`, B `targets` and C `rt-io` merged). Code commit `d5d62dc`; these
+notes in the follow-up commit. Hardware as above; other agents and the full
+suite ran concurrently, so every timing is an upper bound.
+
+### Definition (Methods-quotable)
+
+The optimizer report (`gtcore.plan.final_report`, behind `plan.optimize` and
+`gt optimize`) scores the **volumetric HR-CTV** `RIND5(cavity, clip)` on the
+final 1 mm dose grid: `gtcore.dose.targets.rind5` is built directly on that
+grid (cavity and clip masks resampled nearest-neighbour onto it, Euclidean
+distance transform in physical mm, rind = within 5 mm of the cavity, outside
+it, inside the clip), and `gtcore.dose.metrics.dose_stats` is evaluated on
+the exact-kernel dose at the rind's voxel centres (every voxel counts its
+volume). The result -- D90, D50, D100/Dmin, Dmax, Dmean, V100, V150, V200,
+n, volume -- is written with the target's provenance (cavity source, clip
+source, grid spacing / shape / origin, depth, commit). The +5 mm surface
+shell the optimizer works on (vertices of the mesh offset along its normals;
+unweighted `dvh_stats` per offset, area-weighted stats on the optimizer's
+`TargetSet`) is reported as **"S5 coverage"**, a surrogate, and is never
+labelled D90 / V100 of the HR-CTV. When no cavity mask is available (the
+printed-phantom shell, or a caller that did not pass one) the RIND5 entry is
+absent and the report's `notes` say so explicitly.
+
+### What changed
+
+- `gtcore/plan/report.py::final_report` (signature extended additively:
+  `clip_mask=None, clip_affine=None, cavity_source="gtcore:cavity",
+  clip_source=None`): `metrics_grid["RIND5"]` =
+  `targets.target_stats(rind5(...), doses)` -> `DOSE_STAT_KEYS` + `target`
+  + `provenance`; `metrics_grid["S5"][offset]` = the former top-level
+  `metrics_grid[offset]` shell rows (`dvh_stats` + `curve_x/curve_y`),
+  unchanged numbers; `metrics_grid["target"]` unchanged (labelled surrogate
+  in the printout). `metrics_grid_interference` mirrors the three entries;
+  its note names "S5 coverage +5 mm" and, when present, the RIND5 delta.
+  `parameters["rind_depth_mm"]` is recorded; `runtime["rind5"]` times the
+  RIND5 stage. **No `"rind"` alias, no top-level float keys** -- every
+  in-tree consumer was updated (below). An empty rind on the grid (cavity
+  outside the bounds, or clipped away), a mask without its affine, or no
+  mask at all each leave an explicit note; a RIND5 exception is a note and
+  is re-raised under `GTCORE_STRICT` (`_strict.swallow_or_raise`, the Phase
+  1 pattern -- the old handler swallowed it silently).
+- **Decision -- how the RIND5 doses are evaluated.** The target is built on
+  the dose grid, so its voxel centres are grid points and the exact-kernel
+  dose there is already in the grid; `final_report` reads
+  `dose.array[target.mask]` (C order = `Target.voxel_centers_ras()` order;
+  `plan.report.rind5_doses_on_grid`). Measured: this is **bit-identical** to
+  `targets.target_doses_exact` at the same points (`np.array_equal` True,
+  max relative difference 0.0 -- `compute_dose_grid` and `dose_at_points`
+  share `_sum_seed_rates`), so the engine is not called a second time
+  (0.6 s for the RIND5 stage on a 2.6 M-voxel grid, all of it EDT +
+  resampling). `targets.target_doses_from_grid` (trilinear
+  `Volume.sample_ras`) returns the same values only to **float32** precision
+  (max relative difference 5.9e-8; D90 2356.253086 vs 2356.253174 cGy on
+  the sphere toy) because `sample_ras` casts the array to float32 before
+  `map_coordinates`. The acceptance criterion's "1e-9 vs
+  `target_doses_from_grid`" is therefore pinned as 1e-9 against the grid
+  values and against `target_doses_exact`, and as 1e-6 relative against
+  `target_doses_from_grid`, with the reason in the test and the module
+  docstring. `gtcore/volume.py` was not changed (not in this task); Phase 3
+  should remember the cast when it samples the RTDOSE grid trilinearly.
+- `gtcore/plan/__init__.py`: `OptimizeReport.summary()` prints, after the
+  solver line, the **HR-CTV row first** -- `HR-CTV RIND5 (volumetric, 1x1x1
+  mm grid; cavity gtcore:cavity, clip gtcore:cranial_interior, depth 5.0
+  mm): D90 ... V100 ... V150 ... V200 ... cc (n voxels)` -- then one
+  `S5 coverage <wall|+5 mm|+10 mm> (surrogate shell vertices): ...` row per
+  offset, then `target <name> (surrogate, area-weighted): ...`, then the
+  notes. Hand-built reports with the old float keys still print (as S5
+  coverage). New field `OptimizeReport.dose_volume` (the final grid; left
+  out of `to_dict` / JSON / CSV). JSON keys `metrics_grid.S5.5.0.V100`,
+  `metrics_grid.RIND5.D90`, `metrics_grid.RIND5.provenance.cavity_source`
+  in the CSV. `plan.final_report` wrapper forwards the new keywords.
+- `gtcore/plan/api.py::optimize`: additive keywords `cavity_mask,
+  cavity_affine, clip_mask, clip_affine, cavity_source, clip_source`
+  forwarded to `final_report`; with `report=False` and a cavity mask the
+  notes say RIND5 was not scored. Solver / objective untouched.
+- `gtcore/cli.py` (`gt optimize`): `_rind5_inputs(result, label)` picks the
+  pipeline's `cavity_mask` when the wall is the cavity and the clip in the
+  planner's order (`cranial_interior`, then `brain`; `planner._ensure_hrctv`
+  does the same), prints `HR-CTV: RIND5 of the gtcore cavity (clip
+  gtcore:cranial_interior), scored on the final 1 mm dose grid; shell rows
+  are S5 coverage (surrogate)` and passes the masks to `plan.optimize`. On
+  a phantom shell (PH8, PH0: no segmented cavity) it prints `HR-CTV: no
+  cavity mask on this wall (phantom shell (no cavity segmented)) -- the
+  report carries S5 coverage (surrogate) only, no RIND5` and the report's
+  notes repeat it. No planner (UI) change: the planner's `O` key still
+  calls `plan.optimize` without a cavity mask, so that report carries the
+  explicit note; wiring it is a one-line change in `planner.py` left to the
+  coordinator (stop list: no planner UI work).
+- Consumers of the old keys: `scripts/validation_optimize.py::evaluate_tiles`
+  (`src["S5"][offset]`; the rind columns are now `RIND5_V100`, `RIND5_D90`,
+  `RIND5_V150`; the unprefixed `V100`/`D90` campaign columns stay the shell
+  surrogate until Phase 4 re-runs the campaign -- said in its docstring),
+  `scripts/go_no_go_optimize.py` (grid-check line labelled "S5 coverage +5
+  mm"), `scripts/bench_dose_stats.py` (Phase 2 A driver). Two consumers the
+  first pass missed (found through the full run's extra skip, fixed in the
+  follow-up commit named below): `gtcore/planner.py::_before_after_text`
+  (the status line after the `O` key looked for a float key at the top of
+  `metrics_grid` and would have fallen back silently to the influence
+  estimate; it now reads `metrics_grid["S5"][5.0]`, legacy float keys still
+  accepted -- key lookup only, wording "+5 mm shell" unchanged: planner UI
+  text is on the stop list) and `tests/test_plan_review.py::_shell_entry`
+  (the A7 probe (e) skipped itself when it found no `5.0` key; it reads the
+  S5 row now and the probe runs again). Checked and not a consumer:
+  `scripts/plan_candidates_runtime.py` (no `metrics_grid` / `rind` / shell
+  access). `docs/optimize-notes.md` Phase 0 item 9 carries
+  one dated pointer to this section; its tables keep the old keys as
+  history. `docs/review-report.md` (historical A7 review) still mentions
+  `metrics_grid[5.0]`; left as is.
+
+### Synthetic example -- `gt optimize` on the synthetic phantom, N = 6
+
+Command (phantom mode, `make_head_phantom(spacing=0.7)`, pipeline cavity;
+run from the worktree root with `PYTHONPATH` set to it, `gtcore.__file__`
+printed first = this tree), commit `d5d62dc`:
+
+```
+GTCORE_STRICT=1 python -m gtcore.cli optimize --tiles 6 --solver greedy --h 4 --spins 3 --seed 0 --out <dir>
+```
+
+Wall `cavity wall` (28 604 faces); clip `gtcore:cranial_interior`; dose grid
+1 mm, margin 50 mm, 134 x 139 x 141 voxels; 6 full tiles = 24 seeds, S_K
+3.5 U, rx 6000 cGy; no overlaps. The same configuration through
+`plan.optimize(mesh, 6, solver="greedy", seed=0, h_mm=4, n_spins=3,
+**_rind5_inputs(result, label))` (scratch driver, same commit) gives the
+identical rows; the last row is the planner's `V`-key HR-CTV on the same
+cavity, clip and seeds (`build_hrctv(..., inside_mask=cavity,
+keep_mask=cranial_interior)` + `hrctv_stats(h.doses_exact(seeds))`):
+
+| row (as printed by `gt optimize`) | n | D90 [cGy] | V100 | V150 | V200 | volume |
+|---|---|---|---|---|---|---|
+| HR-CTV RIND5 (volumetric, 1 mm grid; cavity gtcore:cavity, clip gtcore:cranial_interior) | 29 778 vox | 4056 | 0.642 | 0.283 | 0.104 | 29.8 cc |
+| S5 coverage wall (surrogate shell vertices) | 14 296 | 5391 | 0.829 | 0.638 | 0.444 | -- |
+| S5 coverage +5 mm (surrogate shell vertices) | 14 296 | 3622 | 0.513 | 0.047 | 0.005 | -- |
+| S5 coverage +10 mm (surrogate shell vertices) | 14 296 | 2439 | 0.018 | 0.003 | 0.001 | -- |
+| target shell+5mm (surrogate, area-weighted; the objective's target) | 14 296 | 3472 | 0.482 | 0.077 | 0.019 | -- |
+| planner `build_hrctv` + `hrctv_stats`, same cavity / clip / seeds (its own grid, mesh bounds - 7 mm) | 29 778 vox | 4055.9 | 0.6421 | 0.2831 | 0.104 | 29.78 cc |
+
+Reading. (i) The report's RIND5 and the planner's HR-CTV are the **same
+number** (D90 4055.9 cGy, V100 0.6421, V150 0.2831, 29 778 voxels): both
+grids are `mesh.bounds[0]` minus an integer margin at 1 mm, so they share
+one lattice (offset mod 1 mm = 0) and the rind voxel sets coincide. (ii) The
+S5 +5 mm surrogate reads lower than the volumetric rind here (V100 0.513 vs
+0.642, D90 3622 vs 4056 cGy): the rind contains the 0-5 mm depths where
+the dose is higher than on the 5 mm surface -- the reason shell numbers
+must not be labelled HR-CTV D90 / V100. (iii) Format example only
+(synthetic phantom, greedy, h 4 mm / 3 spins, one seed): not a paper
+number; Phase 4 re-runs the campaign with RIND5 scoring.
+
+Runtimes (upper bounds, suite running concurrently): reconstruct 16.8 s;
+`plan.optimize` 21.8 s = candidates 6.7 + influence 0.3 + conflicts 1.5 +
+greedy 0.6 + report 12.7 (dose grid 11.8, **RIND5 0.6**, shadowing 0.3,
+shells + target 0.02). JSON / CSV written by the command carry
+`metrics_grid.RIND5.*` (incl. `provenance.*`) and `metrics_grid.S5.<off>.*`
+(checked in the CSV).
+
+### Sphere toy (the test fixture) -- grid-origin sensitivity of RIND5 at 1 mm
+
+`tests/test_plan_report.py::sphere_cavity`: icosphere R = 20 mm (vertices at
++-20 on the axes), cavity mask on a 1 mm grid whose lattice sits 0.3 mm off
+the integers, clip x > -8 mm ("gtcore:brain"), four conformed tiles at the
+poles, rx 6000 cGy, 1 mm dose grid. Measured at `d5d62dc` (scratch driver;
+`rind5` stage 0.06 s, whole report 0.9 s):
+
+| | D90 [cGy] | V100 | V150 | volume |
+|---|---|---|---|---|
+| report RIND5, margin 12.3 mm (grid on the cavity's lattice) | 2356.3 | 0.3260 | 0.0792 | 20.613 cc (20 613 vox) |
+| same, `target_doses_exact` at the rind centres | identical (array_equal) | | | |
+| same, `target_doses_from_grid` (trilinear, float32) | 2356.3 (rel 3.7e-8) | 0.3260 | 0.0792 | |
+| `build_hrctv` + `hrctv_stats` (integer lattice: shifted 0.3 mm per axis, 0.52 mm diagonal) | 2421.5 (-2.7 % vs report) | 0.3024 (+2.4 pp) | 0.0756 (+0.35 pp) | 20.613 cc |
+| report RIND5, margin 12 mm (integer lattice, = `build_hrctv`'s) vs `build_hrctv` | agree to 1e-9 | | | |
+
+Reading: on a half-voxel lattice shift the 1 mm RIND5 statistics move by a
+few % (D90) / a few pp (V100) on this toy, where the 60 Gy isodose sits at
+the rind's outer boundary and 4 tiles leave steep gradients. In gtcore the
+report and the planner derive their grid origins from the same mesh bounds
+minus integer margins, so they coincide (the phantom table above); the
+sensitivity is a property of volumetric statistics at 1 mm, to be stated in
+the Methods (grid named with every RIND5 number -- the provenance does
+this), not a defect. **Acceptance wording check:** "equal `build_hrctv` +
+`hrctv_stats` within 2 % on different grids" is met exactly (1e-9) on the
+realistic different-grid case (different origin / shape, same lattice),
+and is **not** met for a half-voxel lattice shift (-2.7 % D90, +2.4 pp
+V100); the test pins the latter loosely (5 % / 0.05) and records the
+measured values. Coordinator decision whether a tighter statement is
+wanted (e.g. requiring integer margins).
+
+### Tests
+
+`tests/test_plan_report.py` (rewritten, 23 tests): the existing fields /
+JSON / CSV / S_K-scaling / interference / empty-tiles tests on the new keys
+(`metrics_grid["S5"]`, no float keys, no `"rind"`, `NO_CAVITY_NOTE`
+present, summary says "S5 coverage" and has no HR-CTV row without a cavity
+mask); the pre-Phase-2 box-cavity case as `RIND5` on the 2 mm grid; the
+sphere fixture: `RIND5` keys == `DOSE_STAT_KEYS` + `target` + `provenance`,
+provenance (`cavity_source`, `clip_source`, builder, depth, grid == dose
+grid), stats == `dose_stats` on the grid values (1e-9), ==
+`target_doses_exact` (array_equal, 1e-9), == `target_doses_from_grid`
+(float32: 1e-6), == `build_hrctv` + `hrctv_stats` on its own grid (1e-9,
+same lattice; the "different grids" case), the shifted-lattice bound (5 % /
+0.05), `S5` == `dvh.shell_report` (bit-identical incl. curves), summary
+labels and row order, legacy float keys print as S5 coverage, JSON / CSV
+round trip with provenance, interference mirror, three explicit-absence
+notes (no affine, cavity off the grid, clipped away), strict re-raise vs
+note, `rind5_doses_on_grid` grid guard. `tests/test_plan_api.py`: +1
+(`optimize` forwards the masks / labels to `final_report`; `report=False`
+note). `tests/test_planner_optimize.py`: +1 (`gt optimize` forwards the
+pipeline cavity mask + cranial-interior clip; phantom shell -> None and the
+"no RIND5" line).
+
+Commands at `d5d62dc` (worktree root, `GTCORE_STRICT=1`):
+`python -m pytest -q tests/test_plan_report.py tests/test_plan_api.py
+tests/test_plan_interface.py -p no:cacheprovider` -> `64 passed, 13 skipped
+in 12.46s` (the skips are the interface placeholders);
+`python -m pytest -q tests/test_planner_optimize.py -k cli` -> `6 passed, 20
+deselected in 11.97s`.
+
+Full suite (`GTCORE_STRICT=1 python -m pytest -q -p no:cacheprovider`, tree
+= `paper2/integration` e13a4af + `d5d62dc`, other agents and the phantom
+driver running concurrently): see the line appended below.
+
+Full-suite result at `d5d62dc` (`GTCORE_STRICT=1 python -m pytest -q -p no:cacheprovider`
+from the worktree root; tree = `paper2/integration` e13a4af + this commit; the phantom
+driver and other agents ran concurrently, so the wall time is an upper bound):
+`953 passed, 15 skipped, 15242 warnings in 670.55s (0:11:10)`, no failures. 901 -> 953
+= the tests merged with B / C plus the net new tests here (test_plan_report 7 -> 23 incl.
+the rewritten ones, +1 test_plan_api, +1 test_planner_optimize). **The 15th skip was
+caused by this branch:** `tests/test_plan_review.py` probe (e) skips itself when
+`metrics_grid` has no `5.0` key (`-rs` on the two files holding the baseline 14 showed
+exactly the 13 interface placeholders + the `GT_E2E` gate). Fixed in the follow-up commit
+(`_shell_entry` and `planner._before_after_text` read `metrics_grid["S5"]`; +1 direct test
+of the status line): `tests/test_plan_review.py` -> `16 passed` (0 skipped),
+`tests/test_planner_optimize.py -k "before_after or cli"` -> `7 passed`. The full suite was
+re-run at that commit; its line is appended below.
+
+Full-suite result at `6d49ee9` (the final code commit: d5d62dc + the two consumer fixes;
+`GTCORE_STRICT=1 python -m pytest -q -p no:cacheprovider` from the worktree root; eight agents
+shared the machine during this run, so the wall time is an upper bound):
+`955 passed, 14 skipped, 15242 warnings in 676.65s (0:11:16)`, no failures; the skips are the baseline 14 (13 interface placeholders + the
+`GT_E2E`-gated run), the review probe (e) runs again.

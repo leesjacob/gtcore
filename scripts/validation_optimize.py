@@ -681,7 +681,15 @@ def evaluate_tiles(mesh, tiles: Sequence[PlacedTile], target: TargetSet,
     ``use_target=True`` makes V100 / D90 / V150 / V200 the WEIGHTED stats of
     the full target (needed when the mesh carries faces outside the target,
     e.g. the printed phantom's outer shell); the shell-vertex numbers are
-    then kept under ``*_shellverts``."""
+    then kept under ``*_shellverts``.
+
+    Keys (Paper 2 Phase 2 D, 2026-11-03): the shell rows live under
+    ``metrics_grid["S5"][offset]`` (S5 coverage, a surrogate) and the
+    volumetric HR-CTV under ``metrics_grid["RIND5"]`` (columns
+    ``RIND5_V100`` / ``RIND5_D90`` / ``RIND5_V150``, present when a cavity
+    mask was passed).  The unprefixed V100 / D90 columns of this row are
+    still the +5 mm shell (or weighted target) surrogate numbers of the
+    rev-1 campaign; Phase 4 re-runs the campaign and rewrites the tables."""
     params = {"shadowing": shadowing}
     if sk_per_seed_u is not None:
         params["sk_per_seed_u"] = float(sk_per_seed_u)
@@ -693,15 +701,17 @@ def evaluate_tiles(mesh, tiles: Sequence[PlacedTile], target: TargetSet,
                        parameters=params)
     src = rep.metrics_grid_interference if (interference and rep.metrics_grid_interference) \
         else rep.metrics_grid
-    s5 = src[5.0]
+    shells = src["S5"]                      # S5 coverage rows (surrogate), by offset
+    s5 = shells[5.0]
     row = {"V100": s5["V100"], "D90": s5["D90"], "V150": s5["V150"], "V200": s5["V200"],
            "V100w": src["target"]["V100"], "D90w": src["target"]["D90"],
-           "V100_wall": src[0.0]["V100"], "V100_10mm": src[10.0]["V100"],
+           "V100_wall": shells[0.0]["V100"], "V100_10mm": shells[10.0]["V100"],
            "n_overlaps": len(rep.overlaps), "n_proxy_overlaps": len(proxy_overlaps(tiles)),
            "report_s": rep.runtime.get("total", float("nan"))}
-    if "rind" in src:
-        row["rind_V100"] = src["rind"]["V100"]
-        row["rind_D90"] = src["rind"]["D90"]
+    if "RIND5" in src:                      # the volumetric HR-CTV (needs a cavity mask)
+        row["RIND5_V100"] = src["RIND5"]["V100"]
+        row["RIND5_D90"] = src["RIND5"]["D90"]
+        row["RIND5_V150"] = src["RIND5"]["V150"]
     if use_target:
         tg = src["target"]
         for k in ("V100", "D90", "V150", "V200"):

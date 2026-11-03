@@ -1011,6 +1011,11 @@ agents.
 9. **`OptimizeReport.metrics_grid` keys** are shell offsets (floats) in
    memory and strings in JSON (`"5.0"`); CSV keys are dotted
    (`metrics_grid.5.0.D90`).
+   *2026-11-03 (Paper 2 Phase 2 D):* renamed -- the shells are now `metrics_grid["S5"][offset]`
+   ("S5 coverage", a surrogate; CSV `metrics_grid.S5.5.0.D90`), the volumetric HR-CTV is
+   `metrics_grid["RIND5"]` (replaces `"rind"`, with provenance); see
+   `docs/paper2-phase-notes.md` "Phase 2 -- volumetric RIND5 in final_report". The tables above
+   keep the old keys and shell numbers (historical); Phase 4 re-runs the campaign.
 
 A2 (`plan/influence`, 2026-10-07):
 

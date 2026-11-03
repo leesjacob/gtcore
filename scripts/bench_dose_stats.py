@@ -122,9 +122,13 @@ else:
 t = time.perf_counter()
 rep2 = plan.final_report(mesh, tiles, cavity_mask=mask, cavity_affine=vol.affine,
                          grid_mm=1.0, parameters={"shadowing": False})
-print("final_report(1 mm, rind): %6.1f s; runtime %s" % (
+print("final_report(1 mm, RIND5): %6.1f s; runtime %s" % (
     time.perf_counter() - t, {k: round(v, 3) for k, v in rep2.runtime.items()}))
-s5 = rep2.metrics_grid[5.0]
-print("report +5mm shell   : V100 %.4f D90 %.1f ; target V100 %.4f D90 %.1f ; rind V100 %.4f D90 %.1f"
-      % (s5["V100"], s5["D90"], rep2.metrics_grid["target"]["V100"], rep2.metrics_grid["target"]["D90"],
-         rep2.metrics_grid["rind"]["V100"], rep2.metrics_grid["rind"]["D90"]))
+# Phase 2 D (2026-11-03): shells under metrics_grid["S5"][offset] ("S5 coverage",
+# a surrogate), the volumetric HR-CTV under metrics_grid["RIND5"]
+s5 = rep2.metrics_grid["S5"][5.0]
+r5 = rep2.metrics_grid["RIND5"]
+print("S5 coverage +5 mm   : V100 %.4f D90 %.1f ; target V100 %.4f D90 %.1f ; "
+      "HR-CTV RIND5 V100 %.4f D90 %.1f (%.1f cc)"
+      % (s5["V100"], s5["D90"], rep2.metrics_grid["target"]["V100"],
+         rep2.metrics_grid["target"]["D90"], r5["V100"], r5["D90"], r5["volume_cc"]))

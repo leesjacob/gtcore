@@ -1481,7 +1481,13 @@ class _PlannerApp:
         them, else the influence estimates."""
         grid = None
         if rep is not None:
-            for key, stats in (getattr(rep, "metrics_grid", None) or {}).items():
+            mg = getattr(rep, "metrics_grid", None) or {}
+            # the shell rows live under metrics_grid["S5"] (Paper 2 Phase 2 D,
+            # "S5 coverage"); reports assembled before that carried them as
+            # top-level float keys -- accept both
+            shells = dict(mg["S5"]) if isinstance(mg.get("S5"), dict) else {}
+            shells.update({k: v for k, v in mg.items() if k != "S5"})
+            for key, stats in shells.items():
                 try:
                     if abs(float(key) - WALL_DEPTH_MM) < 1e-6:
                         grid = stats.get("stats", stats)

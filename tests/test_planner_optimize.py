@@ -523,6 +523,28 @@ def test_phantom_shell_fallback_uses_visible_faces(result, monkeypatch, fakes):
         planner.close()
 
 
+def test_before_after_text_reads_the_s5_shell_row_of_the_report():
+    """The status line takes the dose-grid +5 mm shell row from the report:
+    ``metrics_grid["S5"][5.0]`` (Paper 2 Phase 2 D) or, for reports built
+    before the rename, the top-level float key; otherwise the influence
+    estimate (never a silent fall-back when the grid row exists)."""
+    from gtcore.planner import _PlannerApp
+    before = {"V100": 0.40, "D90": 3000.0}
+    after = {"V100": 0.70, "D90": 5000.0}
+    row = {"V100": 0.72, "D90": 5200.0, "V150": 0.2, "V200": 0.05}
+    rep_new = OptimizeReport(metrics_grid={"S5": {0.0: dict(row, V100=0.9), 5.0: row},
+                                           "target": dict(row, V100=0.71, name="shell+5mm"),
+                                           "RIND5": dict(row, V100=0.66, D90=4800.0)})
+    s = _PlannerApp._before_after_text(before, after, rep_new)
+    assert "+5 mm shell" in s and "0.40 -> 0.72" in s and "3000 -> 5200" in s
+    assert "(dose grid)" in s
+    rep_old = OptimizeReport(metrics_grid={5.0: row})
+    assert _PlannerApp._before_after_text(before, after, rep_old) == s
+    rep_none = OptimizeReport(metrics_grid={})
+    s2 = _PlannerApp._before_after_text(before, after, rep_none)
+    assert "0.40 -> 0.70" in s2 and "(influence estimate)" in s2
+
+
 # --------------------------------------------------------------------- CLI
 def test_cli_optimize_help_and_plan_optimizer_flag():
     from gtcore.cli import main
@@ -579,6 +601,41 @@ def test_cli_optimize_runs_on_the_phantom(result, monkeypatch, tmp_path, capsys)
     assert "phantom shell" in text and "eligible faces" in text
     call = [c for c in calls if c[0] == "optimize"][-1]
     assert call[1] == 1 and call[3]["eligible_faces"] is not None
+
+
+def test_cli_optimize_forwards_the_cavity_mask_for_rind5(result, monkeypatch, tmp_path, capsys):
+    """Paper 2 Phase 2 D: ``gt optimize`` hands the pipeline's cavity mask and
+    the cranial-interior / brain clip (the planner's HR-CTV choice) to
+    ``plan.optimize`` so the report scores the volumetric RIND5; on a phantom
+    shell there is no cavity mask and the printout says so."""
+    import gtcore.pipeline as pipeline_mod
+    from gtcore.cli import main
+
+    calls = []
+    _install_fakes(monkeypatch, calls, n_recommended=2)
+    monkeypatch.setattr(pipeline_mod, "reconstruct", lambda vol, **kw: result)
+    rc = main(["optimize", "--spacing", "1.0", "--out", str(tmp_path / "cav"), "--tiles", "2",
+               "--no-report"])
+    assert rc == 0
+    kw = [c for c in calls if c[0] == "optimize"][-1][3]
+    assert kw["cavity_mask"] is result.cavity_mask
+    assert np.allclose(kw["cavity_affine"], result.volume.affine)
+    assert kw["clip_mask"] is not None and np.allclose(kw["clip_affine"], result.volume.affine)
+    assert kw["clip_source"] in ("gtcore:cranial_interior", "gtcore:brain")
+    text = capsys.readouterr().out
+    assert "HR-CTV: RIND5 of the gtcore cavity (clip %s)" % kw["clip_source"] in text
+
+    no_cavity = _shell_result(result)
+    monkeypatch.setattr(pipeline_mod, "reconstruct", lambda vol, **kw: no_cavity)
+    monkeypatch.setattr(plan, "visible_faces",
+                        lambda mesh, c: np.ones(len(mesh.faces), dtype=bool))
+    rc = main(["optimize", "--spacing", "1.0", "--out", str(tmp_path / "shell"), "--tiles", "1",
+               "--no-report"])
+    assert rc == 0
+    kw = [c for c in calls if c[0] == "optimize"][-1][3]
+    assert kw["cavity_mask"] is None and kw["clip_mask"] is None and kw["clip_source"] is None
+    text = capsys.readouterr().out
+    assert "HR-CTV: no cavity mask on this wall" in text and "no RIND5" in text
 
 
 def test_cli_uses_the_capacity_when_it_is_below_the_recommendation(result, monkeypatch,

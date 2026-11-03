@@ -117,6 +117,7 @@ def _install_fakes(monkeypatch, toy, calls):
     def final_report(mesh, tiles, rx_cgy=RX, target=None, solver_result=None,
                      parameters=None, **kw):
         calls["final_report"] += 1
+        calls["final_report_kw"] = dict(kw)
         return OptimizeReport(
             tiles=list(tiles), solver=solver_result, parameters=dict(parameters or {}),
             metrics_grid={5.0: {"stats": {"V100": 0.91, "D90": 6100.0,
@@ -270,6 +271,28 @@ def test_optimize_greedy_end_to_end_with_fakes(fakes, toy):
     assert rep.metrics_influence["hard"] == pytest.approx(rep.solver.objective)
     assert 5.0 in rep.metrics_grid
     assert "3 tiles" in rep.summary()
+
+
+def test_optimize_forwards_the_cavity_mask_to_final_report(fakes, toy):
+    """Paper 2 Phase 2 D: the cavity / clip masks and their provenance labels
+    reach ``final_report`` (which scores the volumetric RIND5 on them);
+    with ``report=False`` the report says RIND5 could not be scored."""
+    cav = np.zeros((4, 4, 4), dtype=bool)
+    cav[1:3, 1:3, 1:3] = True
+    aff = np.eye(4)
+    clip = np.ones_like(cav)
+    plan.optimize(toy["mesh"], 2, cavity_mask=cav, cavity_affine=aff,
+                  clip_mask=clip, clip_affine=aff,
+                  cavity_source="gtcore:cavity", clip_source="gtcore:brain")
+    kw = fakes["final_report_kw"]
+    assert kw["cavity_mask"] is cav and kw["cavity_affine"] is aff
+    assert kw["clip_mask"] is clip and kw["clip_affine"] is aff
+    assert kw["cavity_source"] == "gtcore:cavity" and kw["clip_source"] == "gtcore:brain"
+    plan.optimize(toy["mesh"], 2)
+    kw = fakes["final_report_kw"]
+    assert kw["cavity_mask"] is None and kw["clip_mask"] is None
+    _tiles, rep = plan.optimize(toy["mesh"], 2, report=False, cavity_mask=cav, cavity_affine=aff)
+    assert any("RIND5" in n and "report=False" in n for n in rep.notes)
 
 
 def test_optimize_report_false_is_lightweight(fakes, toy):
