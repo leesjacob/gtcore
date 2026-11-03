@@ -1,0 +1,2286 @@
+{
+ "dataset": "PT-CT1mm",
+ "script": "scripts/patient_optimize.py",
+ "command": "python scripts/patient_optimize.py \"$GT_DATA_ROOT/<PT-CT1mm>\" --rtstruct <path> --tiles 8 --sa-seeds 0 1 2 --halves 6,4 --out-csv <path> --out-data <path> --reports <path>",
+ "commit": "085fe60",
+ "generated": "2026-11-03 12:00",
+ "gtcore_file": "<worktree>\\gtcore\\__init__.py",
+ "flag": "calibration-set",
+ "conventions": {
+  "coordinates": "RAS mm; arrays indexed [k, j, i]; affine maps (i, j, k, 1) -> RAS",
+  "sheets": "wall = the tile's tissue face draped onto the gtcore cavity wall the way the conformer drapes it (flat offsets from the anchor cast along the anchor normal); seed = +3 mm, cavity = +4 mm along the local inward normal; row-major n x n, faces shared (sheet_faces)",
+  "modes": "opt_rind5_* / opt_ctvgt_* = the optimizer's best SA seed per objective family; count<N>_* = count-known N full fit (pipeline chord path); count_<F>full_<H>half_* = planner prior fit; seed_tile_id -1 = leftover"
+ },
+ "modes": {
+  "opt_rind5": {
+   "family": "rind5",
+   "objective_target": "optimizer default: +5 mm shell of the eligible wall, area weights (S5 surrogate of RIND5)",
+   "sa_seed": 0,
+   "best_rule": "highest RIND5(gtcore cavity, clip cranial interior) V100 over the SA seeds",
+   "n_tiles": 8,
+   "n_overlaps": 0
+  },
+  "opt_ctvgt": {
+   "family": "ctvgt",
+   "objective_target": "HRCTV_PHYS: CTV_GT voxel centres from the RTSTRUCT (70438 points, unit weights = volume weights on the CT grid; M_opt 4000 subsample)",
+   "sa_seed": 1,
+   "best_rule": "highest HRCTV_PHYS (CTV_GT) V100 over the SA seeds",
+   "n_tiles": 8,
+   "n_overlaps": 0
+  },
+  "count8": {
+   "family": "as_implanted_fit",
+   "n_tiles": 7,
+   "n_full": 7,
+   "n_half": 0,
+   "n_degraded": 1,
+   "n_leftover": 4,
+   "n_overlaps": 2
+  },
+  "count_6full_4half": {
+   "family": "as_implanted_fit",
+   "n_tiles": 10,
+   "n_full": 6,
+   "n_half": 4,
+   "n_degraded": 0,
+   "n_leftover": 0,
+   "n_overlaps": 3
+  }
+ },
+ "optimized_modes": [
+  "opt_rind5",
+  "opt_ctvgt"
+ ],
+ "eligible": {
+  "rule": "union of (a) candidates.craniotomy_faces(mesh, opening, implant_center_ras=None) and (b) wall faces whose centroid lies within 10 mm of an implanted seed centre (demonstrated reach; coordinator 2026-11-03)",
+  "craniotomy": {
+   "cone_deg": 90.0,
+   "footprint_tol_mm": 5.0,
+   "view_offset_mm": 10.0,
+   "view_point_ras": [
+    46.084388563468615,
+    219.3127186971895,
+    -517.1522496005414
+   ],
+   "implant_center_ras": null,
+   "n_faces": 24736,
+   "mesh_watertight": true,
+   "n_facing": 18045,
+   "n_line_of_sight": 7919,
+   "n_sight_no_crossing": 1678,
+   "n_sight_clear": 0,
+   "n_sight_one_hit_in_footprint": 7919,
+   "n_sight_one_hit_outside": 7,
+   "n_sight_blocked": 15132,
+   "n_visible_from_implant": 24736,
+   "n_eligible": 6508,
+   "area_fraction_facing": 0.7248609049065955,
+   "area_fraction_line_of_sight": 0.3216736096294817,
+   "area_fraction_visible": 1.0,
+   "opening": {
+    "centroid_ras": [
+     37.45367232921512,
+     214.30978436137354,
+     -516.4584302326172
+    ],
+    "normal_ras": [
+     0.86307162342535,
+     0.5002934335815958,
+     -0.06938193679242607
+    ],
+    "area_mm2": 2873.452390242194,
+    "n_voxels": 6880,
+    "info": {
+     "margin_mm": 3.0,
+     "min_area_mm2": 100.0,
+     "source": "mouth",
+     "chosen_by": "most cavity-mouth voxels",
+     "n_boundary_voxels": 208614,
+     "n_defect_voxels": 35813,
+     "n_mouth_voxels": 6169,
+     "n_components": 15,
+     "chosen": {
+      "label": 283,
+      "n_voxels": 6880,
+      "n_mouth": 5730,
+      "n_defect": 1150,
+      "area_mm2": 2873.452390242194,
+      "centroid_ras": [
+       37.45367232921512,
+       214.30978436137354,
+       -516.4584302326172
+      ],
+      "distance_to_reference_mm": 13.675245416772558
+     },
+     "components": [
+      {
+       "label": 106,
+       "n_voxels": 8939,
+       "n_mouth": 0,
+       "n_defect": 8939,
+       "area_mm2": 3733.3998424963625,
+       "centroid_ras": [
+        -17.255568776918558,
+        188.92451638361393,
+        -555.327978521182
+       ],
+       "distance_to_reference_mm": 32.78807467286031
+      },
+      {
+       "label": 283,
+       "n_voxels": 6880,
+       "n_mouth": 5730,
+       "n_defect": 1150,
+       "area_mm2": 2873.452390242194,
+       "centroid_ras": [
+        37.45367232921512,
+        214.30978436137354,
+        -516.4584302326172
+       ],
+       "distance_to_reference_mm": 13.675245416772558
+      },
+      {
+       "label": 1,
+       "n_voxels": 2600,
+       "n_mouth": 0,
+       "n_defect": 2600,
+       "area_mm2": 1085.8977056147826,
+       "centroid_ras": [
+        -7.391930588942308,
+        152.49022536057691,
+        -589.6542307692029
+       ],
+       "distance_to_reference_mm": 76.19277048495248
+      },
+      {
+       "label": 245,
+       "n_voxels": 2252,
+       "n_mouth": 0,
+       "n_defect": 2252,
+       "area_mm2": 940.554474247881,
+       "centroid_ras": [
+        -11.533270773201599,
+        235.56039596747337,
+        -531.6014209591245
+       ],
+       "distance_to_reference_mm": 40.26791723827581
+      },
+      {
+       "label": 858,
+       "n_voxels": 1656,
+       "n_mouth": 0,
+       "n_defect": 1656,
+       "area_mm2": 691.6333078838769,
+       "centroid_ras": [
+        6.412257982336956,
+        156.68477317330917,
+        -459.8032608695563
+       ],
+       "distance_to_reference_mm": 60.75693643862629
+      },
+      {
+       "label": 11,
+       "n_voxels": 1509,
+       "n_mouth": 0,
+       "n_defect": 1509,
+       "area_mm2": 630.2383222202719,
+       "centroid_ras": [
+        35.1633829833499,
+        144.60975941227633,
+        -573.0926441351752
+       ],
+       "distance_to_reference_mm": 70.06794512729714
+      },
+      {
+       "label": 114,
+       "n_voxels": 1425,
+       "n_mouth": 0,
+       "n_defect": 1425,
+       "area_mm2": 595.1554732696404,
+       "centroid_ras": [
+        44.632109375,
+        168.93497395833333,
+        -558.289824561393
+       ],
+       "distance_to_reference_mm": 55.89946354462586
+      },
+      {
+       "label": 315,
+       "n_voxels": 1016,
+       "n_mouth": 0,
+       "n_defect": 1016,
+       "area_mm2": 424.3354111171612,
+       "centroid_ras": [
+        -48.82008566067913,
+        226.85201233390748,
+        -521.2098425196926
+       ],
+       "distance_to_reference_mm": 68.16007197839942
+      }
+     ],
+     "interior_centroid_ras": [
+      -3.382340063332066,
+      161.96099834190446,
+      -519.3698524464
+     ],
+     "reference_ras": [
+      23.731280213608315,
+      207.63990595087967,
+      -510.6564915861925
+     ],
+     "voxel_area_mm2": 0.4176529636979933,
+     "spacing_mm": [
+      0.51953125,
+      0.51953125,
+      1.0000000000000002
+     ]
+    }
+   }
+  },
+  "n_craniotomy": 6508,
+  "area_fraction_craniotomy": 0.2647309100536086,
+  "reach_face_mm": 10.0,
+  "n_reach": 13883,
+  "area_fraction_reach": 0.5631597601027634,
+  "n_reach_only": 9988,
+  "area_fraction_reach_only": 0.4078373304869914,
+  "n_union": 16496,
+  "area_fraction_union": 0.6725682405406,
+  "n_faces": 24736
+ },
+ "opening": {
+  "centroid_ras": [
+   37.45367232921512,
+   214.30978436137354,
+   -516.4584302326172
+  ],
+  "normal_ras": [
+   0.86307162342535,
+   0.5002934335815958,
+   -0.06938193679242607
+  ],
+  "area_mm2": 2873.452390242194,
+  "n_voxels": 6880,
+  "info": {
+   "margin_mm": 3.0,
+   "min_area_mm2": 100.0,
+   "source": "mouth",
+   "chosen_by": "most cavity-mouth voxels",
+   "n_boundary_voxels": 208614,
+   "n_defect_voxels": 35813,
+   "n_mouth_voxels": 6169,
+   "n_components": 15,
+   "chosen": {
+    "label": 283,
+    "n_voxels": 6880,
+    "n_mouth": 5730,
+    "n_defect": 1150,
+    "area_mm2": 2873.452390242194,
+    "centroid_ras": [
+     37.45367232921512,
+     214.30978436137354,
+     -516.4584302326172
+    ],
+    "distance_to_reference_mm": 13.675245416772558
+   },
+   "components": [
+    {
+     "label": 106,
+     "n_voxels": 8939,
+     "n_mouth": 0,
+     "n_defect": 8939,
+     "area_mm2": 3733.3998424963625,
+     "centroid_ras": [
+      -17.255568776918558,
+      188.92451638361393,
+      -555.327978521182
+     ],
+     "distance_to_reference_mm": 32.78807467286031
+    },
+    {
+     "label": 283,
+     "n_voxels": 6880,
+     "n_mouth": 5730,
+     "n_defect": 1150,
+     "area_mm2": 2873.452390242194,
+     "centroid_ras": [
+      37.45367232921512,
+      214.30978436137354,
+      -516.4584302326172
+     ],
+     "distance_to_reference_mm": 13.675245416772558
+    },
+    {
+     "label": 1,
+     "n_voxels": 2600,
+     "n_mouth": 0,
+     "n_defect": 2600,
+     "area_mm2": 1085.8977056147826,
+     "centroid_ras": [
+      -7.391930588942308,
+      152.49022536057691,
+      -589.6542307692029
+     ],
+     "distance_to_reference_mm": 76.19277048495248
+    },
+    {
+     "label": 245,
+     "n_voxels": 2252,
+     "n_mouth": 0,
+     "n_defect": 2252,
+     "area_mm2": 940.554474247881,
+     "centroid_ras": [
+      -11.533270773201599,
+      235.56039596747337,
+      -531.6014209591245
+     ],
+     "distance_to_reference_mm": 40.26791723827581
+    },
+    {
+     "label": 858,
+     "n_voxels": 1656,
+     "n_mouth": 0,
+     "n_defect": 1656,
+     "area_mm2": 691.6333078838769,
+     "centroid_ras": [
+      6.412257982336956,
+      156.68477317330917,
+      -459.8032608695563
+     ],
+     "distance_to_reference_mm": 60.75693643862629
+    },
+    {
+     "label": 11,
+     "n_voxels": 1509,
+     "n_mouth": 0,
+     "n_defect": 1509,
+     "area_mm2": 630.2383222202719,
+     "centroid_ras": [
+      35.1633829833499,
+      144.60975941227633,
+      -573.0926441351752
+     ],
+     "distance_to_reference_mm": 70.06794512729714
+    },
+    {
+     "label": 114,
+     "n_voxels": 1425,
+     "n_mouth": 0,
+     "n_defect": 1425,
+     "area_mm2": 595.1554732696404,
+     "centroid_ras": [
+      44.632109375,
+      168.93497395833333,
+      -558.289824561393
+     ],
+     "distance_to_reference_mm": 55.89946354462586
+    },
+    {
+     "label": 315,
+     "n_voxels": 1016,
+     "n_mouth": 0,
+     "n_defect": 1016,
+     "area_mm2": 424.3354111171612,
+     "centroid_ras": [
+      -48.82008566067913,
+      226.85201233390748,
+      -521.2098425196926
+     ],
+     "distance_to_reference_mm": 68.16007197839942
+    }
+   ],
+   "interior_centroid_ras": [
+    -3.382340063332066,
+    161.96099834190446,
+    -519.3698524464
+   ],
+   "reference_ras": [
+    23.731280213608315,
+    207.63990595087967,
+    -510.6564915861925
+   ],
+   "voxel_area_mm2": 0.4176529636979933,
+   "spacing_mm": [
+    0.51953125,
+    0.51953125,
+    1.0000000000000002
+   ]
+  }
+ },
+ "fairness": {
+  "n_seeds": 32,
+  "nearest_face_eligible": 32,
+  "fraction_nearest_face_eligible": 1.0,
+  "within_6mm_of_eligible": 32,
+  "fraction_within_6mm_of_eligible": 1.0
+ },
+ "fairness_craniotomy_only": {
+  "n_seeds": 32,
+  "nearest_face_eligible": 9,
+  "fraction_nearest_face_eligible": 0.28125,
+  "within_6mm_of_eligible": 31,
+  "fraction_within_6mm_of_eligible": 0.96875
+ },
+ "fairness_with_implant_term": {
+  "n_seeds": 32,
+  "nearest_face_eligible": 9,
+  "fraction_nearest_face_eligible": 0.28125,
+  "within_6mm_of_eligible": 27,
+  "fraction_within_6mm_of_eligible": 0.84375
+ },
+ "manufacturer_rule_tiles_on_eligible_area": 23,
+ "eligible_area_mm2": 8919.11747599926,
+ "arms": {
+  "as_implanted": {
+   "label": "as implanted: 32 localized seeds, physical (PCA) axes",
+   "family": null,
+   "sa_seed": null,
+   "objective_target": null,
+   "n_seeds_scored": 32,
+   "geometry": null,
+   "objective": null,
+   "solver_status": null,
+   "n_candidates": null,
+   "solve_s": null,
+   "total_s": null,
+   "stats": {
+    "HRCTV_PHYS (CTV_GT)": {
+     "D90": 6167.478946811596,
+     "V100": 0.9171044038729095,
+     "V150": 0.46792924273829467,
+     "V200": 0.18928703256764814,
+     "Dmin": 3574.287380729079,
+     "Dmean": 9523.77447621351,
+     "Dmax": 76846.39590139098,
+     "D50": 8772.0049273816,
+     "volume_cc": 19.01211215209961,
+     "n": 70438
+    },
+    "RIND5(Cav_Post, clip Brain)": {
+     "D90": 4537.5748878508375,
+     "V100": 0.677519107575075,
+     "V150": 0.27363727294245205,
+     "V200": 0.1077354183050951,
+     "Dmin": 2006.6190854691927,
+     "Dmean": 7830.968007267166,
+     "Dmax": 76846.39590139098,
+     "D50": 7076.7231652341325,
+     "volume_cc": 35.35019898986817,
+     "n": 130969
+    },
+    "RIND5(gtcore cavity, clip cranial interior)": {
+     "D90": 2652.6899616899987,
+     "V100": 0.38686138708205237,
+     "V150": 0.19811230861046053,
+     "V200": 0.10602967948364318,
+     "Dmin": 1657.7920164180607,
+     "Dmean": 6500.159821066854,
+     "Dmax": 226680.38757367578,
+     "D50": 4942.7949924657005,
+     "volume_cc": 53.819786575317394,
+     "n": 199397
+    },
+    "IMPLANT_REACH(r=10 mm)": {
+     "D90": 6700.365059056961,
+     "V100": 0.9602148813341885,
+     "V150": 0.5481077613855035,
+     "V200": 0.2259300833867864,
+     "Dmin": 4125.845367606695,
+     "Dmean": 10055.655883841984,
+     "Dmax": 76846.39590139098,
+     "D50": 9343.159821617746,
+     "volume_cc": 16.83175720214844,
+     "n": 62360
+    },
+    "IMPLANT_REACH(r=12 mm)": {
+     "D90": 5765.184690935618,
+     "V100": 0.8688459855494722,
+     "V150": 0.3816796337207441,
+     "V200": 0.15058858685791737,
+     "Dmin": 3481.74994919969,
+     "Dmean": 8925.54847034488,
+     "Dmax": 76846.39590139098,
+     "D50": 8108.969887660406,
+     "volume_cc": 25.290551925659184,
+     "n": 93699
+    }
+   },
+   "note": "the dose of the implant as found; independent of the tile fit"
+  },
+  "as_implanted_fit_count8": {
+   "label": "as implanted, count-known N = 8 fit (pipeline chord path): the seeds its tiles own",
+   "family": null,
+   "sa_seed": null,
+   "objective_target": null,
+   "n_seeds_scored": 28,
+   "geometry": {
+    "assigned": [
+     0,
+     1,
+     3,
+     4,
+     6,
+     7,
+     8,
+     9,
+     10,
+     12,
+     13,
+     14,
+     15,
+     16,
+     17,
+     18,
+     19,
+     20,
+     22,
+     23,
+     24,
+     25,
+     26,
+     27,
+     28,
+     29,
+     30,
+     31
+    ],
+    "leftovers": [
+     2,
+     5,
+     11,
+     21
+    ],
+    "n_tiles": 7,
+    "n_full": 7,
+    "n_half": 0,
+    "n_degraded": 1,
+    "n_overlaps": 2,
+    "overlap_pairs": [
+     [
+      0,
+      1
+     ],
+     [
+      4,
+      6
+     ]
+    ],
+    "fit_s": 0.008775199996307492
+   },
+   "objective": null,
+   "solver_status": null,
+   "n_candidates": null,
+   "solve_s": null,
+   "total_s": null,
+   "stats": {
+    "HRCTV_PHYS (CTV_GT)": {
+     "D90": 5390.662441763776,
+     "V100": 0.8303330588602743,
+     "V150": 0.35564610011641445,
+     "V200": 0.12460603651438144,
+     "Dmin": 2364.3940850295658,
+     "Dmean": 8597.346953259845,
+     "Dmax": 76202.18464414873,
+     "D50": 7976.82558520434,
+     "volume_cc": 19.01211215209961,
+     "n": 70438
+    },
+    "RIND5(Cav_Post, clip Brain)": {
+     "D90": 3992.706692961604,
+     "V100": 0.5737540944803732,
+     "V150": 0.20583496858035108,
+     "V200": 0.07094045155723873,
+     "Dmin": 1486.235853265092,
+     "Dmean": 7080.162432703064,
+     "Dmax": 76202.18464414873,
+     "D50": 6435.963557664316,
+     "volume_cc": 35.35019898986817,
+     "n": 130969
+    },
+    "RIND5(gtcore cavity, clip cranial interior)": {
+     "D90": 2430.9145149405163,
+     "V100": 0.33589773166095777,
+     "V150": 0.16336755317281604,
+     "V200": 0.08236834054674845,
+     "Dmin": 1379.118875817416,
+     "Dmean": 5918.690708225325,
+     "Dmax": 74609.57974240492,
+     "D50": 4455.016396684842,
+     "volume_cc": 53.819786575317394,
+     "n": 199397
+    },
+    "IMPLANT_REACH(r=10 mm)": {
+     "D90": 5844.555175513966,
+     "V100": 0.8848781270044901,
+     "V150": 0.4211834509300834,
+     "V200": 0.14894162924951893,
+     "Dmin": 2588.992855790751,
+     "Dmean": 9061.208384893142,
+     "Dmax": 76202.18464414873,
+     "D50": 8467.018965086847,
+     "volume_cc": 16.83175720214844,
+     "n": 62360
+    },
+    "IMPLANT_REACH(r=12 mm)": {
+     "D90": 5084.719934906445,
+     "V100": 0.7590796059723156,
+     "V150": 0.28770851343130666,
+     "V200": 0.0991579419204047,
+     "Dmin": 2235.777148629817,
+     "Dmean": 8068.966268277576,
+     "Dmax": 76202.18464414873,
+     "D50": 7386.058806892668,
+     "volume_cc": 25.290551925659184,
+     "n": 93699
+    }
+   },
+   "note": "7 tiles (1 degraded), 4 leftover seeds excluded from this dose row: [2, 5, 11, 21]"
+  },
+  "as_implanted_fit_6full_4half": {
+   "label": "as implanted, count-known 6 full + 4 half fit (planner prior path): the seeds its tiles own",
+   "family": null,
+   "sa_seed": null,
+   "objective_target": null,
+   "n_seeds_scored": 32,
+   "geometry": {
+    "assigned": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7,
+     8,
+     9,
+     10,
+     11,
+     12,
+     13,
+     14,
+     15,
+     16,
+     17,
+     18,
+     19,
+     20,
+     21,
+     22,
+     23,
+     24,
+     25,
+     26,
+     27,
+     28,
+     29,
+     30,
+     31
+    ],
+    "leftovers": [],
+    "n_tiles": 10,
+    "n_full": 6,
+    "n_half": 4,
+    "n_degraded": 0,
+    "n_overlaps": 3,
+    "overlap_pairs": [
+     [
+      1,
+      7
+     ],
+     [
+      3,
+      6
+     ],
+     [
+      4,
+      7
+     ]
+    ],
+    "fit_s": 36.92143860000215
+   },
+   "objective": null,
+   "solver_status": null,
+   "n_candidates": null,
+   "solve_s": null,
+   "total_s": null,
+   "stats": {
+    "HRCTV_PHYS (CTV_GT)": {
+     "D90": 6167.478946811596,
+     "V100": 0.9171044038729095,
+     "V150": 0.46792924273829467,
+     "V200": 0.18928703256764814,
+     "Dmin": 3574.287380729079,
+     "Dmean": 9523.77447621351,
+     "Dmax": 76846.39590139098,
+     "D50": 8772.0049273816,
+     "volume_cc": 19.01211215209961,
+     "n": 70438
+    },
+    "RIND5(Cav_Post, clip Brain)": {
+     "D90": 4537.5748878508375,
+     "V100": 0.677519107575075,
+     "V150": 0.27363727294245205,
+     "V200": 0.1077354183050951,
+     "Dmin": 2006.6190854691927,
+     "Dmean": 7830.968007267166,
+     "Dmax": 76846.39590139098,
+     "D50": 7076.7231652341325,
+     "volume_cc": 35.35019898986817,
+     "n": 130969
+    },
+    "RIND5(gtcore cavity, clip cranial interior)": {
+     "D90": 2652.6899616899987,
+     "V100": 0.38686138708205237,
+     "V150": 0.19811230861046053,
+     "V200": 0.10602967948364318,
+     "Dmin": 1657.7920164180607,
+     "Dmean": 6500.159821066854,
+     "Dmax": 226680.38757367578,
+     "D50": 4942.7949924657005,
+     "volume_cc": 53.819786575317394,
+     "n": 199397
+    },
+    "IMPLANT_REACH(r=10 mm)": {
+     "D90": 6700.365059056961,
+     "V100": 0.9602148813341885,
+     "V150": 0.5481077613855035,
+     "V200": 0.2259300833867864,
+     "Dmin": 4125.845367606695,
+     "Dmean": 10055.655883841984,
+     "Dmax": 76846.39590139098,
+     "D50": 9343.159821617746,
+     "volume_cc": 16.83175720214844,
+     "n": 62360
+    },
+    "IMPLANT_REACH(r=12 mm)": {
+     "D90": 5765.184690935618,
+     "V100": 0.8688459855494722,
+     "V150": 0.3816796337207441,
+     "V200": 0.15058858685791737,
+     "Dmin": 3481.74994919969,
+     "Dmean": 8925.54847034488,
+     "Dmax": 76846.39590139098,
+     "D50": 8108.969887660406,
+     "volume_cc": 25.290551925659184,
+     "n": 93699
+    }
+   },
+   "note": "10 tiles (6 full, 4 half, 0 degraded), 0 leftover seeds: []"
+  },
+  "optimized_rind5_sa_seed0": {
+   "label": "optimized for rind5: 8 full tiles, SA 8 x 60, seed 0, start greedy, eligible = craniotomy | reach",
+   "family": "rind5",
+   "sa_seed": 0,
+   "objective_target": "optimizer default: +5 mm shell of the eligible wall, area weights (S5 surrogate of RIND5)",
+   "n_seeds_scored": 32,
+   "geometry": {
+    "assigned": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7,
+     8,
+     9,
+     10,
+     11,
+     12,
+     13,
+     14,
+     15,
+     16,
+     17,
+     18,
+     19,
+     20,
+     21,
+     22,
+     23,
+     24,
+     25,
+     26,
+     27,
+     28,
+     29,
+     30,
+     31
+    ],
+    "leftovers": [],
+    "n_tiles": 8,
+    "n_full": 8,
+    "n_half": 0,
+    "n_degraded": 0,
+    "n_overlaps": 0,
+    "overlap_pairs": []
+   },
+   "objective": 1.3798140255272213,
+   "solver_status": "ok",
+   "n_candidates": 852,
+   "solve_s": 58.84386010000162,
+   "total_s": 163.00306350000028,
+   "stats": {
+    "HRCTV_PHYS (CTV_GT)": {
+     "D90": 5706.132136918263,
+     "V100": 0.8546239245861609,
+     "V150": 0.4080325960419092,
+     "V200": 0.24292285414123058,
+     "Dmin": 4069.5421293776512,
+     "Dmean": 11251.615389247201,
+     "Dmax": 243137.3652481939,
+     "D50": 8128.827432475976,
+     "volume_cc": 19.01211215209961,
+     "n": 70438
+    },
+    "RIND5(Cav_Post, clip Brain)": {
+     "D90": 4877.96473182496,
+     "V100": 0.7161007566676084,
+     "V150": 0.32800891814093414,
+     "V200": 0.1877619894784262,
+     "Dmin": 2894.4836841261476,
+     "Dmean": 9958.034140125472,
+     "Dmax": 374684.37345775234,
+     "D50": 7333.860338694656,
+     "volume_cc": 35.35019898986817,
+     "n": 130969
+    },
+    "RIND5(gtcore cavity, clip cranial interior)": {
+     "D90": 3140.7564904909973,
+     "V100": 0.5032623359428677,
+     "V150": 0.1898072689157811,
+     "V200": 0.07602922812279021,
+     "Dmin": 1903.5268372755172,
+     "Dmean": 7014.958495718707,
+     "Dmax": 374684.37345775234,
+     "D50": 6023.666230316849,
+     "volume_cc": 53.819786575317394,
+     "n": 199397
+    },
+    "IMPLANT_REACH(r=10 mm)": {
+     "D90": 5897.968314584899,
+     "V100": 0.8850865939704939,
+     "V150": 0.4431686978832585,
+     "V200": 0.27078255291853753,
+     "Dmin": 4212.671814180561,
+     "Dmean": 11859.582049449937,
+     "Dmax": 233711.69945010587,
+     "D50": 8457.903582767096,
+     "volume_cc": 16.83175720214844,
+     "n": 62360
+    },
+    "IMPLANT_REACH(r=12 mm)": {
+     "D90": 5491.528120530474,
+     "V100": 0.8147472224890341,
+     "V150": 0.395297708620156,
+     "V200": 0.23633123085625246,
+     "Dmin": 3809.600807281368,
+     "Dmean": 11113.443946330204,
+     "Dmax": 374684.37345775234,
+     "D50": 7952.1964768887665,
+     "volume_cc": 25.290551925659184,
+     "n": 93699
+    }
+   },
+   "note": "target: optimizer default: +5 mm shell of the eligible wall, area weights (S5 surrogate of RIND5); plan.optimize stages (s): dose_grid 22.0, shells 0.0, target 0.0, rind5 0.6, overlaps 0.0, shadowing 0.4, total 23.0, candidates 48.2, influence 0.9, conflicts 32.0, solver 58.8, report 23.1"
+  },
+  "optimized_rind5_sa_seed1": {
+   "label": "optimized for rind5: 8 full tiles, SA 8 x 60, seed 1, start greedy, eligible = craniotomy | reach",
+   "family": "rind5",
+   "sa_seed": 1,
+   "objective_target": "optimizer default: +5 mm shell of the eligible wall, area weights (S5 surrogate of RIND5)",
+   "n_seeds_scored": 32,
+   "geometry": {
+    "assigned": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7,
+     8,
+     9,
+     10,
+     11,
+     12,
+     13,
+     14,
+     15,
+     16,
+     17,
+     18,
+     19,
+     20,
+     21,
+     22,
+     23,
+     24,
+     25,
+     26,
+     27,
+     28,
+     29,
+     30,
+     31
+    ],
+    "leftovers": [],
+    "n_tiles": 8,
+    "n_full": 8,
+    "n_half": 0,
+    "n_degraded": 0,
+    "n_overlaps": 0,
+    "overlap_pairs": []
+   },
+   "objective": 1.3798140255272213,
+   "solver_status": "ok",
+   "n_candidates": 852,
+   "solve_s": 57.843533999999636,
+   "total_s": 81.32618319999892,
+   "stats": {
+    "HRCTV_PHYS (CTV_GT)": {
+     "D90": 5706.132136918263,
+     "V100": 0.8546239245861609,
+     "V150": 0.4080325960419092,
+     "V200": 0.24292285414123058,
+     "Dmin": 4069.5421293776512,
+     "Dmean": 11251.615389247201,
+     "Dmax": 243137.3652481939,
+     "D50": 8128.827432475976,
+     "volume_cc": 19.01211215209961,
+     "n": 70438
+    },
+    "RIND5(Cav_Post, clip Brain)": {
+     "D90": 4877.96473182496,
+     "V100": 0.7161007566676084,
+     "V150": 0.32800891814093414,
+     "V200": 0.1877619894784262,
+     "Dmin": 2894.4836841261476,
+     "Dmean": 9958.034140125472,
+     "Dmax": 374684.37345775234,
+     "D50": 7333.860338694656,
+     "volume_cc": 35.35019898986817,
+     "n": 130969
+    },
+    "RIND5(gtcore cavity, clip cranial interior)": {
+     "D90": 3140.7564904909973,
+     "V100": 0.5032623359428677,
+     "V150": 0.1898072689157811,
+     "V200": 0.07602922812279021,
+     "Dmin": 1903.5268372755172,
+     "Dmean": 7014.958495718707,
+     "Dmax": 374684.37345775234,
+     "D50": 6023.666230316849,
+     "volume_cc": 53.819786575317394,
+     "n": 199397
+    },
+    "IMPLANT_REACH(r=10 mm)": {
+     "D90": 5897.968314584899,
+     "V100": 0.8850865939704939,
+     "V150": 0.4431686978832585,
+     "V200": 0.27078255291853753,
+     "Dmin": 4212.671814180561,
+     "Dmean": 11859.582049449937,
+     "Dmax": 233711.69945010587,
+     "D50": 8457.903582767096,
+     "volume_cc": 16.83175720214844,
+     "n": 62360
+    },
+    "IMPLANT_REACH(r=12 mm)": {
+     "D90": 5491.528120530474,
+     "V100": 0.8147472224890341,
+     "V150": 0.395297708620156,
+     "V200": 0.23633123085625246,
+     "Dmin": 3809.600807281368,
+     "Dmean": 11113.443946330204,
+     "Dmax": 374684.37345775234,
+     "D50": 7952.1964768887665,
+     "volume_cc": 25.290551925659184,
+     "n": 93699
+    }
+   },
+   "note": "target: optimizer default: +5 mm shell of the eligible wall, area weights (S5 surrogate of RIND5); plan.optimize stages (s): dose_grid 22.4, shells 0.0, target 0.0, rind5 0.6, overlaps 0.0, shadowing 0.4, total 23.5, candidates 0.0, influence 0.0, conflicts 0.0, solver 57.8, report 23.5"
+  },
+  "optimized_rind5_sa_seed2": {
+   "label": "optimized for rind5: 8 full tiles, SA 8 x 60, seed 2, start greedy, eligible = craniotomy | reach",
+   "family": "rind5",
+   "sa_seed": 2,
+   "objective_target": "optimizer default: +5 mm shell of the eligible wall, area weights (S5 surrogate of RIND5)",
+   "n_seeds_scored": 32,
+   "geometry": {
+    "assigned": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7,
+     8,
+     9,
+     10,
+     11,
+     12,
+     13,
+     14,
+     15,
+     16,
+     17,
+     18,
+     19,
+     20,
+     21,
+     22,
+     23,
+     24,
+     25,
+     26,
+     27,
+     28,
+     29,
+     30,
+     31
+    ],
+    "leftovers": [],
+    "n_tiles": 8,
+    "n_full": 8,
+    "n_half": 0,
+    "n_degraded": 0,
+    "n_overlaps": 0,
+    "overlap_pairs": []
+   },
+   "objective": 1.3798140255272213,
+   "solver_status": "ok",
+   "n_candidates": 852,
+   "solve_s": 58.15585840000131,
+   "total_s": 81.36674839999614,
+   "stats": {
+    "HRCTV_PHYS (CTV_GT)": {
+     "D90": 5706.132136918263,
+     "V100": 0.8546239245861609,
+     "V150": 0.4080325960419092,
+     "V200": 0.24292285414123058,
+     "Dmin": 4069.5421293776512,
+     "Dmean": 11251.615389247201,
+     "Dmax": 243137.3652481939,
+     "D50": 8128.827432475976,
+     "volume_cc": 19.01211215209961,
+     "n": 70438
+    },
+    "RIND5(Cav_Post, clip Brain)": {
+     "D90": 4877.96473182496,
+     "V100": 0.7161007566676084,
+     "V150": 0.32800891814093414,
+     "V200": 0.1877619894784262,
+     "Dmin": 2894.4836841261476,
+     "Dmean": 9958.034140125472,
+     "Dmax": 374684.37345775234,
+     "D50": 7333.860338694656,
+     "volume_cc": 35.35019898986817,
+     "n": 130969
+    },
+    "RIND5(gtcore cavity, clip cranial interior)": {
+     "D90": 3140.7564904909973,
+     "V100": 0.5032623359428677,
+     "V150": 0.1898072689157811,
+     "V200": 0.07602922812279021,
+     "Dmin": 1903.5268372755172,
+     "Dmean": 7014.958495718707,
+     "Dmax": 374684.37345775234,
+     "D50": 6023.666230316849,
+     "volume_cc": 53.819786575317394,
+     "n": 199397
+    },
+    "IMPLANT_REACH(r=10 mm)": {
+     "D90": 5897.968314584899,
+     "V100": 0.8850865939704939,
+     "V150": 0.4431686978832585,
+     "V200": 0.27078255291853753,
+     "Dmin": 4212.671814180561,
+     "Dmean": 11859.582049449937,
+     "Dmax": 233711.69945010587,
+     "D50": 8457.903582767096,
+     "volume_cc": 16.83175720214844,
+     "n": 62360
+    },
+    "IMPLANT_REACH(r=12 mm)": {
+     "D90": 5491.528120530474,
+     "V100": 0.8147472224890341,
+     "V150": 0.395297708620156,
+     "V200": 0.23633123085625246,
+     "Dmin": 3809.600807281368,
+     "Dmean": 11113.443946330204,
+     "Dmax": 374684.37345775234,
+     "D50": 7952.1964768887665,
+     "volume_cc": 25.290551925659184,
+     "n": 93699
+    }
+   },
+   "note": "target: optimizer default: +5 mm shell of the eligible wall, area weights (S5 surrogate of RIND5); plan.optimize stages (s): dose_grid 22.2, shells 0.0, target 0.0, rind5 0.7, overlaps 0.0, shadowing 0.4, total 23.2, candidates 0.0, influence 0.0, conflicts 0.0, solver 58.2, report 23.2"
+  },
+  "optimized_ctvgt_sa_seed0": {
+   "label": "optimized for ctvgt: 8 full tiles, SA 8 x 60, seed 0, start greedy, eligible = craniotomy | reach",
+   "family": "ctvgt",
+   "sa_seed": 0,
+   "objective_target": "HRCTV_PHYS: CTV_GT voxel centres from the RTSTRUCT (70438 points, unit weights = volume weights on the CT grid; M_opt 4000 subsample)",
+   "n_seeds_scored": 32,
+   "geometry": {
+    "assigned": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7,
+     8,
+     9,
+     10,
+     11,
+     12,
+     13,
+     14,
+     15,
+     16,
+     17,
+     18,
+     19,
+     20,
+     21,
+     22,
+     23,
+     24,
+     25,
+     26,
+     27,
+     28,
+     29,
+     30,
+     31
+    ],
+    "leftovers": [],
+    "n_tiles": 8,
+    "n_full": 8,
+    "n_half": 0,
+    "n_degraded": 0,
+    "n_overlaps": 0,
+    "overlap_pairs": []
+   },
+   "objective": 1.9409492066319889,
+   "solver_status": "ok",
+   "n_candidates": 852,
+   "solve_s": 48.04388959999778,
+   "total_s": 72.2415658999962,
+   "stats": {
+    "HRCTV_PHYS (CTV_GT)": {
+     "D90": 6739.159053006574,
+     "V100": 0.9756665436270195,
+     "V150": 0.5065021721230017,
+     "V200": 0.14619949459098783,
+     "Dmin": 4317.217865507503,
+     "Dmean": 9994.405572304275,
+     "Dmax": 230387.38685009998,
+     "D50": 9036.489764344133,
+     "volume_cc": 19.01211215209961,
+     "n": 70438
+    },
+    "RIND5(Cav_Post, clip Brain)": {
+     "D90": 5463.34293248365,
+     "V100": 0.8251341920607167,
+     "V150": 0.3408363811283586,
+     "V200": 0.10623124556192687,
+     "Dmin": 2257.0568222348684,
+     "Dmean": 8820.85452702372,
+     "Dmax": 230387.38685009998,
+     "D50": 7890.097565798011,
+     "volume_cc": 35.35019898986817,
+     "n": 130969
+    },
+    "RIND5(gtcore cavity, clip cranial interior)": {
+     "D90": 3146.794886576831,
+     "V100": 0.45395367031600276,
+     "V150": 0.21795714077945005,
+     "V200": 0.09712784043892335,
+     "Dmin": 2033.5381413159073,
+     "Dmean": 6965.496610020871,
+     "Dmax": 229913.52163552475,
+     "D50": 5583.158457820247,
+     "volume_cc": 53.819786575317394,
+     "n": 199397
+    },
+    "IMPLANT_REACH(r=10 mm)": {
+     "D90": 6866.703546701076,
+     "V100": 0.9804682488774855,
+     "V150": 0.5509300833867864,
+     "V200": 0.1613855035279025,
+     "Dmin": 4984.748124197772,
+     "Dmean": 10163.581109053099,
+     "Dmax": 230387.38685009998,
+     "D50": 9275.718964031967,
+     "volume_cc": 16.83175720214844,
+     "n": 62360
+    },
+    "IMPLANT_REACH(r=12 mm)": {
+     "D90": 6316.6381907062505,
+     "V100": 0.938046297185669,
+     "V150": 0.43971653913062037,
+     "V200": 0.135337623667275,
+     "Dmin": 4167.061088566549,
+     "Dmean": 9635.692180700338,
+     "Dmax": 230387.38685009998,
+     "D50": 8626.00917105412,
+     "volume_cc": 25.290551925659184,
+     "n": 93699
+    }
+   },
+   "note": "target: HRCTV_PHYS: CTV_GT voxel centres from the RTSTRUCT (70438 points, unit weights = volume weights on the CT grid; M_opt 4000 subsample); plan.optimize stages (s): dose_grid 22.2, shells 0.0, target 0.0, rind5 0.6, overlaps 0.0, shadowing 0.5, total 23.3, candidates 0.0, influence 0.9, conflicts 0.0, solver 48.0, report 23.3"
+  },
+  "optimized_ctvgt_sa_seed1": {
+   "label": "optimized for ctvgt: 8 full tiles, SA 8 x 60, seed 1, start greedy, eligible = craniotomy | reach",
+   "family": "ctvgt",
+   "sa_seed": 1,
+   "objective_target": "HRCTV_PHYS: CTV_GT voxel centres from the RTSTRUCT (70438 points, unit weights = volume weights on the CT grid; M_opt 4000 subsample)",
+   "n_seeds_scored": 32,
+   "geometry": {
+    "assigned": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7,
+     8,
+     9,
+     10,
+     11,
+     12,
+     13,
+     14,
+     15,
+     16,
+     17,
+     18,
+     19,
+     20,
+     21,
+     22,
+     23,
+     24,
+     25,
+     26,
+     27,
+     28,
+     29,
+     30,
+     31
+    ],
+    "leftovers": [],
+    "n_tiles": 8,
+    "n_full": 8,
+    "n_half": 0,
+    "n_degraded": 0,
+    "n_overlaps": 0,
+    "overlap_pairs": []
+   },
+   "objective": 1.9459615831947432,
+   "solver_status": "ok",
+   "n_candidates": 852,
+   "solve_s": 47.659111900000426,
+   "total_s": 71.39298789999884,
+   "stats": {
+    "HRCTV_PHYS (CTV_GT)": {
+     "D90": 6783.207584305724,
+     "V100": 0.9816718248672591,
+     "V150": 0.49659274823248817,
+     "V200": 0.15870694795422924,
+     "Dmin": 4417.336154770669,
+     "Dmean": 10100.79471717509,
+     "Dmax": 228547.9305560878,
+     "D50": 8978.757785962782,
+     "volume_cc": 19.01211215209961,
+     "n": 70438
+    },
+    "RIND5(Cav_Post, clip Brain)": {
+     "D90": 5211.8937611093315,
+     "V100": 0.77713810138277,
+     "V150": 0.316914689735739,
+     "V200": 0.10499431163099665,
+     "Dmin": 2289.635216328872,
+     "Dmean": 8612.507424285293,
+     "Dmax": 228547.9305560878,
+     "D50": 7599.710767901333,
+     "volume_cc": 35.35019898986817,
+     "n": 130969
+    },
+    "RIND5(gtcore cavity, clip cranial interior)": {
+     "D90": 3165.0574790803485,
+     "V100": 0.41583875384283614,
+     "V150": 0.19156256112178216,
+     "V200": 0.07816566949352297,
+     "Dmin": 2036.7205585780173,
+     "Dmean": 6373.089658019909,
+     "Dmax": 47313.448974193285,
+     "D50": 5286.88633428018,
+     "volume_cc": 53.819786575317394,
+     "n": 199397
+    },
+    "IMPLANT_REACH(r=10 mm)": {
+     "D90": 7073.095778034877,
+     "V100": 0.992254650416934,
+     "V150": 0.5655708787684413,
+     "V200": 0.19299230275817833,
+     "Dmin": 5366.358597002036,
+     "Dmean": 10590.807910512578,
+     "Dmax": 228547.9305560878,
+     "D50": 9368.472676215328,
+     "volume_cc": 16.83175720214844,
+     "n": 62360
+    },
+    "IMPLANT_REACH(r=12 mm)": {
+     "D90": 6286.7109517660465,
+     "V100": 0.9380783146031441,
+     "V150": 0.42365446803060863,
+     "V200": 0.1398200621137899,
+     "Dmin": 4417.336154770669,
+     "Dmean": 9610.318433378641,
+     "Dmax": 228547.9305560878,
+     "D50": 8507.484976854059,
+     "volume_cc": 25.290551925659184,
+     "n": 93699
+    }
+   },
+   "note": "target: HRCTV_PHYS: CTV_GT voxel centres from the RTSTRUCT (70438 points, unit weights = volume weights on the CT grid; M_opt 4000 subsample); plan.optimize stages (s): dose_grid 22.5, shells 0.0, target 0.0, rind5 0.7, overlaps 0.0, shadowing 0.5, total 23.7, candidates 0.0, influence 0.0, conflicts 0.0, solver 47.7, report 23.7"
+  },
+  "optimized_ctvgt_sa_seed2": {
+   "label": "optimized for ctvgt: 8 full tiles, SA 8 x 60, seed 2, start greedy, eligible = craniotomy | reach",
+   "family": "ctvgt",
+   "sa_seed": 2,
+   "objective_target": "HRCTV_PHYS: CTV_GT voxel centres from the RTSTRUCT (70438 points, unit weights = volume weights on the CT grid; M_opt 4000 subsample)",
+   "n_seeds_scored": 32,
+   "geometry": {
+    "assigned": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7,
+     8,
+     9,
+     10,
+     11,
+     12,
+     13,
+     14,
+     15,
+     16,
+     17,
+     18,
+     19,
+     20,
+     21,
+     22,
+     23,
+     24,
+     25,
+     26,
+     27,
+     28,
+     29,
+     30,
+     31
+    ],
+    "leftovers": [],
+    "n_tiles": 8,
+    "n_full": 8,
+    "n_half": 0,
+    "n_degraded": 0,
+    "n_overlaps": 0,
+    "overlap_pairs": []
+   },
+   "objective": 1.9459615831947432,
+   "solver_status": "ok",
+   "n_candidates": 852,
+   "solve_s": 46.83138300000428,
+   "total_s": 71.21376230000169,
+   "stats": {
+    "HRCTV_PHYS (CTV_GT)": {
+     "D90": 6783.207584305724,
+     "V100": 0.9816718248672591,
+     "V150": 0.49659274823248817,
+     "V200": 0.15870694795422924,
+     "Dmin": 4417.336154770669,
+     "Dmean": 10100.79471717509,
+     "Dmax": 228547.9305560878,
+     "D50": 8978.757785962782,
+     "volume_cc": 19.01211215209961,
+     "n": 70438
+    },
+    "RIND5(Cav_Post, clip Brain)": {
+     "D90": 5211.8937611093315,
+     "V100": 0.77713810138277,
+     "V150": 0.316914689735739,
+     "V200": 0.10499431163099665,
+     "Dmin": 2289.635216328872,
+     "Dmean": 8612.507424285293,
+     "Dmax": 228547.9305560878,
+     "D50": 7599.710767901333,
+     "volume_cc": 35.35019898986817,
+     "n": 130969
+    },
+    "RIND5(gtcore cavity, clip cranial interior)": {
+     "D90": 3165.0574790803485,
+     "V100": 0.41583875384283614,
+     "V150": 0.19156256112178216,
+     "V200": 0.07816566949352297,
+     "Dmin": 2036.7205585780173,
+     "Dmean": 6373.089658019909,
+     "Dmax": 47313.448974193285,
+     "D50": 5286.88633428018,
+     "volume_cc": 53.819786575317394,
+     "n": 199397
+    },
+    "IMPLANT_REACH(r=10 mm)": {
+     "D90": 7073.095778034877,
+     "V100": 0.992254650416934,
+     "V150": 0.5655708787684413,
+     "V200": 0.19299230275817833,
+     "Dmin": 5366.358597002036,
+     "Dmean": 10590.807910512578,
+     "Dmax": 228547.9305560878,
+     "D50": 9368.472676215328,
+     "volume_cc": 16.83175720214844,
+     "n": 62360
+    },
+    "IMPLANT_REACH(r=12 mm)": {
+     "D90": 6286.7109517660465,
+     "V100": 0.9380783146031441,
+     "V150": 0.42365446803060863,
+     "V200": 0.1398200621137899,
+     "Dmin": 4417.336154770669,
+     "Dmean": 9610.318433378641,
+     "Dmax": 228547.9305560878,
+     "D50": 8507.484976854059,
+     "volume_cc": 25.290551925659184,
+     "n": 93699
+    }
+   },
+   "note": "target: HRCTV_PHYS: CTV_GT voxel centres from the RTSTRUCT (70438 points, unit weights = volume weights on the CT grid; M_opt 4000 subsample); plan.optimize stages (s): dose_grid 23.1, shells 0.0, target 0.0, rind5 0.7, overlaps 0.0, shadowing 0.5, total 24.4, candidates 0.0, influence 0.0, conflicts 0.0, solver 46.8, report 24.4"
+  }
+ },
+ "failures": [],
+ "best_sa_seed": {
+  "rind5": 0,
+  "ctvgt": 1
+ },
+ "timings_s": {
+  "reconstruct": 38.90138409999781,
+  "structures": 15.777599000000919,
+  "opening": 1.966795699998329,
+  "eligibility": 5.902829400001792,
+  "fit_count8": 0.008775199996307492,
+  "fit_6full_4half": 36.92143860000215,
+  "total": 687.7203909000018
+ },
+ "arrays": {
+  "seed_centers_ras": {
+   "shape": [
+    32,
+    3
+   ],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "the 32 localized seed centres (pipeline, vault-filtered), RAS"
+  },
+  "seed_axes_ras": {
+   "shape": [
+    32,
+    3
+   ],
+   "dtype": "float64",
+   "units": "unit",
+   "doc": "per-seed PCA long axis (sign arbitrary), RAS"
+  },
+  "seed_length_mm": {
+   "shape": [],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "capsule length to draw"
+  },
+  "seed_diameter_mm": {
+   "shape": [],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "capsule diameter"
+  },
+  "cavity_center_ras": {
+   "shape": [
+    3
+   ],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "centroid of the gtcore cavity mask"
+  },
+  "volume_spacing_mm": {
+   "shape": [
+    3
+   ],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "voxel spacing (si, sj, sk)"
+  },
+  "volume_shape_kji": {
+   "shape": [
+    3
+   ],
+   "dtype": "int64",
+   "units": "voxels",
+   "doc": "CT shape [k, j, i]"
+  },
+  "sheet_faces": {
+   "shape": [
+    128,
+    3
+   ],
+   "dtype": "int32",
+   "units": "index",
+   "doc": "triangles shared by every *_sheet_*_vertices array (row-major n x n grid)"
+  },
+  "sheet_grid_n": {
+   "shape": [],
+   "dtype": "int64",
+   "units": "-",
+   "doc": "grid points per tile side"
+  },
+  "wall_mesh_source": {
+   "shape": [],
+   "dtype": "<U13",
+   "units": "-",
+   "doc": "gtcore:cavity"
+  },
+  "wall_mesh_vertices": {
+   "shape": [
+    12274,
+    3
+   ],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "the gtcore cavity wall (every arm)"
+  },
+  "wall_mesh_faces": {
+   "shape": [
+    24736,
+    3
+   ],
+   "dtype": "int32",
+   "units": "index",
+   "doc": "triangles of wall_mesh_vertices"
+  },
+  "eligible_face_mask": {
+   "shape": [
+    24736
+   ],
+   "dtype": "bool",
+   "units": "bool",
+   "doc": "per wall face: eligible for the optimizer = craniotomy (facing + line of sight, no implant term) UNION demonstrated reach (within reach_face_mm of an implanted seed); the mask both optimized families used"
+  },
+  "eligible_face_mask_craniotomy": {
+   "shape": [
+    24736
+   ],
+   "dtype": "bool",
+   "units": "bool",
+   "doc": "the craniotomy term alone (facing + line of sight)"
+  },
+  "eligible_face_mask_reach": {
+   "shape": [
+    24736
+   ],
+   "dtype": "bool",
+   "units": "bool",
+   "doc": "the demonstrated-reach term alone"
+  },
+  "eligible_face_mask_with_implant_term": {
+   "shape": [
+    24736
+   ],
+   "dtype": "bool",
+   "units": "bool",
+   "doc": "the CLI's --eligible craniotomy mask (adds visible-from-implant); NOT used"
+  },
+  "eligible_rule": {
+   "shape": [],
+   "dtype": "<U67",
+   "units": "-",
+   "doc": "the rule"
+  },
+  "eligible_fraction_area": {
+   "shape": [],
+   "dtype": "float64",
+   "units": "-",
+   "doc": "eligible share of the wall area"
+  },
+  "reach_face_mm": {
+   "shape": [],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "the demonstrated-reach radius"
+  },
+  "opening_centroid_ras": {
+   "shape": [
+    3
+   ],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "craniotomy opening centroid"
+  },
+  "opening_normal_ras": {
+   "shape": [
+    3
+   ],
+   "dtype": "float64",
+   "units": "unit",
+   "doc": "outward normal"
+  },
+  "opening_points_ras": {
+   "shape": [
+    6880,
+    3
+   ],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "opening voxel centres (skull defect + cavity mouth component)"
+  },
+  "opening_area_mm2": {
+   "shape": [],
+   "dtype": "float64",
+   "units": "mm^2",
+   "doc": "opening area"
+  },
+  "view_point_ras": {
+   "shape": [
+    3
+   ],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "the surgeon's view point (centroid + 10 mm out)"
+  },
+  "implant_seed_nearest_face_eligible": {
+   "shape": [
+    32
+   ],
+   "dtype": "bool",
+   "units": "bool",
+   "doc": "fairness: implanted seed's nearest wall face is eligible (union)"
+  },
+  "implant_seed_to_eligible_wall_mm": {
+   "shape": [
+    32
+   ],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "fairness: distance from each implanted seed to the eligible wall (union)"
+  },
+  "implant_seed_nearest_face_eligible_craniotomy": {
+   "shape": [
+    32
+   ],
+   "dtype": "bool",
+   "units": "bool",
+   "doc": "fairness under the craniotomy term alone"
+  },
+  "cavity_rt_vertices": {
+   "shape": [
+    34652,
+    3
+   ],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "physician's Cav_Post (RTSTRUCT rasterised, marching cubes)"
+  },
+  "cavity_rt_faces": {
+   "shape": [
+    69324,
+    3
+   ],
+   "dtype": "int32",
+   "units": "index",
+   "doc": "triangles of cavity_rt_vertices"
+  },
+  "opt_rind5_tile_kind": {
+   "shape": [
+    8
+   ],
+   "dtype": "<U4",
+   "units": "-",
+   "doc": "[opt_rind5] 'full' (4 seeds) or 'half' (2 seeds)"
+  },
+  "opt_rind5_tile_center_ras": {
+   "shape": [
+    8,
+    3
+   ],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "[opt_rind5] centroid of the tile's seed centres"
+  },
+  "opt_rind5_tile_normal_ras": {
+   "shape": [
+    8,
+    3
+   ],
+   "dtype": "float64",
+   "units": "unit",
+   "doc": "[opt_rind5] wall normal at the anchor, INTO the cavity"
+  },
+  "opt_rind5_tile_axis_ras": {
+   "shape": [
+    8,
+    3
+   ],
+   "dtype": "float64",
+   "units": "unit",
+   "doc": "[opt_rind5] in-plane t1 (seed axes direction)"
+  },
+  "opt_rind5_tile_anchor_ras": {
+   "shape": [
+    8,
+    3
+   ],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "[opt_rind5] wall anchor (on the mesh)"
+  },
+  "opt_rind5_tile_corners_ras": {
+   "shape": [
+    8,
+    4,
+    3
+   ],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "[opt_rind5] four corners at the seed plane (3 mm off the wall), loop order"
+  },
+  "opt_rind5_tile_seed_ras": {
+   "shape": [
+    8,
+    4,
+    3
+   ],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "[opt_rind5] seed centres per tile (-1/nan padded for half tiles)"
+  },
+  "opt_rind5_tile_seed_axes_ras": {
+   "shape": [
+    8,
+    4,
+    3
+   ],
+   "dtype": "float64",
+   "units": "unit",
+   "doc": "[opt_rind5] their axes"
+  },
+  "opt_rind5_sheet_wall_vertices": {
+   "shape": [
+    8,
+    81,
+    3
+   ],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "[opt_rind5] n x n tissue face ON the wall (interact._project_to_wall from the anchor)"
+  },
+  "opt_rind5_sheet_seed_vertices": {
+   "shape": [
+    8,
+    81,
+    3
+   ],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "[opt_rind5] the same sheet +3 mm along the local inward normal (seed plane)"
+  },
+  "opt_rind5_sheet_cavity_vertices": {
+   "shape": [
+    8,
+    81,
+    3
+   ],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "[opt_rind5] the same sheet +4 mm (cavity face)"
+  },
+  "opt_rind5_seed_centers_ras": {
+   "shape": [
+    32,
+    3
+   ],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "[opt_rind5] all seeds of the configuration, flat (tiles_to_seed_arrays order)"
+  },
+  "opt_rind5_seed_axes_ras": {
+   "shape": [
+    32,
+    3
+   ],
+   "dtype": "float64",
+   "units": "unit",
+   "doc": "[opt_rind5] their axes"
+  },
+  "opt_rind5_sa_seed": {
+   "shape": [],
+   "dtype": "int64",
+   "units": "-",
+   "doc": "[opt_rind5] [optimized] the SA seed of the exported configuration (best on its own target)"
+  },
+  "opt_rind5_objective_target": {
+   "shape": [],
+   "dtype": "<U89",
+   "units": "-",
+   "doc": "[opt_rind5] [optimized] the optimizer's target set"
+  },
+  "opt_ctvgt_tile_kind": {
+   "shape": [
+    8
+   ],
+   "dtype": "<U4",
+   "units": "-",
+   "doc": "[opt_ctvgt] 'full' (4 seeds) or 'half' (2 seeds)"
+  },
+  "opt_ctvgt_tile_center_ras": {
+   "shape": [
+    8,
+    3
+   ],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "[opt_ctvgt] centroid of the tile's seed centres"
+  },
+  "opt_ctvgt_tile_normal_ras": {
+   "shape": [
+    8,
+    3
+   ],
+   "dtype": "float64",
+   "units": "unit",
+   "doc": "[opt_ctvgt] wall normal at the anchor, INTO the cavity"
+  },
+  "opt_ctvgt_tile_axis_ras": {
+   "shape": [
+    8,
+    3
+   ],
+   "dtype": "float64",
+   "units": "unit",
+   "doc": "[opt_ctvgt] in-plane t1 (seed axes direction)"
+  },
+  "opt_ctvgt_tile_anchor_ras": {
+   "shape": [
+    8,
+    3
+   ],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "[opt_ctvgt] wall anchor (on the mesh)"
+  },
+  "opt_ctvgt_tile_corners_ras": {
+   "shape": [
+    8,
+    4,
+    3
+   ],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "[opt_ctvgt] four corners at the seed plane (3 mm off the wall), loop order"
+  },
+  "opt_ctvgt_tile_seed_ras": {
+   "shape": [
+    8,
+    4,
+    3
+   ],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "[opt_ctvgt] seed centres per tile (-1/nan padded for half tiles)"
+  },
+  "opt_ctvgt_tile_seed_axes_ras": {
+   "shape": [
+    8,
+    4,
+    3
+   ],
+   "dtype": "float64",
+   "units": "unit",
+   "doc": "[opt_ctvgt] their axes"
+  },
+  "opt_ctvgt_sheet_wall_vertices": {
+   "shape": [
+    8,
+    81,
+    3
+   ],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "[opt_ctvgt] n x n tissue face ON the wall (interact._project_to_wall from the anchor)"
+  },
+  "opt_ctvgt_sheet_seed_vertices": {
+   "shape": [
+    8,
+    81,
+    3
+   ],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "[opt_ctvgt] the same sheet +3 mm along the local inward normal (seed plane)"
+  },
+  "opt_ctvgt_sheet_cavity_vertices": {
+   "shape": [
+    8,
+    81,
+    3
+   ],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "[opt_ctvgt] the same sheet +4 mm (cavity face)"
+  },
+  "opt_ctvgt_seed_centers_ras": {
+   "shape": [
+    32,
+    3
+   ],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "[opt_ctvgt] all seeds of the configuration, flat (tiles_to_seed_arrays order)"
+  },
+  "opt_ctvgt_seed_axes_ras": {
+   "shape": [
+    32,
+    3
+   ],
+   "dtype": "float64",
+   "units": "unit",
+   "doc": "[opt_ctvgt] their axes"
+  },
+  "opt_ctvgt_sa_seed": {
+   "shape": [],
+   "dtype": "int64",
+   "units": "-",
+   "doc": "[opt_ctvgt] [optimized] the SA seed of the exported configuration (best on its own target)"
+  },
+  "opt_ctvgt_objective_target": {
+   "shape": [],
+   "dtype": "<U133",
+   "units": "-",
+   "doc": "[opt_ctvgt] [optimized] the optimizer's target set"
+  },
+  "count8_tile_kind": {
+   "shape": [
+    7
+   ],
+   "dtype": "<U4",
+   "units": "-",
+   "doc": "[count8] 'full' (4 seeds) or 'half' (2 seeds)"
+  },
+  "count8_tile_center_ras": {
+   "shape": [
+    7,
+    3
+   ],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "[count8] centroid of the tile's seed centres"
+  },
+  "count8_tile_normal_ras": {
+   "shape": [
+    7,
+    3
+   ],
+   "dtype": "float64",
+   "units": "unit",
+   "doc": "[count8] wall normal at the anchor, INTO the cavity"
+  },
+  "count8_tile_axis_ras": {
+   "shape": [
+    7,
+    3
+   ],
+   "dtype": "float64",
+   "units": "unit",
+   "doc": "[count8] in-plane t1 (seed axes direction)"
+  },
+  "count8_tile_anchor_ras": {
+   "shape": [
+    7,
+    3
+   ],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "[count8] wall anchor (on the mesh)"
+  },
+  "count8_tile_corners_ras": {
+   "shape": [
+    7,
+    4,
+    3
+   ],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "[count8] four corners at the seed plane (3 mm off the wall), loop order"
+  },
+  "count8_tile_seed_ras": {
+   "shape": [
+    7,
+    4,
+    3
+   ],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "[count8] seed centres per tile (-1/nan padded for half tiles)"
+  },
+  "count8_tile_seed_axes_ras": {
+   "shape": [
+    7,
+    4,
+    3
+   ],
+   "dtype": "float64",
+   "units": "unit",
+   "doc": "[count8] their axes"
+  },
+  "count8_sheet_wall_vertices": {
+   "shape": [
+    7,
+    81,
+    3
+   ],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "[count8] n x n tissue face ON the wall (interact._project_to_wall from the anchor)"
+  },
+  "count8_sheet_seed_vertices": {
+   "shape": [
+    7,
+    81,
+    3
+   ],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "[count8] the same sheet +3 mm along the local inward normal (seed plane)"
+  },
+  "count8_sheet_cavity_vertices": {
+   "shape": [
+    7,
+    81,
+    3
+   ],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "[count8] the same sheet +4 mm (cavity face)"
+  },
+  "count8_seed_centers_ras": {
+   "shape": [
+    28,
+    3
+   ],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "[count8] all seeds of the configuration, flat (tiles_to_seed_arrays order)"
+  },
+  "count8_seed_axes_ras": {
+   "shape": [
+    28,
+    3
+   ],
+   "dtype": "float64",
+   "units": "unit",
+   "doc": "[count8] their axes"
+  },
+  "count8_seed_tile_id": {
+   "shape": [
+    32
+   ],
+   "dtype": "int32",
+   "units": "index",
+   "doc": "[count8] [implant fit] tile owning each localized seed, -1 = leftover"
+  },
+  "count8_seed_leftover": {
+   "shape": [
+    32
+   ],
+   "dtype": "bool",
+   "units": "bool",
+   "doc": "[count8] [implant fit] no tile of the fit owns the seed"
+  },
+  "count8_tile_degraded": {
+   "shape": [
+    7
+   ],
+   "dtype": "bool",
+   "units": "bool",
+   "doc": "[count8] [implant fit] recovered outside the standard gates"
+  },
+  "count_6full_4half_tile_kind": {
+   "shape": [
+    10
+   ],
+   "dtype": "<U4",
+   "units": "-",
+   "doc": "[count_6full_4half] 'full' (4 seeds) or 'half' (2 seeds)"
+  },
+  "count_6full_4half_tile_center_ras": {
+   "shape": [
+    10,
+    3
+   ],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "[count_6full_4half] centroid of the tile's seed centres"
+  },
+  "count_6full_4half_tile_normal_ras": {
+   "shape": [
+    10,
+    3
+   ],
+   "dtype": "float64",
+   "units": "unit",
+   "doc": "[count_6full_4half] wall normal at the anchor, INTO the cavity"
+  },
+  "count_6full_4half_tile_axis_ras": {
+   "shape": [
+    10,
+    3
+   ],
+   "dtype": "float64",
+   "units": "unit",
+   "doc": "[count_6full_4half] in-plane t1 (seed axes direction)"
+  },
+  "count_6full_4half_tile_anchor_ras": {
+   "shape": [
+    10,
+    3
+   ],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "[count_6full_4half] wall anchor (on the mesh)"
+  },
+  "count_6full_4half_tile_corners_ras": {
+   "shape": [
+    10,
+    4,
+    3
+   ],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "[count_6full_4half] four corners at the seed plane (3 mm off the wall), loop order"
+  },
+  "count_6full_4half_tile_seed_ras": {
+   "shape": [
+    10,
+    4,
+    3
+   ],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "[count_6full_4half] seed centres per tile (-1/nan padded for half tiles)"
+  },
+  "count_6full_4half_tile_seed_axes_ras": {
+   "shape": [
+    10,
+    4,
+    3
+   ],
+   "dtype": "float64",
+   "units": "unit",
+   "doc": "[count_6full_4half] their axes"
+  },
+  "count_6full_4half_sheet_wall_vertices": {
+   "shape": [
+    10,
+    81,
+    3
+   ],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "[count_6full_4half] n x n tissue face ON the wall (interact._project_to_wall from the anchor)"
+  },
+  "count_6full_4half_sheet_seed_vertices": {
+   "shape": [
+    10,
+    81,
+    3
+   ],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "[count_6full_4half] the same sheet +3 mm along the local inward normal (seed plane)"
+  },
+  "count_6full_4half_sheet_cavity_vertices": {
+   "shape": [
+    10,
+    81,
+    3
+   ],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "[count_6full_4half] the same sheet +4 mm (cavity face)"
+  },
+  "count_6full_4half_seed_centers_ras": {
+   "shape": [
+    32,
+    3
+   ],
+   "dtype": "float64",
+   "units": "mm",
+   "doc": "[count_6full_4half] all seeds of the configuration, flat (tiles_to_seed_arrays order)"
+  },
+  "count_6full_4half_seed_axes_ras": {
+   "shape": [
+    32,
+    3
+   ],
+   "dtype": "float64",
+   "units": "unit",
+   "doc": "[count_6full_4half] their axes"
+  },
+  "count_6full_4half_seed_tile_id": {
+   "shape": [
+    32
+   ],
+   "dtype": "int32",
+   "units": "index",
+   "doc": "[count_6full_4half] [implant fit] tile owning each localized seed, -1 = leftover"
+  },
+  "count_6full_4half_seed_leftover": {
+   "shape": [
+    32
+   ],
+   "dtype": "bool",
+   "units": "bool",
+   "doc": "[count_6full_4half] [implant fit] no tile of the fit owns the seed"
+  },
+  "count_6full_4half_tile_degraded": {
+   "shape": [
+    10
+   ],
+   "dtype": "bool",
+   "units": "bool",
+   "doc": "[count_6full_4half] [implant fit] recovered outside the standard gates"
+  },
+  "readme": {
+   "shape": [],
+   "dtype": "<U337",
+   "units": "-",
+   "doc": "summary"
+  }
+ }
+}

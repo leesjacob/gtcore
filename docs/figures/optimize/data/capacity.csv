@@ -1,0 +1,27 @@
+# scripts/validation_optimize.py section capacity -- Table 3 row: manufacturer rule (eligible area / 4 cm^2) vs capacity at grid (h = 4 mm, 6 spins; greedy maximal independent set on the conflict graph, NOT exact) vs implanted / placed
+# command: python scripts/validation_optimize.py --section v6 --capacity --same-candidates --sa-seeds 3 --bound-time-limit 300 --phantom <path> --ph0 <path> --out <path>
+# commit: d2d455e; date: 2026-11-03 11:40
+# datasets: synthetic cavities; PH8 (printed phantom) when present
+# RIND5_* = volumetric HR-CTV RIND5(cavity, clip) on the final 1 mm dose grid (final_report); S5_* = +5 mm shell vertices (surrogate); TGT_* = area-weighted optimizer target (surrogate); INFL_* = influence-subsample values the solver saw (not for statistics)
+# objective frozen: LAMBDA_TAIL = 1, TAIL_Q = 0.1; SA budget 8 restarts x 60 sweeps; v100_bound = solve_milp coverage-only (tail term dropped), same candidates as SA: True
+# grid: candidate anchors h 4 mm, 6 spins, M_opt 1000 (V4 sweeps the grid; V7 uses M_opt 4000); rx 6000 cGy; S_K 3.50 U nominal; report dose grid 1 mm, margin 15 mm
+dataset,cavity,volume_ml,eligible_area_mm2,rule_tiles,implanted,implanted_label,h_mm,n_spins,status,capacity_at_grid,upper_bound_area,n_candidates,n_pairs,label,seconds
+synthetic,s1_x0.80,12.399,2678.06,7,8,truth tiles of the phantom,4,6,ok,4,6,120,4459,"capacity at grid (h = 4 mm, 6 spins), not exact",2.31685
+synthetic,s2_x0.80,14.021,2914.17,8,8,truth tiles of the phantom,4,6,ok,4,7,256,19598,"capacity at grid (h = 4 mm, 6 spins), not exact",5.71096
+synthetic,s3_x0.80,13.524,2850.98,8,8,truth tiles of the phantom,4,6,ok,4,7,211,13500,"capacity at grid (h = 4 mm, 6 spins), not exact",4.31792
+synthetic,s4_x0.80,14.48,2965.48,8,8,truth tiles of the phantom,4,6,ok,4,7,291,26215,"capacity at grid (h = 4 mm, 6 spins), not exact",6.75597
+synthetic,s5_x0.80,13.405,2819.87,8,8,truth tiles of the phantom,4,6,ok,4,7,188,11062,"capacity at grid (h = 4 mm, 6 spins), not exact",3.76097
+synthetic,s6_x0.80,13.367,2810.25,8,8,truth tiles of the phantom,4,6,ok,4,7,199,11752,"capacity at grid (h = 4 mm, 6 spins), not exact",4.1478
+synthetic,s1_x1.00,24.382,4178.09,11,8,truth tiles of the phantom,4,6,ok,7,10,866,166723,"capacity at grid (h = 4 mm, 6 spins), not exact",38.7146
+synthetic,s2_x1.00,27.605,4560.85,12,8,truth tiles of the phantom,4,6,ok,7,11,912,169146,"capacity at grid (h = 4 mm, 6 spins), not exact",41.3825
+synthetic,s3_x1.00,26.582,4444.33,12,8,truth tiles of the phantom,4,6,ok,7,11,921,177265,"capacity at grid (h = 4 mm, 6 spins), not exact",43.652
+synthetic,s4_x1.00,28.474,4636.48,12,8,truth tiles of the phantom,4,6,ok,9,11,1041,214726,"capacity at grid (h = 4 mm, 6 spins), not exact",53.7393
+synthetic,s5_x1.00,26.393,4419.21,12,8,truth tiles of the phantom,4,6,ok,7,11,911,176266,"capacity at grid (h = 4 mm, 6 spins), not exact",41.2895
+synthetic,s6_x1.00,26.292,4391.51,11,8,truth tiles of the phantom,4,6,ok,7,10,917,177074,"capacity at grid (h = 4 mm, 6 spins), not exact",43.486
+synthetic,s1_x1.25,47.835,6527.09,17,8,truth tiles of the phantom,4,6,ok,10,16,1357,265110,"capacity at grid (h = 4 mm, 6 spins), not exact",62.0675
+synthetic,s2_x1.25,54.174,7123.01,18,8,truth tiles of the phantom,4,6,ok,10,17,1495,295925,"capacity at grid (h = 4 mm, 6 spins), not exact",68.8675
+synthetic,s3_x1.25,52.196,6958.05,18,8,truth tiles of the phantom,4,6,ok,10,17,1462,286329,"capacity at grid (h = 4 mm, 6 spins), not exact",68.7112
+synthetic,s4_x1.25,55.843,7245.73,19,8,truth tiles of the phantom,4,6,ok,10,18,1545,309225,"capacity at grid (h = 4 mm, 6 spins), not exact",73.0175
+synthetic,s5_x1.25,51.695,6893.86,18,8,truth tiles of the phantom,4,6,ok,10,17,1423,276373,"capacity at grid (h = 4 mm, 6 spins), not exact",66.3919
+synthetic,s6_x1.25,51.585,6867.08,18,8,truth tiles of the phantom,4,6,ok,10,17,1473,299106,"capacity at grid (h = 4 mm, 6 spins), not exact",69.957
+PH8,"PH8 (phantom wall (tile-less twin PH0, registered into PH8), eligible = visible & <= 35 mm of a seed)",55.2548,5473.43,14,8,tiles placed by hand (fitted by the pipeline),4,6,ok,10,13,150,3385,"capacity at grid (h = 4 mm, 6 spins), not exact",10.7374

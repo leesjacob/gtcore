@@ -4,6 +4,10 @@ Companion to `docs/plan-tile-optimize.md`. Every number here carries the
 command, seed, and commit hash that produced it (see "Runs log"). Negative
 results stay in.
 
+**Paper 2: the section "rev 2 campaign (Paper 2, 2026-11-03)" at the end of this file supersedes every
+V2–V8 table above** (those are rev 1 at `93696e2` / `d42d6c4`: +5 mm-shell endpoints, one SA seed, SA 3 × 40,
+pure-V100 objective, bound on a reduced instance). The rev-1 tables stay as history.
+
 ---
 
 ## Parameters
@@ -2456,3 +2460,127 @@ against the campaign should pass `lambda_tail=0`.
 Caveats: one SA seed per (cavity, N); influence-subsample metrics (M_opt
 1000), not the grid; the h 4 mm / 6-spin grid packs at most 8–9 tiles so
 N > 9 is untested; synthetic cavities only.
+
+---
+
+## rev 2 campaign (Paper 2, 2026-11-03)
+
+**Supersedes every V2–V8 table above.** One campaign from one commit: V2–V8 and the packing capacity ran
+at **`d2d455e`** (branch `p2/campaign`; `gtcore/` byte-identical to `paper2/integration` `4748ccb`, i.e. the
+Phase 4 merges `29da880` + `06d650e`); the like-for-like V3 rows (`--sa-lambda-tail 0`) and the patient run
+at **`085fe60`** (adds that flag and the amended patient driver; `gtcore/` still identical). Settings
+(frozen, never re-tuned): objective λ_tail = 1.0, TAIL_Q = 0.10; SA 8 restarts × 60 sweeps; 3 SA seeds per
+(cavity, N) (`SA_SEED_BASE + cavity seed + 10 000 j`); candidate grid **h 4 mm / 6 spins, M_opt 1000** (the
+rev-1 grid; V7 M_opt 4000; Table 4 and the patient run: the production default h 2.5 mm / 6 spins /
+M_opt 4000); conflict rule planner ∪ geometric proxy (0 proxy pairs added on every instance this time);
+every endpoint is the **full-grid RIND5** of `final_report` (1 mm dose grid, `dose_stats`; synthetic cavity =
+the generator's truth lumen, clip = the generator's brain); S5 / TGT columns are surrogates, INFL the
+influence subsample. FAILED rows (an arm returning fewer than N tiles, a conflict or a non-ok status) are
+recorded, never scored. Hardware: AMD Ryzen 5 7600X (6 cores / 12 threads), 31 GB, Windows 11, Python
+3.12.10, numpy 2.5.2; V7, V2 and Table 4 ran on an otherwise idle machine, V3–V8 shared it with other jobs
+(their solve times are upper bounds). Data: `docs/figures/optimize/data/` (every CSV carries `#` header
+lines: script, masked command, commit, dataset ids, objective, SA budget, grid); commands and wall times in
+`docs/paper2-phase-notes.md`, "Phase 4 — campaign".
+
+**V7 runtime (627 s; N 8; per stage, s).** s1_x0.80 (12.4 mL): C 131, candidates 1.8, conflicts 0.8,
+influence 0.2 — no arm packs 8. s1_x1.00 (24.4 mL): C 869, 11.0 / 43.7 / 1.5; greedy 5.0, **SA 32.0**,
+continuous 37.2, final_report 3.0 (15 mm margin) / 27.1 (50 mm). s1_x1.25 (47.8 mL): C 1380, 39.7 / 59.0 /
+1.2; greedy 5.3, **SA 85.1**, continuous 79.5, report 2.6 / 19.0. The same-candidate V100 bound (HiGHS at
+C > 600) found no incumbent at N 8 within 60 s on x1.00 and x1.25 (FAILED rows). SA 8 × 60 at M_opt 4000
+costs ≈ 15× the rev-1 3 × 40 run. Table 4 (production grid, idle machine,
+`docs/figures/data/table4_runtimes.csv`, measured at `4748ccb`, identical `gtcore/`): `plan.optimize` with
+N 8 takes 284 s on the synthetic s1_x1.00 wall (candidates 23.9, conflicts 212.0, SA 30.2, report 15.6),
+111 s on PH8 (registered PH0 wall) and 113 s on the PT-CT1mm craniotomy-side wall (candidates 24.9,
+conflicts 8.8, SA 55.7, report 23.0); **candidates + conflicts on the whole clinical mesh take 92.8 s
+(54.2 + 38.7; C 963), below the ~5 min threshold, so rev-3 item 17 (decimation / caching) is not
+triggered.**
+
+**V2 coverage vs N (18 cavities, N 4–12; 6983 s).** RIND5_V100 mean ± SD over the cavities where the arm
+packed N (n in brackets): N 4 uniform 0.306 ± 0.204 (15), greedy 0.370 ± 0.207 (18), SA 0.356 ± 0.229 (18),
+bound 0.377 ± 0.199 (18); N 6 0.521 (11) / 0.557 (13) / 0.581 ± 0.249 (13) / 0.570 (13); N 8 0.577 (4) /
+0.788 ± 0.207 (12) / **0.812 ± 0.200 (12)** / 0.739 (9) / truth 0.756 ± 0.166 (18, overlapping generator
+tiles); N 10 greedy 0.880 ± 0.075 / SA 0.981 ± 0.013 (6); N 12 0.995 / 1.000 (5). SA RIND5_D90 3018 / 4248 /
+6131 / 6707 / 7909 cGy at N 4–12. **Primary endpoint (pre-declared): SA (3-seed mean) − uniform on
+RIND5_V100 at N\* = +1.19 pp [−0.71, 3.09], n 15, Wilcoxon p 0.055 — not significant**; best seed
+(sa_best) +2.14 pp [0.23, 4.05], p 0.010. All 15 cavities are flagged (uniform never reaches RIND5_D90 ≥ rx
+where it packs); 3 cavities (s2/s4/s5_x0.80) have no uniform row at all. Secondary: SA − greedy at N 8
++2.45 pp [0.67, 4.22], p 0.002 (n 12); N 10 +10.2 pp [3.4, 16.9], p 0.031 (6); N 4 −1.32 pp [−2.92, 0.28]
+(18). N\* of SA (smallest N with RIND5_D90 ≥ rx): **8 on every 1.0-scale cavity, 10 on every 1.25-scale
+cavity** (greedy needs 12 on four of them), never on five 0.8-scale cavities (packing-limited, see V8). SA
+seed SD ≤ 1.6 pp. The V2 "bound" arm at this grid is mostly a 60 s HiGHS *incumbent* (optimal only at N 4 on
+six cavities), not an optimum — the exact gap is V3's.
+
+**V3 gap to the V100 bound (same candidate set; read on INFL_V100, RIND5 informational).** *Campaign grid*
+(h 4 / 6 spins / M 1000, bound 300 s, 6 x1.00 cavities × N 4/6/8 × 3 seeds; 6789 s): HiGHS everywhere
+(C 869–965), time-limited on 15/18 instances, LP bound loose (0.61 / 0.93 vs incumbents 0.21 / 0.52 at
+N 4 / 6) — the script's "gap" (−42.8 % mean) measures LP looseness and is uninformative. *Reduced grid*
+(rev-1 instance h 6 / 2 spins / M 300, exact enumeration, optimal on every instance; 613 s): with the frozen
+objective SA is −52.7 % (N 4), −18.6 % (N 6) and −3.1 % (N 8) below the exact V100 optimum on INFL_V100,
+while its RIND5_D90 is +1122 / +1603 / −181 cGy relative to the bound's — the bound maximises V100 alone and
+SA maximises V100 + the lower-tail term, so below N\* this is the **objective trade-off**. *Like for like*
+(`--sa-lambda-tail 0`, rows `sa_v100only`, same instances, `085fe60`): **SA reaches the exact optimum on 38
+of 45 rows; mean gap −1.04 % (N 4), −0.53 % (N 6), −1.77 % (N 8); the best of 3 seeds is optimal on 14 of
+15 instances** (exception s4 N 8, −5.3 % on all seeds; worst single row −18.7 % = s4 N 4 seed 1, the rev-1
+instance, the other two seeds optimal). Search quality is near-exact; Table S4 carries both row sets. The
+bound packs N where greedy fails on 2 of 18 reduced-grid instances (s2, s3 at N 8; SA restarted from the
+bound's selection reproduces the optimum) and on 0 of 18 campaign-grid instances; the enumeration proves
+that no 8-packing exists on s1/s5/s6 at the reduced grid.
+
+**V4 discretisation (N 8, s1/s2 x1.00; 1454 s).** SA RIND5_V100 ≥ 0.999 (D90 7386–7991 cGy) in all 11
+grid cells that pack 8 (h 4 / 3 / 2.5 mm × 3 / 6 / 12 spins; s1 at h 4 / 3 spins packs nothing); greedy
+0.946–1.000; continuous ≈ greedy; E5 refine ≤ +0.06 pp. The campaign grid is not discretisation-limited at
+N 8.
+
+**V5 sensitivity (N 8, s1–s3 x1.00; 407 s).** Spread of RIND5_V100 over seed plane 2.25 / 3.75 mm, S_K ±5 %,
+interference on and M_opt 4000: SA 0.09 ± 0.06 pp, greedy 3.41 ± 3.15 pp, truth 4.63 ± 0.10 pp; the arm
+ranking is unchanged (Kendall τ 1.00 in every cell). SA is saturated (1.000) on these cavities at N 8, so its
+small spread is partly a ceiling effect.
+
+**V6 printed phantom (481 s; plastic, not tissue; NOT optimizer-vs-surgeon).** Phantom definition: wall =
+the tile-less twin PH0 rigidly registered into PH8 (registration Dice 0.979, residual far from the tiles
+0.23 mm median), 42 627 faces / 8443 mm²; eligible = faces visible from the implant centroid and within
+35 mm of a seed (5473 mm²); target `RIND5(phantom cavity, clip = PH0 shell)`, the phantom cavity being
+gtcore's cavity rule applied to the registered twin (55.3 cc; RIND5 47.7 cc on the PH8 grid, 46.6 cc on the
+1 mm report grid). N 8, RIND5_V100 / D90: **as_placed (the pipeline's 8 recovered hand-placed tiles) 0.443 /
+2187 cGy** (3 planner overlaps), as_placed_conformed 0.452 / 2161 (8 overlaps; the conformer alone
++0.97 pp, −26 cGy; localized seeds 2.95 mm off the PH0 wall — rev-1's 0.84 mm was the PH8 tile-face
+artifact), uniform 0.489 / 3408, greedy 0.483 / 3290, **SA 0.546 / 3529** (3 seeds identical, 19 s), V100
+bound 0.592 / 1866 (enumeration, 300 s time limit, MIP gap 0.46), continuous 0.487 / 3135; every optimized
+arm has 0 overlaps. Neither min-N criterion is reached by N 12 (greedy sweep). **Capacity line:
+manufacturer rule 14 vs capacity at grid 10 (h 4 / 6 spins, greedy MIS, not exact; area bound 13) vs placed
+8.** Synthetic capacity at the same grid: x0.80 4 (rule 7–8), x1.00 7 (s4 9; rule 11–12; a lower bound —
+greedy/SA pack 8 there), x1.25 10 (rule 17–19) (`capacity.csv`, 712 s).
+
+**V8 failure modes (6 s).** 12/12 PASS (a loud `ValueError` / `InfeasibleError` with the reason; the 10 mm
+eligibility disc at N 1 returns a valid plan). **Packing failures — the optimizer's main failure mode**
+(`v8_packing_failures.csv` and `_summary.csv`, post-processing of the V2, capacity and V3 rows by
+`scripts/packing_failures.py`): SA starts from greedy, so when greedy cannot pack N the SA row FAILS. Per N
+(18 cavities), SA packs N on 18 / 13 / 12 / 6 / 5 cavities at N 4 / 6 / 8 / 10 / 12; **every SA failure at
+N ≤ 8 (5 at N 6, 6 at N 8) is on a cavity where the V100 bound proves that no conflict-free N-packing exists
+on the candidate grid**; at N 10 / 12, 6 / 6 failures are proved infeasible (the 0.8-scale cavities) and
+6 / 7 have unknown existence (no bound run at N > 8); **no SA failure occurred where a packing is known to
+exist.** Truth never counts as evidence: the generator's 8 truth tiles overlap under the planner rule on all
+18 cavities (6–22 pairs) and lie off the grid.
+
+**Patient run (F8 / Table 3; PT-CT1mm + PT-RT; calibration-set; one case, illustration, not a cohort
+claim; `scripts/patient_optimize.py` at `085fe60`, 688 s).** Wall = the gtcore cavity (41.3 cc, 24 736
+faces, 13 261 mm²). Eligibility (coordinator 2026-11-03) = the craniotomy rule without the implant term
+(facing within 90° AND line of sight through the opening: 26.5 % of the wall area) ∪ the demonstrated reach
+(wall faces within 10 mm of an implanted seed: 56.3 %) = **67.3 %** (16 496 faces); fairness check **32 / 32**
+implanted seeds have their nearest wall face eligible (the craniotomy term alone: 9 / 32). Candidates C 852
+(production grid h 2.5 / 6 spins, M_opt 4000); SA 8 × 60, 3 seeds per family. Scored with the exact engine
+and `dose_stats` at the CT-grid voxel centres, S_K 3.5 U: V100 / D90 [cGy].
+
+| arm | RIND5(gtcore) | HRCTV_PHYS (CTV_GT) | IMPLANT_REACH(10) | tiles / overlaps | SA s |
+|---|---|---|---|---|---|
+| as implanted (32 localized seeds) | 0.387 / 2653 | 0.917 / 6167 | 0.960 / 6700 | – | – |
+| as implanted, N = 8 count fit (its 28 seeds) | 0.336 / 2431 | 0.830 / 5391 | 0.885 / 5845 | 7 (1 degraded) / 2; 4 leftovers | – |
+| as implanted, 6 full + 4 half fit | 0.387 / 2653 | 0.917 / 6167 | 0.960 / 6700 | 10 / 3; 0 leftovers | – |
+| optimized for RIND5 (8 full; 3 seeds identical) | **0.503 / 3141** | 0.855 / 5706 | 0.885 / 5898 | 8 / 0 | 58 |
+| optimized for CTV_GT (best seed; mean of 3 0.429 / 0.980 / 0.988 on V100) | 0.416 / 3165 | **0.982 / 6783** | 0.992 / 7073 | 8 / 0 | 47 |
+
+Optimizing the full rind gains +11.6 pp on RIND5 and loses 6.2 pp on `CTV_GT`; optimizing the physician's
+target gains +6.5 pp on `CTV_GT` (D90 +616 cGy) and leaves the rind at +2.9 pp — the F8(c) condition "both
+targets side by side" in numbers. No SA packing failure (the bound-start fallback was not triggered).
+Render data: `docs/figures/data/f8b_patient_optimized.npz/.json` (modes `opt_rind5_*`, `opt_ctvgt_*`,
+`count8_*`, `count_6full_4half_*`; eligible masks union / craniotomy / reach; the opening).
