@@ -4949,3 +4949,91 @@ and the manifest/notes commit; final render at the F3(a) commit.
 | F3(a) (new) | — | `f3a_scans` (one row, 4 x 1.65 in, gap 0.05 in) + `f3a_preop`, `f3a_intraop`, `f3a_postop`, `f3a_ct` from `f3a_scans_slice.npz` (cavity_change.py, commit 0f8e30d): slice k = 117, 110 mm crop centred on the Cav_Post centroid, isotropic, no axes; MRI windows = the NPZ's 1st-99th percentile W/L, CT W 400 / L 40 with the Cav_Post outline in the F6 style; one 10 mm bar on the first image (pre-op) only |
 
 Full suite at `31bc726` (`GTCORE_STRICT=1`, concurrent load): **`1148 passed, 15 skipped, 1 xfailed, 15536 warnings in 669.63s`**, exit 0.
+
+## 2026-11-03 — Phase 5 — export_figures_medphys.py (task `export-figures`, branch `p2/export-figures`)
+
+Branch `p2/export-figures` from `paper2/integration` `62e7891`. One command assembles the
+FiguresMedPhys deliverable folder from the checkout's committed data and the rendered panels:
+
+```
+python scripts/export_figures_medphys.py --out <FiguresMedPhys> [--render] [--overwrite] [--replace-modified]
+    [--figures-dir output/figures] [--manifest docs/figures/manifest.json] [--no-extra-data] [--strict] [--repo <root>]
+```
+
+- `--render` first runs `python scripts/paper_figures.py --out output/figures` (rewrites
+  `docs/figures/manifest.json`; that change alone does not mark the tree dirty in the README).
+- Layout: `fig01` … `fig09`, `figS2`, `figS3`, `figS4` (a further figure folder only if the
+  manifest names a non-optional figure outside that list; optional panels that are not rendered
+  get no folder). Each folder: the panels' PNG/PDF/SVG from `output/figures/`, every source file the
+  manifest lists in `data/` (byte copies, header comments kept; an NPZ's same-stem JSON sidecar
+  goes with it), a generated `README.md` (description, files, sources with header / git commits,
+  script commit, `python scripts/paper_figures.py --only <panel>`); a non-rendered panel gets
+  `<panel>.PENDING.md` (or the renderer's own `*.PENDING.md`) with the manifest's reason.
+  F1 / F7 / F9 READMEs say what Jacob supplies; F1 also gets `table4.csv` / `table4.md` (and
+  `data/table4_runtimes.csv` once committed); F7 gives `git checkout v1.0-medphys`,
+  `gt plan "$GT_DATA_ROOT/<PH8>" --hrctv` and the planner window read from `gtcore/planner.py`
+  (**1280 x 900 px**, fixed `window_size`), the three frames and file names. F2 / F3 READMEs list
+  the hand panels (F2a photo, F2b schematic, F3b phantom photo).
+- `tables/` = `docs/figures/tables/*`; `data/` = committed CSV/JSON in `docs/figures/data` that no
+  panel lists (65 files at this commit); root `README.md` (panel → files → source commits → script
+  commit → command, pending list, the style bar from `scripts/_figstyle.py` constants, regenerate
+  from the tag), `manifest.json`, `results-summary.md`, `export-ledger.json` (path + sha256 of every
+  file written).
+- Safety: a non-empty `--out` is refused (exit 2) unless `--overwrite`; then only managed paths are
+  written, nothing is ever deleted, `SUMMARY.md` can never be a managed path, a managed file whose
+  sha256 no longer matches the ledger (hand-edited) is kept unless `--replace-modified`, and a file an
+  earlier export wrote that is no longer produced (e.g. a PENDING note once the panel lands) is
+  listed as stale, not deleted.
+- If `output/figures/manifest.json` differs from `docs/figures/manifest.json` (a partial re-render
+  not committed) the one beside the panels is used and the README / console say so. On
+  `paper2/integration` `62e7891` that is the case: `f3a`, `f4b`, `f4c` were re-rendered at `62e7891`
+  while the committed manifest says `997e6da`.
+- Checks: every PNG ≥ 600 dpi metadata (3-D renders: ≥ 2400 px long side), every rendered stem has
+  PNG + PDF + SVG; `--strict` exits 3 on a violation.
+
+Dry run (worktree root, `PYTHONPATH=<worktree>`, `gtcore.__file__` = the worktree's), at `ee988ba`:
+
+```
+python scripts/export_figures_medphys.py --out <scratchpad>/p2/figexport_dryrun --render     # 20 s incl. render, exit 0
+python scripts/export_figures_medphys.py --out <scratchpad>/p2/figexport_dryrun --overwrite  # with a SUMMARY.md added: written 1 (README time stamp), unchanged 176, SUMMARY.md untouched
+```
+
+| Folder | PNG | PDF | SVG | data | README | other | files |
+|---|---|---|---|---|---|---|---|
+| fig01 | 0 | 0 | 0 | 1 (table4.csv) | 1 | 1 (table4.md) | 3 |
+| fig02 | 1 | 1 | 1 | 0 | 1 | 0 | 4 |
+| fig03 | 6 | 6 | 6 | 5 | 1 | 0 | 24 |
+| fig04 | 3 | 3 | 3 | 7 | 1 | 0 | 17 |
+| fig05 | 2 | 2 | 2 | 6 | 1 | 0 | 13 |
+| fig06 | 1 | 1 | 1 | 3 | 1 | 0 | 7 |
+| fig07 | 0 | 0 | 0 | 0 | 1 | 0 | 1 |
+| fig08 | 1 | 1 | 1 | 3 | 1 | 1 (f8b.PENDING.md) | 8 |
+| fig09 | 0 | 0 | 0 | 0 | 1 | 0 | 1 |
+| figS2 | 1 | 1 | 1 | 1 | 1 | 1 (s2b PENDING) | 6 |
+| figS3 | 1 | 1 | 1 | 4 | 1 | 0 | 8 |
+| figS4 | 0 | 0 | 0 | 0 | 1 | 1 (s4.PENDING.md) | 2 |
+| data | | | | 65 | | | 65 |
+| tables | | | | 8 CSV | | 7 MD | 15 |
+
+177 files + ledger, 40 MB. Format check: all 16 PNGs 600 dpi (3-D renders f4b, f4c, f8a 2400 x 2400 px),
+every panel PNG + PDF + SVG — no violation. Missing / pending (reasons from the manifest): `f8a`
+source `docs/figures/optimize/data/f8_patient_summary.csv` not committed (panel renders without it);
+`f8b` campaign output `f8b_patient_optimized.npz` not committed; `s2b` needs
+`docs/figures/data/s2b_axis_residuals.csv`; `s4` `v2_summary.csv` not the campaign output yet;
+`s5_dvh3` optional, not rendered.
+
+Tests: `tests/test_export_figures_medphys.py` (9: fake minimal manifest + files exported into tmp,
+layout / byte copies / READMEs / root files, dpi + missing-SVG violations, 3-D px rule, inventory
+counts, non-empty refusal, `SUMMARY.md` + foreign files preserved under `--overwrite`, hand-edited
+managed file kept / `--replace-modified`, stale PENDING note reported not deleted, `--strict`, the
+repository manifest maps every rendered panel to the fixed folders).
+
+Open points: F7 frames at 1280 px are ~186 dpi across a double column (~557 dpi each if three
+frames share 6.9 in); the planner window is not a CLI option. The re-rendered manifest for
+`f3a`/`f4b`/`f4c` at `62e7891` is not committed on `paper2/integration`.
+
+Full suite at `ee988ba` (`GTCORE_STRICT=1 python -m pytest -q -p no:cacheprovider`, concurrent load,
+wall time an upper bound): **`1157 passed, 15 skipped, 1 xfailed, 15536 warnings in 676.29s`**, exit 0.
+`tests/test_export_figures_medphys.py`: 9 passed in 1.5 s. `scripts/check_no_identifiers.py`: 0 forbidden hits.
+Nothing installed; no shared file touched (`pyproject.toml`, `tests/conftest.py`, `README.md`).
+The `--render` dry run rewrote `docs/figures/manifest.json` in the worktree; that was reverted, not committed.
