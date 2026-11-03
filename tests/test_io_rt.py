@@ -148,7 +148,7 @@ def write_rtdose(path, dose_cgy, ipp_lps, pixel_spacing, dz, units="GY",
     return str(path)
 
 
-def write_rtplan(path, seeds, for_uid=FOR_UID, ref_date="20231026", ref_time="090812.000000"):
+def write_rtplan(path, seeds, for_uid=FOR_UID, ref_date="20240102", ref_time="101530.000000"):
     """``seeds``: list of dicts with ``pos`` (LPS), ``orient`` (LPS) and ``sk`` (U)."""
     ds = _file_dataset(path, rt._RTPLAN_SOP, "RTPLAN")
     ds.FrameOfReferenceUID = for_uid
@@ -564,7 +564,7 @@ def test_rtplan_roundtrip(tmp_path):
     assert plan.orientations_ras is None
     np.testing.assert_allclose(plan.strengths_u, [3.52, 3.48, 3.50])
     s = plan.sources[0]
-    assert s.reference_datetime == datetime(2023, 10, 26, 9, 8, 12)
+    assert s.reference_datetime == datetime(2024, 1, 2, 10, 15, 30)
     assert s.isotope == "Cs-131" and s.model_id == "CS-1 Rev2" and s.source_type == "LINE"
     assert s.half_life_days == pytest.approx(9.689)
     assert s.active_length_mm == pytest.approx(4.0)
@@ -580,10 +580,10 @@ def test_rtplan_roundtrip(tmp_path):
 
 
 def test_parse_dicom_datetime_forms():
-    assert rt._parse_dicom_datetime("20231026", "0908") == datetime(2023, 10, 26, 9, 8)
-    assert rt._parse_dicom_datetime("20231026", "090812.5") == datetime(2023, 10, 26, 9, 8, 12, 500000)
-    assert rt._parse_dicom_datetime("20231026", "") == datetime(2023, 10, 26)
-    assert rt._parse_dicom_datetime("", "090812") is None
+    assert rt._parse_dicom_datetime("20240102", "1015") == datetime(2024, 1, 2, 10, 15)
+    assert rt._parse_dicom_datetime("20240102", "101530.5") == datetime(2024, 1, 2, 10, 15, 30, 500000)
+    assert rt._parse_dicom_datetime("20240102", "") == datetime(2024, 1, 2)
+    assert rt._parse_dicom_datetime("", "101530") is None
 
 
 # ------------------------------------------------- (g) verify_against_tps
