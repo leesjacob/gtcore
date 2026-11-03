@@ -74,3 +74,38 @@ the phantom MRI is a dry plastic phantom with almost no signal. F9(b) and
 `scripts/modality_metrics.py` are dropped; F9(a)/Table 1b are at most a
 qualitative strip assembled by Jacob, or the figure is cut and one
 Discussion sentence remains.
+
+## 2026-11-03 — figure plan v6 adopted, with four amendments
+
+`figure-plan-v6.md` (Jacob, 2026-11-03) restructures the figures around one
+patient followed through the loop. Adopted: dataset ids `PT-preMRI`,
+`PT-intraMRI`, `PT-postMRI`, `PT-CT1mm`, `PT-CT2mm`, `PT-RT`, `PH8`, `PH0`
+(the Phase 1 notes still say `JD-1mm`/`JD RT`; alias `JD-1mm` = `PT-CT1mm`,
+`JD-2mm` = `PT-CT2mm`, `JD RT` = `PT-RT`); F3 = the one-case strip (four
+scans + phantom); F4(b) = the patient's 3-D implant (6/8 tiles, 8 leftover
+seeds marked) with the count-free curves in the Supplement; F10 → S2; the
+seed-to-`Cav_Post` distance (median 4.6 mm, mock-level) stated in Methods
+without re-tuning `SEED_PLANE_OFFSET_MM`; `scripts/cavity_change.py` is the
+name of the cavity-across-the-loop script (replaces the `cavity_across_scans`
+name above). Amendments:
+
+1. **F9**: no STL exists and the optical/MRI exports are unusable (entry
+   above); v6's "deviation vs STL" panel cannot be made. F9 stays reduced or
+   cut.
+2. **PT-CT2mm** is not on disk (lost in the 2026-11-03 folder move). Until it
+   is restored, S2's real-data panel uses the two stated substitutes.
+3. **No MRI cavity segmentation is added to gtcore** (stop list). The
+   cavity-change measurement takes manual cavity contours on the MRIs
+   (Jacob, in Slicer; RTSTRUCT or NIfTI) if provided, and otherwise uses the
+   printed cavity measured on the tile-less phantom CT as the intra-operative
+   volume. Rigid registration (SimpleITK, mutual information) and the
+   surface-distance measurement are the script's only computation.
+4. **F8(c) on this patient** is accepted for the main text only with: both
+   targets reported side by side (full `RIND5` and the physician's `CTV_GT`;
+   the mock run shows the gain is confined to the rind the physician
+   excluded: 0.67 → 0.81 on the rind, 0.92 → 0.91 on `CTV_GT`); optimizer
+   eligibility restricted to the craniotomy-side wall (a wall the surgeon
+   could reach); numbers regenerated from the Phase 4 optimizer (λ_tail = 1,
+   SA 8/60, full-grid metrics), never the mock run; the caption says
+   "one case, illustration, not a cohort claim". The `S4`-only option above is
+   superseded unless Jacob reverts it.
