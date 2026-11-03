@@ -36,3 +36,8 @@ gt = "gtcore.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["gtcore*"]
+
+[tool.setuptools.package-data]
+# Engine QA fixtures (Phase 3 `engine-qa`): TG-43U1S2 consensus tables as
+# embedded in Paper 1's engine + the erratum-corrected QA dose-rate table.
+"gtcore.dose.qa_data" = ["*.json", "*.csv"]
