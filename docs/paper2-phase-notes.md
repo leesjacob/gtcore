@@ -5495,3 +5495,8 @@ optimized for RIND5 / optimized for CTV_GT (mean of the SA seeds and the best se
 at `324e165` (paper-figures F8b / S4 merge) was merged into this branch (`98613c0`, no conflicts; it touches
 only `paper_figures.py`, `_figstyle.py`, `manifest.json` and these notes); `paper_tables.py --check` after the
 merge: no problems.
+
+Full suite at `98613c0` + notes (`GTCORE_STRICT=1 python -m pytest -q -p no:cacheprovider`, worktree root, other
+agents running, wall time an upper bound): **`1159 passed, 15 skipped, 15536 warnings in 671.75s`**, 0 failed,
+0 xfailed (the strict identifier check is a normal passing test now). The run re-stamped the tables' "generated at
+tree" header line to `98613c0` (data rows unchanged); committed as such.
