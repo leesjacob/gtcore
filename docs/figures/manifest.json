@@ -1,0 +1,944 @@
+{
+ "script": "scripts/paper_figures.py",
+ "style": "scripts/_figstyle.py",
+ "script_commit": "049add2",
+ "generated": "2026-11-03 08:38",
+ "dpi_png": 600,
+ "out_dir": "output/figures",
+ "tile_mode": "auto",
+ "constants": {
+  "clinical_crop": {
+   "center_xy": [
+    31.0,
+    209.5
+   ],
+   "half_mm": 42.0
+  },
+  "ct_window": {
+   "clinical": [
+    400.0,
+    40.0
+   ],
+   "phantom": [
+    1000.0,
+    0.0
+   ]
+  },
+  "cameras": {
+   "patient": {
+    "focal_point": [
+     26.7,
+     212.3,
+     -512.7
+    ],
+    "position": [
+     -92.7,
+     197.4,
+     -423.1
+    ],
+    "view_up": [
+     0.0,
+     0.0,
+     1.0
+    ],
+    "parallel_scale": 33.0
+   },
+   "phantom": {
+    "focal_point": [
+     -16.8,
+     -193.3,
+     -619.0
+    ],
+    "position": [
+     -46.9,
+     -297.2,
+     -515.1
+    ],
+    "view_up": [
+     0.0,
+     0.0,
+     1.0
+    ],
+    "parallel_scale": 29.0
+   }
+  },
+  "render_window_px": [
+   2400,
+   2400
+  ],
+  "panel_sizes_in": {
+   "f2c": [
+    4.2,
+    1.7
+   ],
+   "f3c": [
+    2.6,
+    2.6
+   ],
+   "f4a": [
+    2.2,
+    2.2
+   ],
+   "f5a": [
+    2.8,
+    2.8
+   ],
+   "f5b": [
+    3.7,
+    2.8
+   ],
+   "f6": [
+    3.35,
+    3.35
+   ],
+   "s2a": [
+    3.35,
+    3.2
+   ],
+   "s2b": [
+    3.35,
+    2.4
+   ],
+   "s4": [
+    3.35,
+    2.5
+   ],
+   "s3_gamma": [
+    2.8,
+    2.8
+   ],
+   "s5_dvh3": [
+    3.7,
+    2.8
+   ]
+  },
+  "palette": {
+   "tps": "#000000",
+   "gtcore": "#D55E00",
+   "gtcore30": "#0072B2",
+   "ctv_gt": "#009E73",
+   "cavity": "#BBBBBB",
+   "rind": "#000000",
+   "reach": "#E69F00",
+   "band": "#D55E00",
+   "leftover": "#D55E00",
+   "seed": "#3C3C3C",
+   "mesh": "#C8C8C8",
+   "mesh_eligible": "#A8A8A8",
+   "adaptive": "#0072B2",
+   "fixed": "#999999",
+   "sheet": "#E69F00"
+  },
+  "tile_colours": [
+   "#E69F00",
+   "#56B4E9",
+   "#009E73",
+   "#0072B2",
+   "#CC79A7",
+   "#F0E442",
+   "#999999",
+   "#D55E00"
+  ],
+  "dvh_axes": {
+   "xlim": [
+    0.0,
+    150.0
+   ],
+   "ylim": [
+    0.0,
+    100.0
+   ],
+   "rx_gy": 60.0,
+   "xticks": [
+    0,
+    30,
+    60,
+    90,
+    120,
+    150
+   ],
+   "yticks": [
+    0,
+    20,
+    40,
+    60,
+    80,
+    100
+   ]
+  },
+  "f5_gtcore_field": "gtcore32gt",
+  "f5_band": [
+   "residual",
+   "gtcore32"
+  ],
+  "f2c_configs": [
+   [
+    "flat",
+    0.0,
+    0.0
+   ],
+   [
+    "conformed",
+    0.058823529411764705,
+    0.058823529411764705
+   ],
+   [
+    "folded",
+    0.35,
+    0.0
+   ]
+  ]
+ },
+ "panels": {
+  "f2c": {
+   "figure": "F2",
+   "description": "F2(c): one tile as the bent-sheet model: flat, wall-conformed (kappa = 1/17 mm^-1 on both axes) and folded (kappa1 = 0.35 mm^-1), the collagen sheet (tissue face) as a wireframe with the 2 x 2 seeds.",
+   "sources": [],
+   "script_commit": "049add2",
+   "rendered": "2026-11-03 08:38",
+   "status": "ok",
+   "outputs": [
+    "output/figures/f2c_tile_model.png",
+    "output/figures/f2c_tile_model.pdf",
+    "output/figures/f2c_tile_model.svg"
+   ],
+   "key_numbers": {
+    "flat": {
+     "kappa1_per_mm": 0.0,
+     "kappa2_per_mm": 0.0,
+     "fold_deg": 0.0,
+     "bending_energy": 0.0,
+     "seed_chords_mm": [
+      10.0,
+      10.0,
+      10.0,
+      10.0
+     ],
+     "chord_formula_mm": 10.0
+    },
+    "conformed": {
+     "kappa1_per_mm": 0.058823529411764705,
+     "kappa2_per_mm": 0.058823529411764705,
+     "fold_deg": 67.40679942715568,
+     "bending_energy": 0.006920415224913495,
+     "seed_chords_mm": [
+      8.41,
+      8.41,
+      8.41,
+      8.41
+     ],
+     "chord_formula_mm": 8.5
+    },
+    "folded": {
+     "kappa1_per_mm": 0.35,
+     "kappa2_per_mm": 0.0,
+     "fold_deg": 401.07045659157626,
+     "bending_energy": 0.12249999999999998,
+     "seed_chords_mm": [
+      4.31,
+      4.31,
+      10.0,
+      10.0
+     ],
+     "chord_formula_mm": 4.88
+    }
+   },
+   "note": "gtcore.tiles.deform on an ideal pose; tissue-face wireframe at -3 mm, seeds on the seed sheet; kappa values in key_numbers (titles are Inkscape's)"
+  },
+  "f3c": {
+   "figure": "F3",
+   "description": "F3(c): one axial PH8 slice through the seeds (W 1000 / L 0), the detected seeds on the slice circled, 10 mm bar.",
+   "sources": [
+    {
+     "path": "docs/figures/data/f3c_phantom_slice.npz",
+     "exists": true,
+     "header_commit": "049add2",
+     "git_commit": null
+    },
+    {
+     "path": "docs/figures/data/f4c_phantom_implant.npz",
+     "exists": true,
+     "header_commit": "afb96ea",
+     "git_commit": "6f6c80b"
+    }
+   ],
+   "script_commit": "049add2",
+   "rendered": "2026-11-03 08:38",
+   "status": "ok",
+   "outputs": [
+    "output/figures/f3c_phantom_slice.png",
+    "output/figures/f3c_phantom_slice.pdf",
+    "output/figures/f3c_phantom_slice.svg"
+   ],
+   "key_numbers": {
+    "slice_k": 68,
+    "slice_z_ras_mm": -613.795,
+    "seeds_on_slice": 6,
+    "n_seeds": 32,
+    "near_mm": 1.5,
+    "window": "W 1000 / L 0",
+    "crop_center_xy": [
+     -15.033603618044056,
+     -198.04376811319364
+    ],
+    "crop_half_mm": 36.0
+   },
+   "note": "docs/figures/data/f4c_phantom_implant.npz (pipeline detections; not re-run)"
+  },
+  "f4a": {
+   "figure": "F4",
+   "description": "F4(a): the clinical slice (W 400 / L 40) with the TPS seed contours (open circles at the contour centroids), gtcore seeds (x) and any uncontoured source (filled diamond) within 3 mm of the slice plane.",
+   "sources": [
+    {
+     "path": "docs/figures/data/clinical_slice.npz",
+     "exists": true,
+     "header_commit": "378b819",
+     "git_commit": "d36db1d"
+    },
+    {
+     "path": "docs/figures/data/clinical_slice_seeds.csv",
+     "exists": true,
+     "header_commit": "378b819",
+     "git_commit": "d36db1d"
+    }
+   ],
+   "script_commit": "049add2",
+   "rendered": "2026-11-03 08:38",
+   "status": "ok",
+   "outputs": [
+    "output/figures/f4a_seed_slice.png",
+    "output/figures/f4a_seed_slice.pdf",
+    "output/figures/f4a_seed_slice.svg"
+   ],
+   "key_numbers": {
+    "slice_k": 117,
+    "slice_z_ras_mm": -511.20000000000005,
+    "near_mm": 3.0,
+    "tps_contours_on_slice": 6,
+    "gtcore_seeds_on_slice": 6,
+    "uncontoured_on_slice": 0,
+    "uncontoured_sources_dz_mm": {
+     "10": -18.322,
+     "17": 14.0
+    },
+    "window": "W 400 / L 40",
+    "crop": {
+     "center_xy": [
+      31.0,
+      209.5
+     ],
+     "half_mm": 42.0
+    }
+   },
+   "note": "the two uncontoured sources lie -18.3, +14.0 mm from this slice and are not drawn"
+  },
+  "f4b": {
+   "figure": "F4",
+   "description": "F4(b): the patient's implant on the physician's cavity mesh (Cav_Post): 32 seeds as capsules, the 6 fitted tile sheets, the 8 leftover seeds in vermilion (mode auto; --tile-mode count_6full_4half draws the halves).",
+   "sources": [
+    {
+     "path": "docs/figures/data/f4b_patient_implant.npz",
+     "exists": true,
+     "header_commit": "378b819",
+     "git_commit": "d36db1d"
+    }
+   ],
+   "script_commit": "049add2",
+   "rendered": "2026-11-03 08:38",
+   "status": "ok",
+   "outputs": [
+    "output/figures/f4b_patient_implant.png",
+    "output/figures/f4b_patient_implant.pdf",
+    "output/figures/f4b_patient_implant.svg"
+   ],
+   "key_numbers": {
+    "n_tiles": 6,
+    "n_full": 6,
+    "n_half": 0,
+    "degraded_tiles": [],
+    "half_tiles_from_pair_geometry": [],
+    "n_leftover": 8,
+    "leftover_seeds": [
+     0,
+     2,
+     5,
+     8,
+     11,
+     13,
+     16,
+     21
+    ],
+    "tile_colours": [
+     "#E69F00",
+     "#56B4E9",
+     "#009E73",
+     "#0072B2",
+     "#CC79A7",
+     "#F0E442"
+    ],
+    "mode": "auto",
+    "mesh": "cavity_rt",
+    "camera": {
+     "focal_point": [
+      26.7,
+      212.3,
+      -512.7
+     ],
+     "position": [
+      -92.7,
+      197.4,
+      -423.1
+     ],
+     "view_up": [
+      0.0,
+      0.0,
+      1.0
+     ],
+     "parallel_scale": 33.0
+    },
+    "window_px": [
+     2400,
+     2400
+    ]
+   },
+   "note": ""
+  },
+  "f4c": {
+   "figure": "F4",
+   "description": "F4(c): PH8 -- the 32 seeds and the 8 fitted sheets (count-free fit), the crumpled tile highlighted (vermilion, black edge); no mesh.",
+   "sources": [
+    {
+     "path": "docs/figures/data/f4c_phantom_implant.npz",
+     "exists": true,
+     "header_commit": "afb96ea",
+     "git_commit": "6f6c80b"
+    }
+   ],
+   "script_commit": "049add2",
+   "rendered": "2026-11-03 08:39",
+   "status": "ok",
+   "outputs": [
+    "output/figures/f4c_phantom_implant.png",
+    "output/figures/f4c_phantom_implant.pdf",
+    "output/figures/f4c_phantom_implant.svg"
+   ],
+   "key_numbers": {
+    "n_tiles": 8,
+    "n_full": 8,
+    "n_half": 0,
+    "degraded_tiles": [
+     7
+    ],
+    "half_tiles_from_pair_geometry": [],
+    "n_leftover": 0,
+    "leftover_seeds": [],
+    "tile_colours": [
+     "#E69F00",
+     "#56B4E9",
+     "#009E73",
+     "#0072B2",
+     "#CC79A7",
+     "#F0E442",
+     "#999999",
+     "#D55E00"
+    ],
+    "mode": "auto",
+    "mesh": "none (the PH8 body shell includes the tiles; no cavity mesh in the NPZ)",
+    "camera": {
+     "focal_point": [
+      -16.8,
+      -193.3,
+      -619.0
+     ],
+     "position": [
+      -46.9,
+      -297.2,
+      -515.1
+     ],
+     "view_up": [
+      0.0,
+      0.0,
+      1.0
+     ],
+     "parallel_scale": 29.0
+    },
+    "fold_deg": [
+     145.0,
+     57.7,
+     42.6,
+     37.3,
+     96.9,
+     117.4,
+     52.4,
+     287.7
+    ],
+    "bent_rms_mm": [
+     0.26,
+     0.31,
+     0.4,
+     0.5,
+     0.56,
+     0.78,
+     0.87,
+     0.46
+    ]
+   },
+   "note": ""
+  },
+  "f5a": {
+   "figure": "F5",
+   "description": "F5(a): the same slice with the TPS 30 / 60 Gy isodoses (black, dashed) and gtcore's (vermilion), and the CTV_GT outline.",
+   "sources": [
+    {
+     "path": "docs/figures/data/clinical_slice.npz",
+     "exists": true,
+     "header_commit": "378b819",
+     "git_commit": "d36db1d"
+    },
+    {
+     "path": "docs/figures/data/clinical_slice_contours.csv",
+     "exists": true,
+     "header_commit": "378b819",
+     "git_commit": "d36db1d"
+    },
+    {
+     "path": "docs/figures/data/clinical_table3_rows.csv",
+     "exists": true,
+     "header_commit": "378b819",
+     "git_commit": "d36db1d"
+    }
+   ],
+   "script_commit": "049add2",
+   "rendered": "2026-11-03 08:39",
+   "status": "ok",
+   "outputs": [
+    "output/figures/f5a_isodoses.png",
+    "output/figures/f5a_isodoses.pdf",
+    "output/figures/f5a_isodoses.svg"
+   ],
+   "key_numbers": {
+    "slice_k": 117,
+    "levels_cgy": [
+     3000,
+     6000
+    ],
+    "gtcore_field": "gtcore32gt",
+    "window": "W 400 / L 40",
+    "crop": {
+     "center_xy": [
+      31.0,
+      209.5
+     ],
+     "half_mm": 42.0
+    },
+    "ctv_gt_D90_cGy_tps": 6364.65,
+    "ctv_gt_D90_cGy_gtcore32": 6167.48
+   },
+   "note": ""
+  },
+  "f5b": {
+   "figure": "F5",
+   "description": "F5(b): cumulative DVH on CTV_GT -- TPS (black), gtcore at the 32 gtcore seeds (vermilion), gtcore at the 30 contoured seeds (blue, dashed) and the 95 % seed-position MC band (vermilion, 20 %); rx dotted.",
+   "sources": [
+    {
+     "path": "docs/figures/data/clinical_dvh_hrctv.csv",
+     "exists": true,
+     "header_commit": "378b819",
+     "git_commit": "d36db1d"
+    },
+    {
+     "path": "docs/figures/data/f5b_dvh_band.csv",
+     "exists": true,
+     "header_commit": "c557cf4",
+     "git_commit": "1104fcb"
+    },
+    {
+     "path": "docs/figures/data/uncertainty_d90_v100.csv",
+     "exists": true,
+     "header_commit": "c557cf4",
+     "git_commit": "1104fcb"
+    }
+   ],
+   "script_commit": "049add2",
+   "rendered": "2026-11-03 08:39",
+   "status": "ok",
+   "outputs": [
+    "output/figures/f5b_dvh.png",
+    "output/figures/f5b_dvh.pdf",
+    "output/figures/f5b_dvh.svg"
+   ],
+   "key_numbers": {
+    "D90_cGy": {
+     "tps": 6364.650879,
+     "gtcore32": 6167.478947,
+     "gtcore30_contoured": 5790.429706
+    },
+    "D90_band95_cGy_gtcore32": [
+     6133.448301,
+     6212.387903
+    ],
+    "V100": {
+     "tps": 0.937363,
+     "gtcore32": 0.917104,
+     "gtcore30_contoured": 0.873066
+    },
+    "V100_band95_gtcore32": [
+     0.913682,
+     0.920995
+    ],
+    "band": "residual / gtcore32 (p2.5-p97.5 of 1000 draws)",
+    "curves": {
+     "tps": "rtdose",
+     "gtcore32": "gtcore_32_gtcore_seeds",
+     "gtcore30": "gtcore_30_contoured_seeds"
+    }
+   },
+   "note": "gtcore@30 = the 30 TPS-contoured seed positions (contoured30)"
+  },
+  "f6": {
+   "figure": "F6",
+   "description": "F6: the same slice with the cavity (Cav_Post) filled grey, the physician's CTV_GT filled green and the full 5 mm rind outlined (dashed).",
+   "sources": [
+    {
+     "path": "docs/figures/data/clinical_slice.npz",
+     "exists": true,
+     "header_commit": "378b819",
+     "git_commit": "d36db1d"
+    },
+    {
+     "path": "docs/figures/data/clinical_slice_contours.csv",
+     "exists": true,
+     "header_commit": "378b819",
+     "git_commit": "d36db1d"
+    },
+    {
+     "path": "docs/figures/data/clinical_table3_rows.csv",
+     "exists": true,
+     "header_commit": "378b819",
+     "git_commit": "d36db1d"
+    }
+   ],
+   "script_commit": "049add2",
+   "rendered": "2026-11-03 08:39",
+   "status": "ok",
+   "outputs": [
+    "output/figures/f6_target_definition.png",
+    "output/figures/f6_target_definition.pdf",
+    "output/figures/f6_target_definition.svg"
+   ],
+   "key_numbers": {
+    "slice_k": 117,
+    "window": "W 400 / L 40",
+    "crop": {
+     "center_xy": [
+      31.0,
+      209.5
+     ],
+     "half_mm": 42.0
+    },
+    "ctv_gt_volume_cc": 19.0121,
+    "ctv_gt_D90_cGy_rtdose": 6364.65,
+    "ctv_gt_D90_cGy_gtcore32": 6167.48,
+    "rind5_cavpost_volume_cc": 35.3502,
+    "rind5_cavpost_D90_cGy_rtdose": 4645.93,
+    "rind5_cavpost_D90_cGy_gtcore32": 4537.57,
+    "reach10_volume_cc": 16.8318,
+    "reach10_D90_cGy_rtdose": 6881.12,
+    "reach10_D90_cGy_gtcore32": 6700.37,
+    "cav_post_volume_cc": 35.1008
+   },
+   "note": "fills are the CT-grid masks (pixel exact); the rind outline is the committed polyline"
+  },
+  "f8a": {
+   "figure": "F8",
+   "description": "F8(a): the same implant on the gtcore cavity mesh the optimizer uses, same camera as F4(b); V100 / D90 on the full rind and CTV_GT in the manifest.",
+   "sources": [
+    {
+     "path": "docs/figures/data/f4b_patient_implant.npz",
+     "exists": true,
+     "header_commit": "378b819",
+     "git_commit": "d36db1d"
+    },
+    {
+     "path": "docs/figures/optimize/data/f8_patient_summary.csv",
+     "exists": false,
+     "header_commit": null,
+     "git_commit": null
+    },
+    {
+     "path": "docs/figures/data/clinical_table3_rows.csv",
+     "exists": true,
+     "header_commit": "378b819",
+     "git_commit": "d36db1d"
+    }
+   ],
+   "script_commit": "049add2",
+   "rendered": "2026-11-03 08:39",
+   "status": "ok",
+   "outputs": [
+    "output/figures/f8a_patient_implant.png",
+    "output/figures/f8a_patient_implant.pdf",
+    "output/figures/f8a_patient_implant.svg"
+   ],
+   "key_numbers": {
+    "n_tiles": 6,
+    "n_full": 6,
+    "n_half": 0,
+    "degraded_tiles": [],
+    "half_tiles_from_pair_geometry": [],
+    "n_leftover": 8,
+    "leftover_seeds": [
+     0,
+     2,
+     5,
+     8,
+     11,
+     13,
+     16,
+     21
+    ],
+    "tile_colours": [
+     "#E69F00",
+     "#56B4E9",
+     "#009E73",
+     "#0072B2",
+     "#CC79A7",
+     "#F0E442"
+    ],
+    "mode": "auto",
+    "mesh": "wall_mesh",
+    "camera": {
+     "focal_point": [
+      26.7,
+      212.3,
+      -512.7
+     ],
+     "position": [
+      -92.7,
+      197.4,
+      -423.1
+     ],
+     "view_up": [
+      0.0,
+      0.0,
+      1.0
+     ],
+     "parallel_scale": 33.0
+    },
+    "window_px": [
+     2400,
+     2400
+    ],
+    "RIND5_gtcore_V100": 0.386861,
+    "RIND5_gtcore_D90_cGy": 2652.69,
+    "CTV_GT_V100": 0.917104,
+    "CTV_GT_D90_cGy": 6167.48,
+    "f8_numbers_source": "clinical_table3_rows.csv (gtcore @ 32 gtcore seeds); campaign f8_patient_summary.csv pending"
+   },
+   "note": ""
+  },
+  "f8b": {
+   "figure": "F8",
+   "description": "F8(b): the optimizer's tiles on the same gtcore cavity mesh, same camera; one render per optimized arm in f8b_patient_optimized.npz (opt_* = optimized for RIND5; further opt<arm>_* prefixes if present).",
+   "sources": [
+    {
+     "path": "docs/figures/data/f8b_patient_optimized.npz",
+     "exists": false,
+     "header_commit": null,
+     "git_commit": null
+    },
+    {
+     "path": "docs/figures/optimize/data/f8_patient_summary.csv",
+     "exists": false,
+     "header_commit": null,
+     "git_commit": null
+    }
+   ],
+   "script_commit": "049add2",
+   "rendered": "2026-11-03 08:39",
+   "status": "skipped",
+   "note": "campaign output docs/figures/data/f8b_patient_optimized.npz not committed yet (scripts/patient_optimize.py)"
+  },
+  "s2a": {
+   "figure": "S2",
+   "description": "S2(a): seed recall and 3-D seed error vs slice spacing on the synthetic head phantom (5 realizations, mean +- SD), shipped (adaptive) vs fixed detection thresholds; two stacked small multiples, one axis each.",
+   "sources": [
+    {
+     "path": "docs/figures/data/validation_spacing.csv",
+     "exists": true,
+     "header_commit": "4748ccb",
+     "git_commit": null
+    }
+   ],
+   "script_commit": "049add2",
+   "rendered": "2026-11-03 08:39",
+   "status": "ok",
+   "outputs": [
+    "output/figures/s2a_recall_error_vs_spacing.png",
+    "output/figures/s2a_recall_error_vs_spacing.pdf",
+    "output/figures/s2a_recall_error_vs_spacing.svg"
+   ],
+   "key_numbers": {
+    "dz_mm": [
+     0.7,
+     1.4,
+     2.1,
+     2.8
+    ],
+    "adaptive": {
+     "recall_mean": [
+      1.0,
+      1.0,
+      0.967,
+      0.983
+     ],
+     "recall_sd": [
+      0.0,
+      0.0,
+      0.046,
+      0.037
+     ],
+     "err_mean_mm": [
+      0.2,
+      0.291,
+      0.496,
+      0.702
+     ],
+     "err_sd_mm": [
+      0.025,
+      0.029,
+      0.053,
+      0.1
+     ]
+    },
+    "fixed": {
+     "recall_mean": [
+      1.0,
+      0.883,
+      0.167,
+      0.0
+     ],
+     "recall_sd": [
+      0.0,
+      0.075,
+      0.0,
+      0.0
+     ],
+     "err_mean_mm": [
+      0.2,
+      0.413,
+      0.468,
+      NaN
+     ],
+     "err_sd_mm": [
+      0.025,
+      0.049,
+      0.221,
+      0.0
+     ]
+    }
+   },
+   "note": "synthetic head phantom, 0.7 mm base, 3 tiles, rng 0-4; adaptive = shipped"
+  },
+  "s2b": {
+   "figure": "S2",
+   "description": "S2(b): per-axis seed-position difference, 2 mm export vs 1 mm thin-cut (real data), as a box plot per axis -- rendered only from a committed per-seed table; otherwise a placeholder note, never a stand-in.",
+   "sources": [
+    {
+     "path": "docs/figures/data/s2b_axis_residuals.csv",
+     "exists": false,
+     "header_commit": null,
+     "git_commit": null
+    }
+   ],
+   "script_commit": "049add2",
+   "rendered": "2026-11-03 08:39",
+   "status": "pending",
+   "outputs": [
+    "output/figures/s2b_axis_boxplot.PENDING.md"
+   ],
+   "key_numbers": {},
+   "note": "PENDING: S2(b) needs a committed per-seed table docs/figures/data/s2b_axis_residuals.csv with columns pair,seed_id,dx_mm,dy_mm,dz_mm (pair = 'PT-CT2mm vs PT-CT1mm' when the gapped export is restored, else the two substitutes of docs/paper2-decisions.md: 'PT-CT-s3 vs PT-CT1mm' and 'PT-CT1mm decimated 2 mm vs PT-CT1mm'). The quoted aggregate (25 seeds, per-axis SD 0.51 / 0.40 / 0.63 mm, docs/localization-notes.md) is not regenerable from the tag and is not drawn."
+  },
+  "s4": {
+   "figure": "S4",
+   "description": "S4: V100 of RIND5 vs tile count N on the synthetic cavities, mean +- SD across cavities per arm (the Phase 4 campaign's v2_summary.csv).",
+   "sources": [
+    {
+     "path": "docs/figures/optimize/data/v2_summary.csv",
+     "exists": true,
+     "header_commit": null,
+     "git_commit": "cca2120"
+    }
+   ],
+   "script_commit": "049add2",
+   "rendered": "2026-11-03 08:39",
+   "status": "skipped",
+   "note": "docs/figures/optimize/data/v2_summary.csv is not the Phase 4 campaign output yet (no '# commit' header)"
+  },
+  "s3_gamma": {
+   "figure": "S3 (optional)",
+   "description": "Optional Supplement: the gamma map (3 %/2 mm, global) on the clinical slice -- gamma in viridis (0-2), voxels above 200 Gy grey, outside the 30 Gy window not shown; CTV_GT outline; colour bar.",
+   "sources": [
+    {
+     "path": "docs/figures/data/gamma_map_slice_gtcore_3pct_2mm_global.npz",
+     "exists": true,
+     "header_commit": "378b819",
+     "git_commit": "d36db1d"
+    },
+    {
+     "path": "docs/figures/data/gamma_pass_rates.csv",
+     "exists": true,
+     "header_commit": "378b819",
+     "git_commit": "d36db1d"
+    },
+    {
+     "path": "docs/figures/data/clinical_slice.npz",
+     "exists": true,
+     "header_commit": "378b819",
+     "git_commit": "d36db1d"
+    },
+    {
+     "path": "docs/figures/data/clinical_slice_contours.csv",
+     "exists": true,
+     "header_commit": "378b819",
+     "git_commit": "d36db1d"
+    }
+   ],
+   "script_commit": "049add2",
+   "rendered": "2026-11-03 08:39",
+   "status": "ok",
+   "outputs": [
+    "output/figures/s3_gamma_map.png",
+    "output/figures/s3_gamma_map.pdf",
+    "output/figures/s3_gamma_map.svg"
+   ],
+   "key_numbers": {
+    "pass_rate_pct": {
+     "30-200Gy": 99.3254,
+     "ge30Gy": 98.7104
+    },
+    "slice_z_mm": -510.86668419837923,
+    "n_window_voxels_on_slice": 2943,
+    "n_above_200Gy_on_slice": 492
+   },
+   "note": "optional Supplement panel"
+  },
+  "s5_dvh3": {
+   "figure": "S5 (optional)",
+   "description": "Optional Supplement: the DVH of the clinical plan on each target definition (CTV_GT, full rind, implant reach) -- needs clinical_dvh_<target>.csv for every target; only the CTV_GT DVH is committed.",
+   "sources": [
+    {
+     "path": "docs/figures/data/clinical_dvh_hrctv.csv",
+     "exists": true,
+     "header_commit": "378b819",
+     "git_commit": "d36db1d"
+    }
+   ],
+   "script_commit": "049add2",
+   "rendered": "2026-11-03 08:39",
+   "status": "skipped",
+   "note": "only docs/figures/data/clinical_dvh_hrctv.csv is committed; validation_clinical.py exports no per-target DVH for the rind / reach (their D90s are F6 caption numbers)"
+  }
+ }
+}
