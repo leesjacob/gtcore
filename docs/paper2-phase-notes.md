@@ -1670,6 +1670,9 @@ GT_PAPER1_ENGINE=<GammaTileDosimetry clone> python -m pytest -q tests/test_dose_
 GTCORE_STRICT=1 GT_PAPER1_ENGINE=<clone> python -m pytest -q -p no:cacheprovider               # full suite, line below
 ```
 
+Full suite at `5371d7f` (tree = `paper2/integration` e13a4af + this branch; `GTCORE_STRICT=1`, `GT_PAPER1_ENGINE` set so the live cross-check ran; other agents running concurrently, so the wall time is an upper bound):
+`956 passed, 14 skipped, 15242 warnings in 696.80s (0:11:36)`. The skips are the Phase 1 set (13 interface placeholders + the `GT_E2E`-gated run); the new file adds 15 passed, 0 skipped.
+
 Script run at `29295c5` (headers say so): `gtcore.__file__` =
 `<worktree>/gtcore/__init__.py`, Paper 1 clone `ac47ad6be`.
 
