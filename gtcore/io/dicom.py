@@ -94,6 +94,9 @@ def _series_meta(first_file):
         ("slice_thickness", "SliceThickness"),
         ("series_description", "SeriesDescription"),
         ("convolution_kernel", "ConvolutionKernel"),
+        # identifiers for gtcore.io.rt.check_references (compared, never printed)
+        ("frame_of_reference_uid", "FrameOfReferenceUID"),
+        ("series_instance_uid", "SeriesInstanceUID"),
     ):
         value = getattr(ds, tag, None)
         if value is None:
