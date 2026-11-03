@@ -1580,9 +1580,18 @@ absent and the report's `notes` say so explicitly.
   `RIND5_V150`; the unprefixed `V100`/`D90` campaign columns stay the shell
   surrogate until Phase 4 re-runs the campaign -- said in its docstring),
   `scripts/go_no_go_optimize.py` (grid-check line labelled "S5 coverage +5
-  mm"), `scripts/bench_dose_stats.py` (Phase 2 A driver). Checked and not
-  a consumer: `scripts/plan_candidates_runtime.py` (no `metrics_grid` /
-  `rind` / shell access). `docs/optimize-notes.md` Phase 0 item 9 carries
+  mm"), `scripts/bench_dose_stats.py` (Phase 2 A driver). Two consumers the
+  first pass missed (found through the full run's extra skip, fixed in the
+  follow-up commit named below): `gtcore/planner.py::_before_after_text`
+  (the status line after the `O` key looked for a float key at the top of
+  `metrics_grid` and would have fallen back silently to the influence
+  estimate; it now reads `metrics_grid["S5"][5.0]`, legacy float keys still
+  accepted -- key lookup only, wording "+5 mm shell" unchanged: planner UI
+  text is on the stop list) and `tests/test_plan_review.py::_shell_entry`
+  (the A7 probe (e) skipped itself when it found no `5.0` key; it reads the
+  S5 row now and the probe runs again). Checked and not a consumer:
+  `scripts/plan_candidates_runtime.py` (no `metrics_grid` / `rind` / shell
+  access). `docs/optimize-notes.md` Phase 0 item 9 carries
   one dated pointer to this section; its tables keep the old keys as
   history. `docs/review-report.md` (historical A7 review) still mentions
   `metrics_grid[5.0]`; left as is.
@@ -1702,7 +1711,18 @@ Full-suite result at `d5d62dc` (`GTCORE_STRICT=1 python -m pytest -q -p no:cache
 from the worktree root; tree = `paper2/integration` e13a4af + this commit; the phantom
 driver and other agents ran concurrently, so the wall time is an upper bound):
 `953 passed, 15 skipped, 15242 warnings in 670.55s (0:11:10)`, no failures. 901 -> 953
-= the tests merged with B / C plus the 25 net new tests here (test_plan_report 7 -> 23 incl.
-the rewritten ones, +1 test_plan_api, +1 test_planner_optimize); the skips are the
-pre-existing set (interface placeholders, the `GT_E2E`-gated run and the data-gated
-tests merged before this branch -- none added here).
+= the tests merged with B / C plus the net new tests here (test_plan_report 7 -> 23 incl.
+the rewritten ones, +1 test_plan_api, +1 test_planner_optimize). **The 15th skip was
+caused by this branch:** `tests/test_plan_review.py` probe (e) skips itself when
+`metrics_grid` has no `5.0` key (`-rs` on the two files holding the baseline 14 showed
+exactly the 13 interface placeholders + the `GT_E2E` gate). Fixed in the follow-up commit
+(`_shell_entry` and `planner._before_after_text` read `metrics_grid["S5"]`; +1 direct test
+of the status line): `tests/test_plan_review.py` -> `16 passed` (0 skipped),
+`tests/test_planner_optimize.py -k "before_after or cli"` -> `7 passed`. The full suite was
+re-run at that commit; its line is appended below.
+
+Full-suite result at `6d49ee9` (the final code commit: d5d62dc + the two consumer fixes;
+`GTCORE_STRICT=1 python -m pytest -q -p no:cacheprovider` from the worktree root; eight agents
+shared the machine during this run, so the wall time is an upper bound):
+`955 passed, 14 skipped, 15242 warnings in 676.65s (0:11:16)`, no failures; the skips are the baseline 14 (13 interface placeholders + the
+`GT_E2E`-gated run), the review probe (e) runs again.
