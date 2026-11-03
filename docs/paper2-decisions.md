@@ -221,3 +221,22 @@ Phase 5 adds the S–I-axis variant to `validation_gamma.py` and the DVH matrix;
 unchanged); (3) the RTPLAN, when it arrives, is expected to show
 ControlPointOrientation = (0, 0, ±1) or absent — `scripts/formalism_check.py
 --rtplan` compares.
+
+## 2026-11-03 — TPS-convention rows measured; half-tile template note (Phase 3 follow-ups)
+
+With every seed axis along S–I (the TPS convention): gtcore @ 32 TPS sources on
+`CTV_GT` D90 6323 cGy / V100 93.4 % (RTDOSE 6365 / 93.7 %; physical axes 6224 /
+92.3 %); gtcore @ 32 gtcore seeds 6288 / 93.0 % (physical 6167 / 91.7 %). Gamma with
+gtcore seeds, 30–200 Gy: 3 %/2 mm 99.51 % global (99.67 local), 2 %/1 mm 98.84 %
+global (98.99 local). About two thirds of the physical-axis D90 gap is the axis
+convention; the remaining ≈ 1 % is engine/grid. Implied S_K with S–I axes at > 5 mm:
+3.53 U (nominal 3.5 U unchanged; the formalism section's 3.59 U was a 3–5 mm
+near-field ratio). Table 3 / F5 caption: both rows, physical axes = pipeline
+result, S–I axes = equivalence check; the caption states the TPS convention.
+Half tiles: `fit_tiles_prior(ImplantPrior(n_full=6, n_half=4))` assigns 32/32 seeds
+(6 full + 4 half, 0 leftover, 0 degraded). The observed halves are cut *along* the
+seed axes (seeds end to end), which the current `RigidTile("half")` template (seeds
+side by side) does not model — a model change on the stop list, so the renderer
+draws half tiles from the pair geometry (20 × 10 mm along the seed axis) and the
+notes state the template limitation. Which count-known row the paper quotes waits
+for the operative record.
