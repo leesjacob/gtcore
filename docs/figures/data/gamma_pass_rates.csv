@@ -1,0 +1,32 @@
+# script: scripts/validation_gamma.py
+# command: python scripts/validation_gamma.py "$GT_DATA_ROOT/<PT-CT1mm>" "$GT_DATA_ROOT/<PT-RT RTSTRUCT dir>" "$GT_DATA_ROOT/<PT-RT RTDOSE dir>"
+# commit: ab85b1c
+# datasets: PT-CT1mm (CT + gtcore seeds), PT-RT (RTSTRUCT Seeds contours, RTDOSE)
+# flag: calibration-set (one clinical case, reference not validation cohort)
+# date: 2026-11-03
+# pymedphys 0.41.0, interp_algo pymedphys; pass = gamma <= 1; gamma capped at max_gamma; reference = RTDOSE (cGy) on its grid, evaluation = gtcore dose_at_points on the eval_spacing lattice; upper window is a post-hoc voxel selection
+seed_source,n_seeds,sk_u,dose_pct,dist_mm,normalisation,global_norm_cgy,window,lower_cgy,upper_cgy,n_points,pass_rate_pct,n_fail,gamma_mean,gamma_median,gamma_p95,n_unresolved,runtime_gamma_s,runtime_eval_s,interp_algo,eval_spacing_mm,max_gamma,box_shape_kji,eval_shape_kji,flag
+gtcore,32,3.5000,3,2,global,6000,30-200Gy,3000,20000,81527,99.3254,550,0.2494,0.2040,0.5000,0,4.4933,50.6180,pymedphys,0.5000,2,"47x78x77","172x173x171",calibration-set
+gtcore,32,3.5000,3,2,global,6000,ge30Gy,3000,inf,89639,98.7104,1156,0.2676,0.2095,0.5102,0,4.4933,50.6180,pymedphys,0.5000,2,"47x78x77","172x173x171",calibration-set
+gtcore,32,3.5000,3,2,local,6000,30-200Gy,3000,20000,81527,99.3695,514,0.2502,0.2025,0.5000,0,4.2299,50.6180,pymedphys,0.5000,2,"47x78x77","172x173x171",calibration-set
+gtcore,32,3.5000,3,2,local,6000,ge30Gy,3000,inf,89639,98.9201,968,0.2615,0.2037,0.5017,0,4.2299,50.6180,pymedphys,0.5000,2,"47x78x77","172x173x171",calibration-set
+gtcore,32,3.5000,2,1,global,6000,30-200Gy,3000,20000,81527,96.9568,2481,0.4293,0.4000,0.9006,0,9.8949,50.6180,pymedphys,0.5000,2,"47x78x77","172x173x171",calibration-set
+gtcore,32,3.5000,2,1,global,6000,ge30Gy,3000,inf,89639,95.2119,4292,0.4539,0.4002,0.9815,0,9.8949,50.6180,pymedphys,0.5000,2,"47x78x77","172x173x171",calibration-set
+gtcore,32,3.5000,2,1,local,6000,30-200Gy,3000,20000,81527,96.2331,3071,0.4365,0.4000,0.9173,0,9.0693,50.6180,pymedphys,0.5000,2,"47x78x77","172x173x171",calibration-set
+gtcore,32,3.5000,2,1,local,6000,ge30Gy,3000,inf,89639,94.7768,4682,0.4550,0.4001,1.0001,0,9.0693,50.6180,pymedphys,0.5000,2,"47x78x77","172x173x171",calibration-set
+tps_maxima,32,3.5000,3,2,global,6000,30-200Gy,3000,20000,81527,99.3058,566,0.2229,0.2004,0.4088,0,3.4521,40.3405,pymedphys,0.5000,2,"47x78x77","172x173x171",calibration-set
+tps_maxima,32,3.5000,3,2,global,6000,ge30Gy,3000,inf,89639,98.6468,1213,0.2443,0.2010,0.5003,0,3.4521,40.3405,pymedphys,0.5000,2,"47x78x77","172x173x171",calibration-set
+tps_maxima,32,3.5000,3,2,local,6000,30-200Gy,3000,20000,81527,99.3499,530,0.2236,0.2004,0.4126,0,3.2464,40.3405,pymedphys,0.5000,2,"47x78x77","172x173x171",calibration-set
+tps_maxima,32,3.5000,3,2,local,6000,ge30Gy,3000,inf,89639,98.8509,1030,0.2380,0.2006,0.5000,0,3.2464,40.3405,pymedphys,0.5000,2,"47x78x77","172x173x171",calibration-set
+tps_maxima,32,3.5000,2,1,global,6000,30-200Gy,3000,20000,81527,98.1282,1526,0.3753,0.3077,0.8003,0,7.7503,40.3405,pymedphys,0.5000,2,"47x78x77","172x173x171",calibration-set
+tps_maxima,32,3.5000,2,1,global,6000,ge30Gy,3000,inf,89639,96.2148,3393,0.4055,0.3240,0.9004,0,7.7503,40.3405,pymedphys,0.5000,2,"47x78x77","172x173x171",calibration-set
+tps_maxima,32,3.5000,2,1,local,6000,30-200Gy,3000,20000,81527,97.6903,1883,0.3820,0.3082,0.8115,0,8.6633,40.3405,pymedphys,0.5000,2,"47x78x77","172x173x171",calibration-set
+tps_maxima,32,3.5000,2,1,local,6000,ge30Gy,3000,inf,89639,96.0207,3567,0.4064,0.3235,0.9046,0,8.6633,40.3405,pymedphys,0.5000,2,"47x78x77","172x173x171",calibration-set
+tps_contours,32,3.5000,3,2,global,6000,30-200Gy,3000,20000,81527,99.3278,548,0.2477,0.2040,0.4862,0,3.9757,51.6999,pymedphys,0.5000,2,"47x78x77","172x173x171",calibration-set
+tps_contours,32,3.5000,3,2,global,6000,ge30Gy,3000,inf,89639,98.7093,1157,0.2656,0.2084,0.5052,0,3.9757,51.6999,pymedphys,0.5000,2,"47x78x77","172x173x171",calibration-set
+tps_contours,32,3.5000,3,2,local,6000,30-200Gy,3000,20000,81527,99.3732,511,0.2487,0.2026,0.5000,0,3.8334,51.6999,pymedphys,0.5000,2,"47x78x77","172x173x171",calibration-set
+tps_contours,32,3.5000,3,2,local,6000,ge30Gy,3000,inf,89639,98.9045,982,0.2597,0.2035,0.5004,0,3.8334,51.6999,pymedphys,0.5000,2,"47x78x77","172x173x171",calibration-set
+tps_contours,32,3.5000,2,1,global,6000,30-200Gy,3000,20000,81527,97.1960,2286,0.4260,0.4000,0.8953,0,9.3669,51.6999,pymedphys,0.5000,2,"47x78x77","172x173x171",calibration-set
+tps_contours,32,3.5000,2,1,global,6000,ge30Gy,3000,inf,89639,95.5153,4020,0.4494,0.4001,0.9582,0,9.3669,51.6999,pymedphys,0.5000,2,"47x78x77","172x173x171",calibration-set
+tps_contours,32,3.5000,2,1,local,6000,30-200Gy,3000,20000,81527,96.5729,2794,0.4330,0.4000,0.9059,0,10.4922,51.6999,pymedphys,0.5000,2,"47x78x77","172x173x171",calibration-set
+tps_contours,32,3.5000,2,1,local,6000,ge30Gy,3000,inf,89639,95.1595,4339,0.4506,0.4001,0.9848,0,10.4922,51.6999,pymedphys,0.5000,2,"47x78x77","172x173x171",calibration-set

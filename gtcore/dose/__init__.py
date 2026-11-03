@@ -10,7 +10,9 @@ coverage statistics for the planner, and ``dvh`` the cheap cavity-shell
 scores it with the exact engine for volumetric D90 / V100; ``targets`` is
 the one definition of every scoring structure (``HRCTV_PHYS``, ``RIND5``,
 ``IMPLANT_REACH``, ``S5``) with its provenance -- ``hrctv`` and
-``metrics.rind_mask`` are built on its ``rind5``.
+``metrics.rind_mask`` are built on its ``rind5``; ``gamma`` wraps
+``pymedphys.gamma`` for the TPS-vs-gtcore gamma index (pymedphys is imported
+only when :func:`gamma_analysis` runs).
 
 ``InterferenceModel`` adds the effect TG-43 superposition cannot express:
 seeds and collagen tile carriers attenuating each other's primary fluence
@@ -21,6 +23,7 @@ the default and stays regression-pinned.
 from .engine import CLRP_V2, DATASETS, SeedDataset, TG43Engine, \
     TG43U1S2_CONSENSUS, compute_dose_grid, dose_at_points, isodose_surfaces
 from .dvh import dvh_curve, dvh_stats, format_report, shell_report
+from .gamma import Evaluation, GammaResult, gamma_analysis, prepare_evaluation
 from .engine import TG43Engine, compute_dose_grid, dose_at_points, \
     isodose_surfaces
 from .interference import (
@@ -54,6 +57,10 @@ __all__ = [
     "propagate",
     "dvh_curve",
     "DoseInterpolator",
+    "Evaluation",
+    "GammaResult",
+    "gamma_analysis",
+    "prepare_evaluation",
     "HRCTV",
     "HRCTV_DEPTH_MM",
     "build_hrctv",
