@@ -2322,3 +2322,335 @@ Full-suite result at `6d49ee9` (the final code commit: d5d62dc + the two consume
 shared the machine during this run, so the wall time is an upper bound):
 `955 passed, 14 skipped, 15242 warnings in 676.65s (0:11:16)`, no failures; the skips are the baseline 14 (13 interface placeholders + the
 `GT_E2E`-gated run), the review probe (e) runs again.
+
+## 2026-11-03 — Phase 3 — seed-to-wall distance (3 mm model) (task `seed-wall`, branch `p2/seed-wall`)
+
+Requirements rev 3 §3 F8 "FIX the 3 mm offset contradiction", §6 Phase 3 fifth
+checkbox; Phase 3 plan row `seed-wall`. Code commit `448a6b3`
+(`scripts/seed_wall_distance.py` + `tests/test_seed_wall_distance.py`); the
+CSVs and this section are in the follow-up commit. Branched from
+`paper2/integration` at `e13a4af`. **Every real-data number below is
+calibration-set** (one clinical case; the printed cavity is the same
+patient's intra-operative cavity). Hardware as in the Phase 1 sections; other
+agents ran concurrently, so timings are upper bounds.
+
+**Question.** The tile model puts the seed plane `SEED_PLANE_OFFSET_MM` =
+3.0 mm from the tile's tissue face (hydrated tiles 2.25–3.75 mm,
+`gtcore.geometry`), so a seed should sit about 3 mm off the cavity wall,
+inside the lumen. The rev 3 contradiction: on the printed phantom the
+localized seeds sat 0.84 mm off the wall mesh while the conformer puts them
+at 3 mm (`docs/optimize-notes.md` V6), and the v6 figure plan quoted a
+mock-level clinical median of 4.6 mm (10–90 % 2.7–5.9 mm) to `Cav_Post`.
+
+### Answer in one paragraph
+
+On the clinical case the 32 gtcore seeds sit a median **+3.65 mm** inside
+the physician's `Cav_Post` surface (10–90 % 1.70–5.46 mm; the 32 TPS source
+positions give +3.57 mm, the mesh cross-check +3.56 / +3.51 mm), i.e. the
+distribution centres inside the 2.25–3.75 mm hydrated band, 0.65 mm above
+the nominal 3.0 mm, and **not** at the mock's 4.6 mm. On the phantom the
+same 32 seeds sit a median **+3.05 mm** off the tile-less twin's printed
+wall (10–90 % 2.35–3.77 mm, 26/32 in band, sd 0.66 mm) but **−0.68 mm**
+relative to the PH8 `body` surface: gtcore's body mask includes the hydrated
+collagen tiles, so the "wall mesh" the conformer used on the phantom is the
+tiles' free face, 1 mm on the lumen side of the seed plane. The 0.84 mm
+figure was a reference-surface artifact, not a placement error, and the
+3 mm model holds on the phantom and in vivo. **`SEED_PLANE_OFFSET_MM` is
+not re-tuned** (requirements §4 / brief: no parameter is tuned on the
+clinical case; the measurement is a check of a device constant).
+
+### What was built
+
+`scripts/seed_wall_distance.py` (paths are CLI arguments; `--out` defaults
+to `docs/figures/data`):
+
+| Function | Role |
+|---|---|
+| `SignedDistanceField(mask, affine, solid, fine_mm=0.5, crop_margin_mm=15, points_ras)` | the primary estimator (below); `.sample(points_ras)` trilinear |
+| `surface_mesh(mask, affine)` / `signed_distance_mesh(mesh, points, solid)` | cross-check: `gtcore.segment.surface.mask_to_mesh` (marching cubes 0.5, Taubin 10, largest component, step 1 on a crop) + `trimesh.proximity.signed_distance` |
+| `tps_sources_from_rtdose(dose)` | RTDOSE local maxima > 200 Gy (3 × 3 × 3) merged within 3 mm — the rule of `validation_clinical.py::print_seed_match_detail` |
+| `body_mask_from_hu(arr, -300)` | gtcore's body rule (`segment_head`: largest component above `AIR_BODY_HU`, holes filled) applied to PH0 |
+| `register_rigid(fixed, fixed_mask, moving, moving_mask)` | SimpleITK Euler3D, Mattes MI 50 bins, 25 % random sampling (seed 1234), levels 4/2/1 with 2/1/0 mm smoothing, regular-step gradient descent, centred on the fixed mask centroid and initialised by the two centroids; returns the transform and Dice of the carried mask |
+| `to_sitk`, `transform_points_ras`, `euler_as_matrix` | exact gtcore-affine ↔ SimpleITK (LPS) geometry; vectorised point transform and its inverse |
+| `summarize`, `histogram_rows`, `Collector`, `write_csv` | statistics (numpy linear percentiles, sample sd, band count), 0.5 mm histogram, CSVs with `#` header comments |
+
+`tests/test_seed_wall_distance.py` (6 tests, 5–6 s): digital sphere on the
+clinical 0.5 × 0.5 × 1 mm grid with the centre off-grid, seeds at
++4.6 / +3 / +1 / −1 / −3 mm in 300 directions — every sign right, |median|
+and |mean| error ≤ 0.2 mm, rms ≤ 0.25 mm, every seed within half the slice
+spacing + 0.2 mm, for the EDT and for the mesh; the `solid` (phantom)
+convention on a 0.59 × 0.59 × 1 mm grid; identical numbers on an affine with
+negated direction cosines and a far-away origin (the PH8/PH0 affines);
+`summarize`/`histogram_rows`; the RTDOSE-maxima finder on two synthetic
+Gaussian sources (exact); `to_sitk` geometry against the affine; the rigid
+registration recovering a known 4°/−3°/6°, (3, −2.5, 4) mm transform of a
+synthetic printed-block look-alike (probe error < 0.3 mm, Dice > 0.97).
+
+### Sign convention and estimator (Methods-quotable)
+
+**Sign.** For every reference surface the signed distance is positive when
+the seed centre lies on the *cavity side* of the surface (inside the
+contoured or segmented cavity; in the lumen, away from the printed plastic)
+and negative inside tissue, plastic or the segmented solid. The model
+therefore predicts +3.0 mm on every reference. (The task brief gave
+"positive = outside the cavity" for the clinical EDT and "positive = into
+the cavity / away from the plastic" for the phantom and asked for one
+convention; the cavity-side-positive one is used throughout, so the band is
++2.25…+3.75 mm everywhere.)
+
+**Estimator.** The reference is a binary voxel mask on the image grid: the
+physician's `Cav_Post` contour rasterised on the CT grid
+(`gtcore.io.rt.rasterize_roi`, Phase 2 rule), gtcore's cavity mask, the PH8
+body mask, or the PH0 body mask. The mask is cropped to its bounding box
+(plus the query points) with 15 mm of context, linearly upsampled by integer
+factors so no spacing exceeds 0.5 mm (through-plane ×2 on every scan here)
+and thresholded at 0.5 — the 0.5-level of the linearly interpolated
+indicator is the mid-point surface marching cubes draws, which removes the
+half-slice bias of a distance transform run on the raw 1 mm-slice mask. The
+Euclidean distance transform is computed inside and outside in physical
+millimetres (`scipy.ndimage.distance_transform_edt` with the spacing as
+`sampling`); their difference is the signed distance, sampled trilinearly at
+each seed centre. The cross-check builds gtcore's own surface of the same
+mask (`mask_to_mesh`: marching cubes at 0.5, Taubin smoothing, largest
+component) and takes `trimesh.proximity.signed_distance`. On a digital
+sphere (R = 15 mm, centre off-grid, 600 directions) the committed code gives:
+
+| grid (mm) | offset | EDT median / mean / rms / max abs error (mm) | mesh median / mean / rms / max (mm) |
+|---|---|---|---|
+| 0.52 × 0.52 × 1.0 (PT-CT1mm) | +4.6 | −0.034 / −0.036 / 0.085 / 0.235 | −0.084 / −0.098 / 0.128 / 0.490 |
+| | +3.0 | −0.006 / −0.004 / 0.083 / 0.236 | −0.068 / −0.079 / 0.114 / 0.490 |
+| | +1.0 | +0.097 / +0.094 / 0.133 / 0.355 | −0.032 / −0.039 / 0.097 / 0.489 |
+| | −1.0 | −0.116 / −0.117 / 0.166 / 0.631 | +0.016 / +0.022 / 0.097 / 0.441 |
+| | −3.0 | −0.023 / −0.038 / 0.122 / 0.523 | +0.042 / +0.052 / 0.105 / 0.335 |
+| 0.59 × 0.59 × 1.0 (PH8) | +3.0 | +0.010 / +0.014 / 0.091 / 0.356 | −0.066 / −0.077 / 0.116 / 0.483 |
+| | +1.0 | +0.121 / +0.118 / 0.154 / 0.407 | −0.028 / −0.036 / 0.102 / 0.480 |
+| 0.68 × 0.68 × 1.0 (PH0) | +3.0 | +0.015 / +0.016 / 0.096 / 0.285 | −0.075 / −0.088 / 0.123 / 0.470 |
+| | −1.0 | −0.166 / −0.180 / 0.215 / 0.600 | −0.000 / −0.004 / 0.094 / 0.442 |
+
+Reading: the distribution-level accuracy (median, mean) is within 0.2 mm at
+every offset and grid, and within 0.05 mm around +3 mm where the clinical
+and phantom seeds sit; the per-seed worst case is bounded by half the slice
+spacing (a surface element perpendicular to z is quantised to the slice —
+irreducible from a binary mask), so the **0.2 mm acceptance criterion is met
+for the distribution and for the sign of every seed, not for every single
+seed** (the test asserts ≤ 0.5 × slice + 0.2 mm per seed). The EDT
+over-reads |distance| by ~0.1 mm within 1 mm of the surface (the trilinear
+blend across the zero crossing); the mesh under-reads by ~0.07–0.1 mm at
+3–4.6 mm (Taubin). The two methods bracket the truth; both are reported.
+
+### Results — clinical, PT-CT1mm + PT-RT (commit `448a6b3`)
+
+Inputs: CT 204 × 512 × 512 at 0.52 × 0.52 × 1.0 mm; `reconstruct` 28–30 s,
+32 seeds, gtcore cavity 41.3 cc; `Cav_Post` 35.10 cc on the CT grid; RTDOSE
+maxima: 32 sources, one-to-one match to the gtcore seeds median 0.92 mm, p95
+1.37 mm, max 1.45 mm (dose-grid voxel centres, 1 × 1 × 1.667 mm, so ≈ 0.5–0.8
+mm of that is grid quantisation). EDT crops 73 × 148 × 162 → 146 × 148 × 162
+fine voxels (0.8 s); meshes 69 k (`Cav_Post`) / 104 k (gtcore cavity) faces.
+
+| seed set | reference | method | median | 10–90 % | min | max | mean ± sd | in band 2.25–3.75 | negative |
+|---|---|---|---|---|---|---|---|---|---|
+| gtcore seeds (32) | `Cav_Post` | EDT | **+3.65** | +1.70 … +5.46 | −2.07 | +7.11 | +3.71 ± 1.65 | 13/32 | 1 |
+| gtcore seeds | `Cav_Post` | mesh | +3.56 | +1.57 … +5.45 | −1.82 | +7.00 | +3.63 ± 1.63 | 15/32 | 1 |
+| TPS sources (32) | `Cav_Post` | EDT | **+3.57** | +1.68 … +5.20 | −1.75 | +6.68 | +3.68 ± 1.66 | 14/32 | 1 |
+| TPS sources | `Cav_Post` | mesh | +3.51 | +1.55 … +5.15 | −1.50 | +6.59 | +3.61 ± 1.64 | 14/32 | 1 |
+| gtcore seeds | gtcore cavity | EDT | +2.95 | +0.88 … +3.12 | −1.79 | +3.23 | +2.37 ± 1.20 | 23/32 | 3 |
+| gtcore seeds | gtcore cavity | mesh | +2.87 | +0.78 … +3.01 | −1.69 | +3.15 | +2.26 ± 1.17 | 22/32 | 3 |
+| TPS sources | gtcore cavity | EDT | +2.87 | +1.00 … +3.57 | −2.05 | +3.71 | +2.41 ± 1.33 | 21/32 | 2 |
+| TPS sources | gtcore cavity | mesh | +2.83 | +0.78 … +3.46 | −1.99 | +3.62 | +2.32 ± 1.30 | 20/32 | 2 |
+
+Per-seed values (gtcore seeds vs `Cav_Post`, EDT, sorted, mm): −2.1, 1.5,
+1.6, 1.6, 2.6, 2.9, 2.9, 3.1, 3.2, 3.3, 3.4, 3.4, 3.4, 3.5, 3.5, 3.6, 3.7,
+3.8, 3.8, 3.9, 4.2, 4.2, 4.6, 4.8, 4.9, 4.9, 4.9, 5.1, 5.5, 5.8, 6.1, 7.1;
+1 mm bins: [−3, −2) 1, [1, 2) 3, [2, 3) 3, [3, 4) 13, [4, 5) 7, [5, 6) 3,
+[6, 7) 1, [7, 8) 1. TPS sources: 1 below −1, 3 in [1, 2), 4 in [2, 3), 10 in
+[3, 4), 8 in [4, 5), 4 in [5, 6), 2 in [6, 7). Paired TPS − gtcore on the
+same reference: median −0.06 mm, sd 0.50 mm, max |Δ| 1.29 mm (the seed
+localisation disagreement, Phase 1: median 0.15 mm to the contoured seeds,
+0.92 mm to the dose-grid maxima).
+
+Reading. (i) The centre of the distribution is 3.5–3.65 mm by four
+estimates (two seed sets × two surface methods), inside the hydrated band
+and 0.5–0.65 mm above nominal; the v6 mock's 4.6 mm is not reproduced and
+is superseded. (ii) 31 of 32 seeds are inside the contoured cavity; one
+seed (−2.1 mm) lies in tissue beyond the contour. (iii) The spread (sd
+1.65 mm; 10–90 % 1.7–5.5 mm) is 2.5× the phantom's (0.66 mm) — the
+physician's contour of a drained post-operative cavity is drawn through
+tiles, fluid and debris at 1 mm pitch and does not follow the tile tissue
+face everywhere, and tiles that overlap or lift off the wall (6 of 8 fitted,
+8 leftover seeds, F4b / task `leftovers`) put seeds 5–7 mm into the lumen (5
+seeds > 5 mm). Which seeds those are can be read per `seed_id` from
+`seed_wall_distance.csv` against the `leftovers` tables; no tile-level
+analysis is made here. (iv) The gtcore-cavity rows are **circular** and are
+not evidence: `segment_cavity` clips the cavity `SHEET_TOL_MM` = 3 mm beyond
+the seed sheet (its docstring cites the same 3 mm model), so most seeds read
+≈ 3.1 mm by construction; the low tail (0.9–1.8 mm, 3 negative) is where the
+gtcore cavity leaks past the seeds (Phase 1/2 known state, Dice 0.665 vs
+`Cav_Post`). Reported for completeness, labelled as such in the CSV header.
+
+### Results — phantom, PH8 + PH0 (commit `448a6b3`)
+
+Inputs: PH8 157 × 512 × 512 at 0.59 × 0.59 × 1.0 mm, `reconstruct` 29–36 s,
+32 seeds, body mask 474 mL; PH0 248 × 512 × 512 at 0.68 × 0.68 × 1.0 mm,
+body (largest component > −300 HU, filled) 468 mL, k 135–241 — the same
+print (PH0's second object, 268 mL at ~280 HU, is a different piece and is
+excluded by the largest-component rule). Plastic HU (median of the 3-voxel
+eroded body): PH8 104, PH0 94. **23 of 32 seed centres lie inside the PH8
+body mask**, i.e. inside a segmented tile.
+
+Rigid registration PH0 → PH8 (fixed PH8, moving PH0, both cropped to the
+body + 10 mm): 23 iterations, final MI −1.417, Dice of the carried body
+masks **0.979**, Euler angles (−0.01, −3.54, −0.06)°, translation (−12.9,
+−2.67, −142.0) mm LPS (the two scans differ by a 142 mm table offset and a
+3.5° tilt about y), 4.5–6 s. Registration residual = |distance| of the PH0
+wall (Taubin-mesh vertices, 60 000 sampled) carried into PH8 to the PH8 body
+surface: median **0.34 mm**, p90 0.77, p95 0.98 mm over all points; median
+0.33 mm, p90 0.70, p95 0.79 mm over the 47 765 points more than 15 mm from
+any seed (no tiles). For scale, 1 − Dice = 0.021 on a 470 mL block of
+54 000 mm² surface is a 0.18 mm mean surface discrepancy; the residual is at
+the two scans' voxel-quantisation floor (0.59 / 0.68 mm pixels).
+
+| seed set | reference | method | median | 10–90 % | min | max | mean ± sd | in band | negative |
+|---|---|---|---|---|---|---|---|---|---|
+| PH8 seeds (32) | (i) PH8 `body` (tiles included) | EDT | **−0.68** | −1.74 … +0.57 | −2.32 | +1.87 | −0.60 ± 0.96 | 0/32 | 24 |
+| PH8 seeds | (i) PH8 `body` | mesh | −0.51 | −1.69 … +0.28 | −2.13 | +1.99 | −0.56 ± 0.89 | 0/32 | 24 |
+| PH8 seeds | (ii) PH0 printed wall (registered) | EDT | **+3.05** | +2.35 … +3.77 | +1.36 | +4.36 | +3.03 ± 0.66 | 26/32 | 0 |
+| PH8 seeds | (ii) PH0 printed wall | mesh | +2.89 | +2.19 … +3.77 | +1.25 | +4.34 | +2.95 ± 0.68 | 24/32 | 0 |
+| PH8 seeds | (ii) at the air/plastic mid-point threshold (−453 HU) | EDT | +2.86 | +2.22 … +3.57 | +0.93 | +4.19 | +2.83 ± 0.67 | 25/32 | 0 |
+
+Per-seed values vs the PH0 wall (EDT, sorted, mm): 1.4, 1.8, 2.3, 2.3, 2.4,
+2.4, 2.5, 2.6, 2.7, 2.7, 2.7, 2.7, 2.9, 2.9, 3.0, 3.0, 3.1, 3.1, 3.2, 3.2,
+3.3, 3.3, 3.3, 3.5, 3.5, 3.7, 3.7, 3.7, 3.8, 3.8, 4.1, 4.4 (1 mm bins: [1, 2)
+2, [2, 3) 13, [3, 4) 15, [4, 5) 2). Paired (ii) − (i) per seed — the
+segmented tile's thickness on the lumen side of the plastic: median 3.46 mm,
+mean 3.63 ± 1.13 mm, range 1.2–6.1 mm (nominal tile thickness 4.0 mm; the
+body mask at −300 HU cuts into the partially hydrated collagen, which sits
+at −250…+100 HU).
+
+Reading. Against the clean printed wall the seeds sit at the model's 3 mm
+(median 3.05 mm, 81 % in the band; the mid-point-threshold surface, 0.2 mm
+further into the plastic's partial-volume edge, gives 2.86 mm — the
+threshold choice is a ±0.1 mm effect). Against gtcore's PH8 body surface
+the same seeds read −0.68 mm: the tile is part of the body mask, so that
+surface is the tile's free face, nominally 1 mm on the lumen side of the
+seed plane (4 mm tile − 3 mm offset). This is the 0.84 mm "localized seeds
+off the mesh" of `docs/optimize-notes.md` (V6, 2026-10-07): the number was
+right, the reference surface was the tile face, not the wall. A conformer
+that snaps a tile to that mesh and puts its seeds 3 mm from it places them
+≈ 3.7 mm from the plastic — the 3.94 mm "conformer substitution shift"
+reported there is this 1 mm reference offset plus the pose change, not a
+3 mm placement error. Nothing about the phantom placement contradicts the
+model.
+
+### Decision (rev 3 F8) and draft text
+
+**Decision.** The clinical distribution centres inside the 2.25–3.75 mm
+band (median 3.65 / 3.57 mm), so per rev 3 the model holds in vivo and
+`SEED_PLANE_OFFSET_MM` = 3.0 mm and every stage citing it (`tiles.deform`,
+`tiles.surface`, `tiles.auto`, `interact.SEED_WALL_OFFSET_MM`,
+`phantom.generate.SEED_INSET_MM`, `segment.cavity.SHEET_TOL_MM`) stay as
+they are; the optimizer figures (F8) may proceed. The phantom "offset" is
+not a placement artifact to describe but a reference-surface artifact to
+state (below). No constant was changed in this task.
+
+**Methods sentence (used; tile model paragraph).** "Seeds are modelled
+3.0 mm from the tile's tissue face (manufacturer; 2.25–3.75 mm when
+hydrated [Ferreira et al.]). We did not fit this value: on the clinical
+case the 32 localized seeds lie a median 3.6 mm (10th–90th percentile
+1.7–5.5 mm) inside the physician's post-operative cavity contour, the 32
+TPS source positions 3.6 mm (1.7–5.2 mm), and on the printed phantom the
+32 seeds lie 3.0 mm (2.4–3.8 mm) off the printed wall of the tile-less twin
+after rigid registration (surface residual 0.3 mm median), consistent with
+the device geometry; distances are signed Euclidean distances to the
+rasterised surface, positive towards the lumen."
+
+**Methods sentence (phantom reference surface; Methods, phantom paragraph
+or F8/V6 caption).** "On the phantom the pipeline's wall mesh is the surface
+of the body mask, which includes the hydrated collagen tiles; seeds
+therefore read 0.7 mm below that surface (the tile's free face), while they
+sit 3.0 mm off the plastic measured on the tile-less twin. Phantom distances
+quoted to 'the wall' use the twin's printed surface."
+
+**Alternative Methods sentence (drafted as requested; NOT used — the data
+do not support it).** "The seeds lie a median 4.6 mm inside the contoured
+cavity rather than 3 mm because the seed plane is 3 mm from the tile face
+while the drained post-operative cavity contour sits a further ~1.5 mm
+outside the tile–tissue interface; the 3 mm seed-plane offset is a device
+constant and was not re-tuned to the contour." — The measured centre is
+3.6 mm, not 4.6 mm; the residual 0.6 mm above nominal is within the
+hydrated band and within the contouring pitch, so no such sentence is
+needed. If a reviewer asks about the 0.6 mm: it is the sum of hydration
+(up to +0.75 mm by the band), the 1 mm contour pitch and tiles that do not
+lie flat (the +5…+7 mm tail), and it is in the direction expected for a
+contour drawn around the tile surface rather than through it.
+
+**Table 2 row (parameters).** `SEED_PLANE_OFFSET_MM` | 3.0 mm (hydrated
+2.25–3.75 mm) | source: device geometry (manufacturer; Ferreira et al.) |
+calibration set: **none** (not fitted) | check: median seed-to-`Cav_Post`
+distance 3.65 mm (gtcore seeds) / 3.57 mm (TPS sources) on PT-CT1mm +
+PT-RT; 3.05 mm seed-to-printed-wall on PH8 vs PH0 — both inside the band;
+`scripts/seed_wall_distance.py`, `docs/figures/data/seed_wall_summary.csv`.
+
+**Results/caption sentence (if the spread is shown, e.g. F4b caption or
+Supplement).** "Signed seed-to-cavity-surface distance, positive towards
+the lumen: clinical 3.6 mm median (1.7–5.5 mm, n = 32; 13 of 32 inside the
+2.25–3.75 mm hydrated band, one seed 2.1 mm outside the contour, five seeds
+more than 5 mm inside it where tiles overlap or lift off the wall); phantom
+3.0 mm (2.4–3.8 mm; 26 of 32 in band)."
+
+### Outputs
+
+`docs/figures/data/seed_wall_distance.csv` (192 rows: 32 seeds × {gtcore
+seeds, TPS sources} × {`Cav_Post`, gtcore cavity} + 32 × {PH8 body, PH0
+wall}; columns dataset, seed_set, seed_id, x/y/z RAS, reference,
+signed_distance_mm (EDT), signed_distance_mesh_mm, in_band, and for TPS
+sources matched_gtcore_seed + match_distance_mm; TPS `seed_id` = the matched
+gtcore seed id), `seed_wall_summary.csv` (13 rows), `seed_wall_histogram.csv`
+(0.5 mm bins, −6…12 mm). Header comments: script, command with dataset ids,
+commit `448a6b3`, date, flag, sign convention, both methods, references,
+registration parameters and residual, plastic HU, runtime (104 s total).
+Committed with `git add -f` (`docs/figures/data/` is git-ignored).
+
+### Commands
+
+```
+# from the p2-seed-wall worktree root, GTCORE_STRICT=1, PYTHONPATH=<worktree>; gtcore.__file__ printed = <worktree>\gtcore\__init__.py
+python scripts/seed_wall_distance.py --ct "$GT_DATA_ROOT/<PT-CT1mm>" --rtstruct "$GT_DATA_ROOT/<PT-RT RTSTRUCT>" \
+    --rtdose "$GT_DATA_ROOT/<PT-RT RTDOSE>" --ph8 "$GT_DATA_ROOT/<PH8>" --ph0 "$GT_DATA_ROOT/<PH0>"      # 104 s at 448a6b3
+GTCORE_STRICT=1 python -m pytest -q tests/test_seed_wall_distance.py      # 6 passed in 5-6 s
+GTCORE_STRICT=1 python -m pytest -q                                       # full suite, see below
+```
+
+### Tests
+
+`tests/test_seed_wall_distance.py`: 6 passed (5.2–6.4 s) at `448a6b3`.
+Full suite at `448a6b3`: `GTCORE_STRICT=1 python -m pytest -q` from the worktree root: **947 passed, 14 skipped**, 15245 warnings in 675.26 s (0:11:15), run concurrently with the real-data run and other agents (wall time is an upper bound). Baseline before this task (e13a4af): 941 passed, 14 skipped; the 6 new tests are this file.
+
+### Notes for the coordinator / open points
+
+- **Phase 4 V6 (phantom arm) consequence, not acted on.** The phantom wall
+  mesh (`meshes["body"]`, `wall_mesh_for`) is the tile-including body
+  surface. The `as_placed` arm scores the localized seeds where they are
+  (fine); the conformer arm and every optimizer arm put seeds 3 mm from the
+  *tile face*, ≈ 3.7 mm from the plastic, and the "conformer substitution"
+  line (+1.75 pp V100) partly measures this reference offset. Options for
+  Phase 4: conform/optimize on the registered PH0 wall (the clean printed
+  surface; this script's `register_rigid` + `transform_points_ras` give the
+  transform), or on a PH8 body mask with the tiles removed (not available
+  without a tile segmentation — stop-list adjacent). Coordinator's call;
+  nothing in `gtcore` was changed here.
+- The v6 figure-plan number "median 4.6 mm (10–90 % 2.7–5.9)" is
+  superseded by 3.65 mm (1.70–5.46); `docs/paper2-decisions.md`'s v6 entry
+  ("seed-to-`Cav_Post` distance (median 4.6 mm, mock-level) stated in
+  Methods") should be read with this section.
+- Sign-convention wording in the task brief (clinical "positive = outside
+  the cavity") was not followed; one convention (cavity side positive) is
+  used for every reference, as the brief's "identical to the clinical case"
+  requires. The CSV header states it.
+- Per-seed accuracy: the brief's "within 0.2 mm" holds for the
+  distribution (median/mean, every grid, every offset) and the sign of
+  every seed; a single seed is good to half the slice spacing (binary mask
+  on 1 mm slices). The test pins exactly that.
+- Nothing installed. No shared files touched (`pyproject.toml`,
+  `tests/conftest.py`, `README.md` untouched). Files: `scripts/seed_wall_distance.py`,
+  `tests/test_seed_wall_distance.py`, `docs/figures/data/seed_wall_{distance,summary,histogram}.csv`,
+  this section.
