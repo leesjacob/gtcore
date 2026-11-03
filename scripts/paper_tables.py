@@ -98,6 +98,31 @@ V6_SWEEP = OPT + "/v6_sweep.csv"
 V7_RUNTIME = OPT + "/v7_runtime.csv"
 V7_HARDWARE = OPT + "/v7_hardware.json"
 V8_FAIL = OPT + "/v8_failure_modes.csv"
+V2_COLLAPSED = OPT + "/v2_rows_collapsed.csv"
+V3_RED = OPT + "/v3_gap_reduced.csv"                     # frozen objective (lambda_tail 1), reduced grid, exact bound
+V3_RED_L0 = OPT + "/v3_gap_reduced_l0.csv"               # SA on pure V100 (lambda_tail 0): search quality
+V3_INST = OPT + "/v3_gap_per_instance.csv"               # campaign grid (bound mostly HiGHS time-limited)
+V3_INST_RED = OPT + "/v3_gap_per_instance_reduced.csv"
+V3_INST_RED_L0 = OPT + "/v3_gap_per_instance_reduced_l0.csv"
+V8_PACK_SUM = OPT + "/v8_packing_failures_summary.csv"
+V8_PACK = OPT + "/v8_packing_failures.csv"
+F8B_JSON = "docs/figures/data/f8b_patient_optimized.json"
+
+# F8 / Table 3 patient arms reported in the main tables: as implanted (with its two
+# tile-fit readings) and, per optimized family, the seed mean and the best seed only;
+# the per-seed rows go to Table S4.
+F8_MAIN_ARMS = (
+    ("as_implanted", "as implanted"),
+    ("as_implanted_fit_count8", "N = 8 count fit"),
+    ("as_implanted_fit_6full_4half", "6 full + 4 half fit (PENDING OPERATIVE RECORD)"),
+    ("optimized_rind5_sa_mean", "optimized for RIND5, mean of the SA seeds"),
+    ("optimized_rind5_sa_best", "optimized for RIND5, best seed"),
+    ("optimized_ctvgt_sa_mean", "optimized for CTV_GT, mean of the SA seeds"),
+    ("optimized_ctvgt_sa_best", "optimized for CTV_GT, best seed"),
+)
+F8_TARGETS = (("RIND5(gtcore)", "RIND5_gtcore_V100", "RIND5_gtcore_D90_cGy"),
+              ("CTV_GT", "CTV_GT_V100", "CTV_GT_D90_cGy"),
+              ("IMPLANT_REACH(10)", "REACH10_V100", "REACH10_D90_cGy"))
 
 HARDWARE_LINE = ("AMD Ryzen 5 7600X, 6 cores / 12 threads, 31 GB RAM, Windows 11 Home; "
                  "Python 3.12.10, numpy 2.5 (shared machine: Phase 1-4 timings are upper bounds)")
@@ -158,6 +183,20 @@ class Repo:
         header, _ = self.csv(rel)
         for line in header:
             m = re.search(r"commit:\s*([0-9a-fA-F]{7,40})", line)
+            if m:
+                return m.group(1)
+        # post-processed tables (scripts/packing_failures.py): "this table generated at <hash>"
+        for line in header:
+            m = re.search(r"generated at\s+([0-9a-fA-F]{7,40})\b", line)
+            if m:
+                return m.group(1)
+        return None
+
+    def csv_input_commit(self, rel: str) -> Optional[str]:
+        """``# campaign commit (inputs): <hash>`` of a post-processed table, if any."""
+        header, _ = self.csv(rel)
+        for line in header:
+            m = re.search(r"commit \(inputs\):\s*([0-9a-fA-F]{7,40})", line)
             if m:
                 return m.group(1)
         return None
@@ -227,6 +266,9 @@ FMT = {
     "int": lambda v: "%d" % int(round(_f(v))),
     "s1": lambda v: "%.1f" % _f(v),
     "pp1": lambda v: "%.1f" % _f(v),
+    "pp2": lambda v: "%.2f" % _f(v),
+    "pp2s": lambda v: "%+.2f" % _f(v),                       # signed difference, two decimals
+    "p3": lambda v: "%.3f" % _f(v),                          # p value, three decimals
     "str": lambda v: str(v).strip(),
 }
 
@@ -783,34 +825,136 @@ class Builder:
                         [L(CLIN, {"row": H, "dose_source": "RTDOSE", "metric": "D90"}, "tps_check", "str")],
                         "MIM structure volumes and D90", FLAG_CAL))
         # ---------------------------------------------------------- packing capacity, eligibility
-        add(self.t3_md("placement optimisation", "PT-CT1mm (F8b eligible wall)", "craniotomy-side eligibility and packing capacity at grid (h 2.5 mm, 6 spins; not exact)",
-                       "facing + line-of-sight wall (no implant term) 26.5 % of the cavity area (11.8 % with the implant-visibility term); capacity 13 tiles (10 with the implant term) vs the manufacturer rule 4 tiles on the eligible area (34 on the whole wall); only 9/32 implanted seeds lie on the facing + line-of-sight wall, so the patient arms use that wall UNION the wall within 10 mm of an implanted seed (demonstrated reach; fraction pending campaign)",
-                       "geometry only (no dose); opening = skull defect U cavity mouth, 28.7 cm2", FLAG_CAL, NOTES, "4cd9891",
-                       ["0.265", "0.118", "10 tiles", "28.7 cm²", "4cd9891"],
-                       'python -m gtcore.cli optimize "$GT_DATA_ROOT/<PT-CT1mm>" --tiles 8 --solver sa --eligible craniotomy',
-                       [md_locator(DECISIONS, "26.5 %", "13 tiles at h 2.5 mm", "9/32", "demonstrated reach")]))
+        add(self._eligibility_row())
         add(self._capacity_row())
         for r in self._optimizer_rows():
             add(r)
         return t
 
     # ------------------------------------------------------- optimizer rows (campaign)
+    def _mixed_row(self, stage: str, dataset: str, metric: str, value: str, truth: str,
+                   sources: Sequence[str], locs: Sequence[str], flag: str,
+                   command: Optional[str] = None, extra_commits: Sequence[str] = ()) -> Row:
+        """A Table 3 row whose numbers come from several files (CSV cells,
+        aggregates, notes / JSON tokens).  The commit cell lists every CSV
+        header commit plus ``extra_commits`` (notes sections)."""
+        R = self.repo
+        commits: List[str] = []
+        for s in sources:
+            self._note(s)
+            c = R.csv_commit(s) if s.endswith(".csv") and R.exists(s) else None
+            if c and c not in commits:
+                commits.append(c)
+        for c in extra_commits:
+            if c not in commits:
+                commits.append(c)
+        if command is None:
+            command = next((R.csv_command(s) for s in sources if s.endswith(".csv") and R.exists(s) and R.csv_command(s)), "")
+        cells = {"stage": stage, "dataset": dataset, "metric": metric, "value": value, "truth/reference": truth,
+                 "source csv": ", ".join(sources), "command": command, "commit": ", ".join(commits) or "?", "flag": flag}
+        return Row(cells, " ;; ".join(locs))
+
+    def _need_tokens(self, rel: str, tokens: Sequence[str]) -> str:
+        missing = self.tokens_present(rel, tokens)
+        if missing:
+            raise LookupError("%s: tokens not found %s" % (rel, missing))
+        self._note(rel)
+        return md_locator(rel, *tokens)
+
+    def _eligibility_parts(self) -> Optional[Tuple[str, List[str], List[str], List[str]]]:
+        """The measured F8(b) eligible wall (campaign patient run): value text,
+        locators, sources, extra commits -- or None when the run has not landed."""
+        R = self.repo
+        need = ["eligible_fraction_area", "eligible_fraction_craniotomy_only", "seeds_nearest_face_eligible",
+                "seeds_nearest_face_eligible_craniotomy_only", "n_seeds_scored"]
+        if not (self.landed(F8_SUMMARY, need) and R.exists(F8B_JSON) and R.exists(F8_ARMS)):
+            return None
+        _, rows = R.csv(F8_SUMMARY)
+        arm = "as_implanted" if any(r["arm"] == "as_implanted" for r in rows) else rows[0]["arm"]
+        key = {"arm": arm}
+        lk = [L(F8_SUMMARY, key, "eligible_fraction_craniotomy_only", "pct1"),
+              L(F8_SUMMARY, key, "seeds_nearest_face_eligible_craniotomy_only", "int"),
+              L(F8_SUMMARY, key, "n_seeds_scored", "int"),
+              L(F8_SUMMARY, key, "eligible_fraction_area", "pct1"),
+              L(F8_SUMMARY, key, "seeds_nearest_face_eligible", "int")]
+        v = [x.value(R) for x in lk]
+        info = R.json(F8B_JSON)
+        rule = info.get("manufacturer_rule_tiles_on_eligible_area")
+        area = info.get("eligible_area_mm2")
+        hdr, _ = R.csv(F8_ARMS)
+        m = re.search(r"\((\d+) mm2 of (\d+) mm2\)", " ".join(hdr))
+        if rule is None or area is None or m is None:
+            return None
+        cand = [r for r in rows if r["arm"].startswith("optimized") and r.get("n_candidates", "").strip()]
+        cand_txt, cand_loc = "", []
+        if cand:
+            ck = {"arm": cand[0]["arm"]}
+            cand_txt = ", which gives C = %s candidates" % fmt("int", cand[0]["n_candidates"])
+            cand_loc = [L(F8_SUMMARY, ck, "n_candidates", "int").encode()]
+        value = ("eligible = the craniotomy wall (facing + line of sight through the opening, no implant term: %s %% of the wall area; "
+                 "it holds the nearest wall face of only %s of the %s implanted seeds) UNION the wall within 10 mm of an implanted seed "
+                 "(demonstrated reach) = %s %% of the wall area (%s of %s mm2); %s/%s implanted seeds have their nearest wall face eligible. "
+                 "Manufacturer rule (eligible area / 4 cm2, rounded up): %d tiles on that eligible area (%s mm2); 34 on the whole %s mm2 wall. "
+                 "Packing capacity at grid (h 2.5 mm, 6 spins; greedy maximal independent set, not exact): 13 tiles on the craniotomy wall alone "
+                 "(not re-measured on the union%s). Not used: the CLI's three-term rule (+ implant visibility) = 11.8 %% of the area, rule 4 tiles, "
+                 "capacity 10" % (v[0], v[1], v[2], v[3], m.group(1), m.group(2), v[4], v[2], int(rule), m.group(1), m.group(2), cand_txt))
+        locs = [x.encode() for x in lk] + cand_loc + [
+            self._need_tokens(F8B_JSON, ['"manufacturer_rule_tiles_on_eligible_area": %d' % int(rule), '"eligible_area_mm2": %s' % m.group(1)]),
+            self._need_tokens(F8_ARMS, ["(%s mm2 of %s mm2)" % (m.group(1), m.group(2)), "11.8 %"]),
+            self._need_tokens(NOTES, ["on the eligible area says 4 tiles (34 on the whole wall)", "tiles without the implant term (453 candidates",
+                                      "**10 tiles** (290 candidates", "4cd9891"])]
+        return value, locs, [F8_SUMMARY, F8B_JSON, F8_ARMS, NOTES], ["4cd9891"]
+
+    def _eligibility_row(self) -> Row:
+        parts = self._eligibility_parts()
+        if parts is not None:
+            value, locs, sources, extra = parts
+            return self._mixed_row("placement optimisation", "PT-CT1mm (F8b eligible wall, gtcore cavity mesh)",
+                                   "eligible wall for the patient arms (measured union fraction, fairness), manufacturer rule and packing capacity (area basis stated)",
+                                   value, "geometry only (no dose); opening = skull defect U cavity mouth, 28.7 cm2", sources, locs, FLAG_CAL,
+                                   extra_commits=extra)
+        return self.t3_md("placement optimisation", "PT-CT1mm (F8b eligible wall)", "craniotomy-side eligibility and packing capacity at grid (h 2.5 mm, 6 spins; not exact)",
+                          "facing + line-of-sight wall (no implant term) 26.5 % of the cavity area (11.8 % with the implant-visibility term); capacity 13 tiles (10 with the implant term); "
+                          "the patient arms use that wall UNION the wall within 10 mm of an implanted seed (demonstrated reach; union fraction pending the patient run)",
+                          "geometry only (no dose); opening = skull defect U cavity mouth, 28.7 cm2", FLAG_CAL, NOTES, "4cd9891",
+                          ["0.265", "0.118", "10 tiles", "28.7 cm²", "4cd9891"],
+                          'python -m gtcore.cli optimize "$GT_DATA_ROOT/<PT-CT1mm>" --tiles 8 --solver sa --eligible craniotomy',
+                          [md_locator(DECISIONS, "26.5 %", "13 tiles at h 2.5 mm", "9/32", "demonstrated reach")])
+
+    @staticmethod
+    def _span(vals: Sequence[int]) -> str:
+        lo, hi = min(vals), max(vals)
+        return "%d" % lo if lo == hi else "%d-%d" % (lo, hi)
+
     def _capacity_row(self) -> Row:
         if self.landed(CAPACITY, ["capacity_at_grid"]):
             _, rows = self.repo.csv(CAPACITY)
+            ok = [r for r in rows if r.get("status", "ok") == "ok"]
+            groups: Dict[str, List[Dict[str, str]]] = {}
+            for r in ok:
+                g = ("synthetic " + r["cavity"].split("_")[-1]) if r.get("dataset") == "synthetic" else r.get("dataset", "?")
+                groups.setdefault(g, []).append(r)
             parts, locs = [], []
-            for r in rows:
-                if r.get("status", "ok") != "ok":
-                    continue
-                lab = r.get("dataset", "") + (" " + r.get("cavity", "") if r.get("dataset") == "synthetic" else "")
-                key = {"dataset": r["dataset"], "cavity": r["cavity"]}
+            for g, rs in groups.items():
+                caps = [int(round(float(r["capacity_at_grid"]))) for r in rs]
+                common = max(set(caps), key=caps.count)
+                odd = ["%s: %d" % (r["cavity"], c) for r, c in zip(rs, caps) if c != common]
+                cap_txt = "%d%s" % (common, (" (" + ", ".join(odd) + ")") if odd else "")
+                lab = g if len(rs) == 1 else "%s (%d cavities)" % (g, len(rs))
+                if g == "PH8":
+                    lab = "PH8 (registered PH0 wall, eligible %s mm2)" % fmt("int", rs[0]["eligible_area_mm2"])
                 parts.append("%s: rule %s / capacity %s / area bound %s / placed %s" % (
-                    lab, fmt("int", r["rule_tiles"]), fmt("int", r["capacity_at_grid"]), fmt("int", r["upper_bound_area"]), fmt("int", r["implanted"])))
-                for c in ("rule_tiles", "capacity_at_grid", "upper_bound_area", "implanted"):
-                    locs.append(L(CAPACITY, key, c, "int").encode())
+                    lab, self._span([int(round(float(r["rule_tiles"]))) for r in rs]), cap_txt,
+                    self._span([int(round(float(r["upper_bound_area"]))) for r in rs]), self._span([int(round(float(r["implanted"]))) for r in rs])))
+                for r in rs:
+                    key = {"dataset": r["dataset"], "cavity": r["cavity"]}
+                    for c in ("rule_tiles", "capacity_at_grid", "upper_bound_area", "implanted"):
+                        locs.append(L(CAPACITY, key, c, "int").encode())
             self._note(CAPACITY)
-            cells = {"stage": "placement optimisation", "dataset": "synthetic cavities, PH8", "metric": "manufacturer rule vs capacity at grid vs placed (%s)" % rows[0].get("label", ""),
-                     "value": "; ".join(parts), "truth/reference": "greedy maximal independent set on the planner-rule conflict graph (lower bound, grid-dependent)",
+            cells = {"stage": "placement optimisation", "dataset": "18 synthetic cavities, PH8",
+                     "metric": "manufacturer rule (eligible area / 4 cm2) vs packing capacity at grid vs placed (%s; per cavity in Table S4)" % ok[0].get("label", ""),
+                     "value": "; ".join(parts) + "; the rule over-counts on every cavity (no packing loss); placed 8 = the generator's truth tiles (overlapping, off grid) / the hand-placed phantom tiles",
+                     "truth/reference": "greedy maximal independent set on the planner-rule conflict graph (a lower bound: greedy / SA pack 8 on the x1.00 cavities where it reports 7)",
                      "source csv": CAPACITY, "command": self.repo.csv_command(CAPACITY), "commit": self.repo.csv_commit(CAPACITY) or "?", "flag": FLAG_SYN + " / " + FLAG_CAL}
             return Row(cells, " ;; ".join(locs))
         return self.t3_pending("placement optimisation", "synthetic cavities, PH8", "manufacturer rule vs capacity at grid vs placed",
@@ -818,116 +962,297 @@ class Builder:
                                "greedy maximal independent set on the conflict graph (lower bound)", FLAG_SYN + " / " + FLAG_CAL,
                                "python scripts/validation_optimize.py --capacity ...")
 
+    # ---- aggregates over the campaign CSVs (each quoted with an agg: locator)
+    def _nstar(self) -> Optional[Dict[str, Dict[str, List[Optional[int]]]]]:
+        """{scale: {arm: [N* per cavity]}}: smallest N with RIND5 D90 >= rx (None = never)."""
+        if not self.landed(V2_COLLAPSED, ["RIND5_D90"]):
+            return None
+        _, rows = self.repo.csv(V2_COLLAPSED)
+        cavs = sorted({r["cavity"] for r in rows})
+        best: Dict[Tuple[str, str], int] = {}
+        for r in rows:
+            if r.get("status") != "ok" or r.get("arm") not in ("sa", "greedy", "uniform"):
+                continue
+            try:
+                d90 = float(r["RIND5_D90"])
+            except ValueError:
+                continue
+            if d90 >= 6000.0:
+                k = (r["arm"], r["cavity"])
+                best[k] = min(int(r["N"]), best.get(k, 10 ** 6))
+        out: Dict[str, Dict[str, List[Optional[int]]]] = {}
+        for c in cavs:
+            sc = c.split("_")[-1]
+            for arm in ("sa", "greedy", "uniform"):
+                out.setdefault(sc, {}).setdefault(arm, []).append(best.get((arm, c)))
+        return out
+
+    @staticmethod
+    def _count_text(vals: Sequence[Optional[int]]) -> str:
+        cnt: Dict[Optional[int], int] = {}
+        for v in vals:
+            cnt[v] = cnt.get(v, 0) + 1
+        keys = sorted([k for k in cnt if k is not None]) + ([None] if None in cnt else [])
+        return ", ".join("%s on %d" % ("N %d" % k if k is not None else "never", cnt[k]) for k in keys) + " (of %d)" % len(vals)
+
+    def _v3_summary(self, per_row: str, per_inst: str) -> Optional[Dict[str, Any]]:
+        """Per-N mean gap, rows at the optimum, best seed at the optimum, RIND5
+        differences, grid, from one V3 row set (reduced grid)."""
+        R = self.repo
+        if not (self.landed(per_row, ["gap"]) and self.landed(per_inst, ["gap_mean"])):
+            return None
+        _, rows = R.csv(per_row)
+        _, inst = R.csv(per_inst)
+        ok = [r for r in rows if r.get("status") == "ok" and r.get("gap", "").strip() not in ("", "nan")]
+        if not ok or not inst:
+            return None
+        Ns = sorted({int(r["N"]) for r in ok})
+        s: Dict[str, Any] = {"N": Ns, "grid": (ok[0].get("h_mm"), ok[0].get("n_spins"), ok[0].get("m_opt")),
+                             "methods": sorted({r.get("bound_method", "") for r in ok}),
+                             "statuses": sorted({r.get("bound_status", "") for r in ok}),
+                             "n_inst": len(inst), "infeasible": sorted({(r["cavity"], r["N"]) for r in rows if r.get("status") != "ok"}),
+                             "best_opt": sum(1 for r in inst if abs(float(r["gap_best"])) < 1e-9), "per_N": {}}
+        s["worst"] = min(float(r["gap"]) for r in ok)
+        for n in Ns:
+            rn = [r for r in ok if int(r["N"]) == n]
+            iN = [r for r in inst if int(r["N"]) == n]
+            s["per_N"][n] = {
+                "gap": sum(float(r["gap_mean"]) for r in iN) / len(iN) if iN else float("nan"),
+                "at_opt": sum(1 for r in rn if abs(float(r["gap"])) < 1e-9), "rows": len(rn),
+                "dD90": sum(float(r["RIND5_D90_sa"]) - float(r["RIND5_D90_bound"]) for r in rn) / len(rn),
+                "dV100": 100.0 * sum(float(r["RIND5_V100_sa"]) - float(r["RIND5_V100_bound"]) for r in rn) / len(rn)}
+        return s
+
+    def _f8_rows(self) -> List[Dict[str, str]]:
+        _, rows = self.repo.csv(F8_SUMMARY)
+        return rows
+
+    def _f8_main(self) -> List[Tuple[str, Dict[str, str]]]:
+        """(label, row) for the arms the main tables report (seed mean and best
+        seed per optimized family; the as-implanted arm and its two fits); all
+        arms when none of the expected names is present."""
+        rows = self._f8_rows()
+        by = {r["arm"]: r for r in rows}
+        out = [(lab, by[a]) for a, lab in F8_MAIN_ARMS if a in by]
+        return out if out else [(r["arm"], r) for r in rows]
+
+    def _f8_arm_text(self, label: str, r: Dict[str, str], all_rows: Sequence[Dict[str, str]]) -> Tuple[str, List[str]]:
+        key = {"arm": r["arm"]}
+        if r.get("sa_seed", "").strip():
+            key["sa_seed"] = r["sa_seed"]
+        bits, locs = [], []
+        for lab, cv, cd in F8_TARGETS:
+            if cv in r and cd in r:
+                bits.append("%s %s %% / %s cGy" % (lab, fmt("pct1", r[cv]), fmt("cgy", r[cd])))
+                locs += [L(F8_SUMMARY, key, cv, "pct1").encode(), L(F8_SUMMARY, key, cd, "cgy").encode()]
+        arm = r["arm"]
+        extra = []
+        if arm.endswith("_sa_best") and r.get("sa_seed", "").strip():
+            label += " (seed %s)" % r["sa_seed"]
+        elif arm.endswith("_sa_mean"):
+            fam = arm[: -len("_sa_mean")]
+            seeds = [x.get("sa_seed", "") for x in all_rows if x["arm"].startswith(fam + "_sa_seed")]
+            if seeds:
+                label += " (seeds %s)" % ", ".join(seeds)
+        if arm.startswith("as_implanted_fit") and r.get("n_tiles", "").strip():
+            extra.append("%s tiles (%s full + %s half, %s degraded), %s seeds scored" % (
+                r["n_tiles"], r.get("n_full", "?"), r.get("n_half", "?"), r.get("n_degraded", "?") or "0", r.get("n_seeds_scored", "?")))
+        elif arm == "as_implanted" and r.get("n_seeds_scored", "").strip():
+            extra.append("%s seeds" % r["n_seeds_scored"])
+        elif r.get("n_tiles", "").strip():
+            extra.append("%s tiles" % r["n_tiles"])
+        if r.get("n_overlaps", "").strip():
+            extra.append("overlaps %s" % r["n_overlaps"])
+            locs.append(L(F8_SUMMARY, key, "n_overlaps", "str").encode())
+        if r.get("solve_s", "").strip() not in ("", "nan"):
+            extra.append("SA %s s" % fmt("s1", r["solve_s"]))
+            locs.append(L(F8_SUMMARY, key, "solve_s", "s1").encode())
+        return "%s: %s%s" % (label, ", ".join(bits), ("; " + "; ".join(extra)) if extra else ""), locs
+
     def _optimizer_rows(self) -> List[Row]:
         rows: List[Row] = []
         R = self.repo
-        # ---- synthetic benchmark: primary endpoint SA - uniform at N*
+        st = "placement optimisation"
+        syn = "18 synthetic cavities (seeds 1-6 x scales 0.8 / 1.0 / 1.25)"
+        # ---- synthetic benchmark: the pre-declared primary endpoint, as measured
         if self.landed(V2_PRIMARY, ["comparison"]):
             _, prim = R.csv(V2_PRIMARY)
-            hits = [r for r in prim if r.get("comparison", "").strip()]
-            if hits:
-                h = hits[-1]
-                key = {"comparison": h["comparison"]}
-                rows.append(self.t3_csv("placement optimisation", "18 synthetic cavities", "synthetic benchmark, primary endpoint: SA - uniform at N* (RIND5 V100, full grid)",
-                                        "{0} pp [95 % CI {1}, {2}], n = {3}, Wilcoxon p = {4}",
-                                        [L(V2_PRIMARY, key, "mean_pp", "pp1"), L(V2_PRIMARY, key, "ci_lo_pp", "pp1"), L(V2_PRIMARY, key, "ci_hi_pp", "pp1"),
-                                         L(V2_PRIMARY, key, "n", "int"), L(V2_PRIMARY, key, "wilcoxon_p", "g3")],
-                                        "uniform heuristic at the smallest N where it reaches D90 >= rx", FLAG_SYN))
+            by = {r["comparison"].strip(): r for r in prim if r.get("comparison", "").strip()}
+            p = by.get("sa - uniform at N*")
+            b = by.get("sa_best - uniform at N*")
+            if p is not None:
+                kp = {"comparison": p["comparison"]}
+                lks = [L(V2_PRIMARY, kp, "mean_pp", "pp2s"), L(V2_PRIMARY, kp, "ci_lo_pp", "pp2"), L(V2_PRIMARY, kp, "ci_hi_pp", "pp2"),
+                       L(V2_PRIMARY, kp, "n", "int"), L(V2_PRIMARY, kp, "wilcoxon_p", "p3")]
+                v = [x.value(R) for x in lks]
+                sig = float(p["wilcoxon_p"]) < 0.05
+                txt = "SA (mean of 3 seeds) - uniform at N*: %s pp [95 %% CI %s, %s], n = %s, Wilcoxon p = %s -- %s (pre-declared primary endpoint, reported as measured)" % (
+                    v[0], v[1], v[2], v[3], v[4], "significant" if sig else "NOT significant")
+                if b is not None:
+                    kb = {"comparison": b["comparison"]}
+                    lb = [L(V2_PRIMARY, kb, "mean_pp", "pp2s"), L(V2_PRIMARY, kb, "ci_lo_pp", "pp2"), L(V2_PRIMARY, kb, "ci_hi_pp", "pp2"), L(V2_PRIMARY, kb, "wilcoxon_p", "p3")]
+                    vb = [x.value(R) for x in lb]
+                    txt += "; best of the 3 SA seeds - uniform: %s pp [%s, %s], p = %s (secondary)" % tuple(vb)
+                    lks += lb
+                txt += "; N* = the largest N at which both arms packed (uniform never reaches RIND5 D90 >= rx: %s of %s flagged)" % (p.get("n_flagged", "?"), p.get("n", "?"))
+                rows.append(self._mixed_row(st, syn, "synthetic benchmark, primary endpoint: SA - uniform on RIND5 V100 at N* (full-grid scoring)", txt,
+                                            "uniform heuristic on the same candidate set", [V2_PRIMARY], [x.encode() for x in lks], FLAG_SYN))
         else:
-            rows.append(self.t3_pending("placement optimisation", "18 synthetic cavities", "synthetic benchmark: SA - uniform at N* (pp, 95 % CI), SA - greedy per N, gap to the same-candidate V100 bound",
+            rows.append(self.t3_pending(st, syn, "synthetic benchmark: SA - uniform at N* (pp, 95 % CI), SA - greedy per N, gap to the same-candidate V100 bound",
                                         "campaign (Phase 4 V2 / V3; the rev-1 run of 2026-10-07 at cca2120 is superseded)", V2_PRIMARY,
                                         "uniform / greedy heuristics; exact V100 bound on the same candidate set", FLAG_SYN,
                                         "python scripts/validation_optimize.py --section v2,v3,v4,v5,v7,v8 --sa-seeds 3 --same-candidates --capacity"))
+        # ---- SA - greedy at N 8 and N 10 (secondary)
         if self.landed(V2_PAIRED, ["comparison"]):
             _, paired = R.csv(V2_PAIRED)
-            ep = self.col(paired, "endpoint")
             parts, locs = [], []
             for r in paired:
-                if r.get("comparison", "").strip() != "sa - greedy":
+                if r.get("comparison", "").strip() != "sa - greedy" or r.get("endpoint", "RIND5_V100") != "RIND5_V100" or r["N"] not in ("8", "10"):
                     continue
-                if ep and "RIND5" not in r.get(ep, "") and "S5" in r.get(ep, ""):
-                    continue
-                key = {"N": r["N"], "comparison": r["comparison"]}
-                if ep:
-                    key[ep] = r[ep]
-                parts.append("N = %s: %s pp [%s, %s] (n = %s)" % (r["N"], fmt("pp1", r["mean_pp"]), fmt("pp1", r["ci_lo_pp"]), fmt("pp1", r["ci_hi_pp"]), fmt("int", r["n"])))
-                locs += [L(V2_PAIRED, key, "mean_pp", "pp1").encode(), L(V2_PAIRED, key, "ci_lo_pp", "pp1").encode(), L(V2_PAIRED, key, "ci_hi_pp", "pp1").encode()]
+                key = {"N": r["N"], "comparison": r["comparison"], "endpoint": r.get("endpoint", "RIND5_V100")}
+                lk = [L(V2_PAIRED, key, "mean_pp", "pp2s"), L(V2_PAIRED, key, "ci_lo_pp", "pp2"), L(V2_PAIRED, key, "ci_hi_pp", "pp2"),
+                      L(V2_PAIRED, key, "n", "int"), L(V2_PAIRED, key, "wilcoxon_p", "p3")]
+                v = [x.value(R) for x in lk]
+                parts.append("N = %s: %s pp [%s, %s], n = %s, p = %s" % (r["N"], v[0], v[1], v[2], v[3], v[4]))
+                locs += [x.encode() for x in lk]
             if parts:
-                self._note(V2_PAIRED)
-                rows.append(Row({"stage": "placement optimisation", "dataset": "18 synthetic cavities", "metric": "SA - greedy per N (RIND5 V100, paired, 95 % CI)",
-                                 "value": "; ".join(parts), "truth/reference": "greedy heuristic on the same candidate set",
-                                 "source csv": V2_PAIRED, "command": R.csv_command(V2_PAIRED), "commit": R.csv_commit(V2_PAIRED) or "?", "flag": FLAG_SYN},
-                                " ;; ".join(locs)))
-        if self.landed(V3_GAP, ["gap"]):
-            _, gap = R.csv(V3_GAP)
-            ok = [r for r in gap if r.get("status") == "ok" and r.get("gap", "").strip() not in ("", "nan")]
-            if ok:
-                vals = sorted(float(r["gap"]) for r in ok)
-                med = vals[len(vals) // 2]
-                worst = min(vals)
-                self._note(V3_GAP)
-                rows.append(Row({"stage": "placement optimisation", "dataset": "synthetic cavities (same candidate set)", "metric": "SA vs the exact V100 bound: gap on the influence coverage (negative = below the bound)",
-                                 "value": "median %.1f %%, worst %.1f %% over %d solved (cavity, N) instances" % (100 * med, 100 * worst, len(ok)),
-                                 "truth/reference": "solve_milp coverage-only bound on the identical candidate set (tail term dropped)",
-                                 "source csv": V3_GAP, "command": R.csv_command(V3_GAP), "commit": R.csv_commit(V3_GAP) or "?", "flag": FLAG_SYN},
-                                "agg:" + V3_GAP + "#gap"))
+                rows.append(self._mixed_row(st, syn, "SA (mean of 3 seeds) - greedy on RIND5 V100 at N = 8 and N = 10 (paired over the cavities where both packed; 95 % CI, Wilcoxon; every N in Table S4)",
+                                            "; ".join(parts), "greedy heuristic on the same candidate set", [V2_PAIRED], locs, FLAG_SYN))
+        # ---- N*: smallest N with RIND5 D90 >= rx
+        ns = self._nstar()
+        if ns:
+            parts = []
+            for sc in sorted(ns, key=lambda s: float(s.lstrip("x"))):
+                parts.append("%s: SA %s; greedy %s" % (sc, self._count_text(ns[sc]["sa"]), self._count_text(ns[sc]["greedy"])))
+            uni = [v for sc in ns for v in ns[sc]["uniform"] if v is not None]
+            rows.append(self._mixed_row(st, syn, "N*: smallest N with RIND5 D90 >= rx (6000 cGy) per cavity scale (N in 4-12)",
+                                        "; ".join(parts) + "; uniform: %s" % ("never at any N where it packs" if not uni else self._count_text(uni)) +
+                                        " (never = packing-limited: no N-packing on the candidate grid at the N needed)",
+                                        "the generator's 8 truth tiles (overlapping, off grid) reach rx on the x0.80 cavities only", [V2_COLLAPSED],
+                                        ["agg:" + V2_COLLAPSED + "#RIND5_D90"], FLAG_SYN))
+        # ---- packing failures (V8): grid-capacity limits, not search failures
+        if self.landed(V8_PACK_SUM, ["sa_failed_packing_exists"]):
+            _, pk = R.csv(V8_PACK_SUM)
+            parts, locs = [], []
+            for r in pk:
+                key = {"N": r["N"]}
+                lk = [L(V8_PACK_SUM, key, c, "int") for c in ("sa_all_seeds_packed", "sa_failed_packing_exists", "sa_failed_no_packing_proved", "sa_failed_existence_unknown")]
+                v = [x.value(R) for x in lk]
+                parts.append("N %s: %s / %s / %s / %s" % (r["N"], v[0], v[1], v[2], v[3]))
+                locs += [x.encode() for x in lk]
+            none_known = all(int(r["sa_failed_packing_exists"]) == 0 for r in pk)
+            n_cav = pk[0].get("n_cavities", "?")
+            where = ""
+            srcs = [V8_PACK_SUM]
+            if self.landed(V8_PACK, ["sa_failure_class"]):
+                _, per = R.csv(V8_PACK)
+                fails = [r for r in per if int(r["N"]) <= 8 and int(r.get("n_sa_failed", "0") or 0) > 0]
+                scales = sorted({r["cavity"].split("_")[-1] for r in fails})
+                if fails:
+                    where = " (%s: %s)" % ("all on the %s cavities" % scales[0] if len(scales) == 1 else "on the %s cavities" % " / ".join(scales),
+                                           ", ".join(sorted({r["cavity"] for r in fails})))
+                    locs.append("agg:" + V8_PACK + "#sa_failure_class")
+                    srcs.append(V8_PACK)
+            txt = ("per N, of %s cavities (SA packed with every seed / SA failed although a grid packing is known to exist / SA failed, the same-candidate bound "
+                   "proved no N-packing on the grid / SA failed, existence unknown -- no bound run above N 8): %s. %s" % (
+                       n_cav, "; ".join(parts),
+                       "SA never failed where a packing is known to exist: every failure at N <= 8 is a proved grid-capacity limit%s; "
+                       "the SA start is greedy (frozen solver), so this is the candidate grid's capacity, not the search" % where
+                       if none_known else "some SA failures occur where a packing is known to exist (see Table S4)"))
+            rows.append(self._mixed_row(st, syn, "packing failures (V8): SA failures to place N tiles, classified by whether an N-packing exists on the candidate grid",
+                                        txt, "the same-candidate V100 bound (proves infeasibility) and packing_capacity; truth never counts (overlapping, off grid)",
+                                        srcs, locs, FLAG_SYN,
+                                        extra_commits=[c for c in [R.csv_input_commit(V8_PACK_SUM)] if c]))
+        # ---- search quality: lambda_tail 0 SA vs the exact optimum (like-for-like)
+        s0 = self._v3_summary(V3_RED_L0, V3_INST_RED_L0)
+        if s0:
+            per = "; ".join("N %d %.1f %% (rows at the optimum %d/%d)" % (n, 100 * d["gap"], d["at_opt"], d["rows"]) for n, d in s0["per_N"].items())
+            rows.append(self._mixed_row(
+                st, "synthetic cavities s1-s6 x1.00 (same candidate set; reduced grid)",
+                "search quality: SA with lambda_tail 0 (pure V100, the bound's own objective) vs the exact V100 optimum, gap on the solver's V100",
+                "reduced grid h %s mm / %s spins / M_opt %s, bound %s (%s): mean gap %s; best of 3 seeds at the optimum on %d/%d instances; worst single row %.1f %%; "
+                "%d (cavity, N) instance(s) proved infeasible at N 8 on this grid" % (
+                    s0["grid"][0], s0["grid"][1], s0["grid"][2], "/".join(s0["methods"]), "/".join(s0["statuses"]), per, s0["best_opt"], s0["n_inst"],
+                    100 * s0["worst"], len(s0["infeasible"])),
+                "solve_milp coverage-only bound, exact enumeration on the identical candidate ids", [V3_INST_RED_L0, V3_RED_L0],
+                ["agg:" + V3_INST_RED_L0 + "#gap_mean", "agg:" + V3_RED_L0 + "#gap"], FLAG_SYN))
+        # ---- objective trade-off: the frozen objective (lambda_tail 1) on the same instances
+        s1 = self._v3_summary(V3_RED, V3_INST_RED)
+        if s1:
+            Ns = list(s1["per_N"])
+            rows.append(self._mixed_row(
+                st, "synthetic cavities s1-s6 x1.00 (same candidate set; reduced grid)",
+                "objective trade-off: SA with the frozen objective (lambda_tail 1) vs the exact V100 optimum on the same instances",
+                "mean gap on the solver's V100 %s %% at N %s, while the full-grid RIND5 D90 SA - bound is %s cGy and RIND5 V100 SA - bound %s pp: "
+                "the tail term trades V100 for D90 by design (not a search failure; the lambda_tail 0 row is the search-quality measure)" % (
+                    " / ".join("%.1f" % (100 * s1["per_N"][n]["gap"]) for n in Ns), " / ".join(str(n) for n in Ns),
+                    " / ".join("%+.0f" % s1["per_N"][n]["dD90"] for n in Ns), " / ".join("%+.1f" % s1["per_N"][n]["dV100"] for n in Ns)),
+                "solve_milp coverage-only bound (tail term dropped), exact enumeration", [V3_INST_RED, V3_RED],
+                ["agg:" + V3_INST_RED + "#gap_mean", "agg:" + V3_RED + "#RIND5_D90_sa"], FLAG_SYN))
         # ---- phantom arms
         v6 = V6_PHANTOM if self.landed(V6_PHANTOM, ["RIND5_V100"]) else (V6_PHANTOM_RAW if self.landed(V6_PHANTOM_RAW, ["RIND5_V100"]) else None)
         if v6:
+            labels = {"as_placed": "as placed (the pipeline's 8 recovered tiles; hand-placed, arbitrary positions)", "as_placed_conformed": "as placed, conformed to the wall",
+                      "uniform": "uniform", "greedy": "greedy", "sa": "SA (mean of 3 seeds)", "sa_best": "SA best seed", "v100_bound": "V100 bound",
+                      "continuous": "continuous"}
             _, arms = R.csv(v6)
             parts, locs = [], []
             for r in arms:
-                if r.get("status") != "ok" or r.get("RIND5_V100", "").strip() in ("", "nan"):
+                if r.get("status") not in ("ok", "", None) or r.get("RIND5_V100", "").strip() in ("", "nan"):
                     continue
                 key = {"arm": r["arm"], "N": r["N"]}
-                if "sa_seed" in r and r.get("sa_seed", "").strip():
-                    key["sa_seed"] = r["sa_seed"]
-                parts.append("%s: V100 %s %% / D90 %s cGy, %s overlaps" % (r["arm"], fmt("pct1", r["RIND5_V100"]), fmt("cgy", r["RIND5_D90"]), fmt("str", r.get("n_overlaps", ""))))
+                lab = labels.get(r["arm"], r["arm"])
+                if r["arm"] == "v100_bound" and r.get("solver_status", "").strip():
+                    lab += " (%s)" % r["solver_status"]
+                parts.append("%s: V100 %s %% / D90 %s cGy, %s overlaps" % (lab, fmt("pct1", r["RIND5_V100"]), fmt("cgy", r["RIND5_D90"]), fmt("str", r.get("n_overlaps", ""))))
                 locs += [L(v6, key, "RIND5_V100", "pct1").encode(), L(v6, key, "RIND5_D90", "cgy").encode()]
-            minn = ""
+            srcs = [v6]
+            extra = ""
+            if self.landed(V6_SWEEP, ["N"]):
+                _, sw = R.csv(V6_SWEEP)
+                hit = [r for r in sw if r.get("D90>=rx", "").strip() == "True"]
+                n_max = max(int(r["N"]) for r in sw)
+                extra += "; minimum N (greedy sweep, S5 surrogate): %s" % (("D90 >= rx at N = %s" % hit[0]["N"]) if hit else "D90 >= rx not reached for N <= %d" % n_max)
+                locs.append((L(V6_SWEEP, {"N": hit[0]["N"]}, "D90>=rx", "str").encode()) if hit else "agg:" + V6_SWEEP + "#D90>=rx")
+                srcs.append(V6_SWEEP)
             if R.exists(V6_INFO):
                 info = R.json(V6_INFO)
-                mn = info.get("min_n") if isinstance(info, dict) else None
-                if isinstance(mn, dict):
-                    minn = "; minimum N (greedy sweep): D90 >= rx at N = %s, V100 >= 0.90 at N = %s" % (mn.get("D90>=rx"), mn.get("V100>=0.90"))
-                    locs.append(md_locator(V6_INFO, '"D90>=rx"'))
-                    self._note(V6_INFO)
+                if isinstance(info, dict) and info.get("recommended_tiles") is not None and info.get("capacity_at_grid") is not None:
+                    extra += "; manufacturer rule %s vs capacity at grid %s (area bound %s) vs placed %s" % (
+                        info["recommended_tiles"], info["capacity_at_grid"], info.get("capacity_upper_bound_area", "?"), info.get("n_tiles_fitted", "?"))
+                    locs.append(self._need_tokens(V6_INFO, ['"recommended_tiles": %s' % json.dumps(info["recommended_tiles"]),
+                                                            '"capacity_at_grid": %s' % json.dumps(info["capacity_at_grid"])]))
+                    srcs.append(V6_INFO)
             if parts:
-                self._note(v6)
-                rows.append(Row({"stage": "placement optimisation", "dataset": "PH8 (wall = registered PH0; target RIND5(phantom cavity))", "metric": "phantom: as placed vs optimized, RIND5 V100 / D90 per arm (plastic, not tissue; NOT optimizer-vs-surgeon)",
-                                 "value": "; ".join(parts) + minn, "truth/reference": "hand-placed tiles (arbitrary positions) vs the optimizer's 8 tiles on the same wall",
-                                 "source csv": v6, "command": R.csv_command(v6), "commit": R.csv_commit(v6) or "?", "flag": FLAG_CAL},
-                                " ;; ".join(locs)))
+                rows.append(self._mixed_row(st, "PH8 (wall = registered PH0; target RIND5(phantom cavity))",
+                                            "phantom: as placed vs optimized, RIND5 V100 / D90 per arm (plastic, not tissue; NOT optimizer-vs-surgeon)",
+                                            "; ".join(parts) + extra, "hand-placed tiles (arbitrary positions) vs the optimizer's 8 tiles on the same registered PH0 wall",
+                                            srcs, locs, FLAG_CAL, command=R.csv_command(v6)))
         else:
-            rows.append(self.t3_pending("placement optimisation", "PH8 (wall = registered PH0)", "phantom: as placed vs optimized (RIND5 V100 / D90 per arm; minimum N; manufacturer rule)",
+            rows.append(self.t3_pending(st, "PH8 (wall = registered PH0)", "phantom: as placed vs optimized (RIND5 V100 / D90 per arm; minimum N; manufacturer rule)",
                                         "campaign (Phase 4 V6 on the registered tile-less wall; the rev-1 as_implanted 0.654 -> SA 0.849 on the +5 mm shell is superseded)", V6_PHANTOM,
                                         "hand-placed tiles vs the optimizer on the same wall", FLAG_CAL,
                                         'python scripts/validation_optimize.py --section v6 --phantom "$GT_DATA_ROOT/<PH8>" --ph0 "$GT_DATA_ROOT/<PH0>" --sa-seeds 3 --same-candidates'))
-        # ---- patient: three arms (decisions 2026-11-03 a445cf7): as implanted; optimized for RIND5; optimized for CTV_GT
+        # ---- patient: three arms (decisions a445cf7); seed mean and best seed per optimized family
+        pds = "PT-CT1mm (gtcore cavity; eligible = craniotomy U 10 mm demonstrated reach)"
         if self.landed(F8_SUMMARY, ["arm"]):
-            _, arms = R.csv(F8_SUMMARY)
+            all_rows = self._f8_rows()
             parts, locs = [], []
-            for r in arms:
-                key = {"arm": r["arm"]}
-                if r.get("sa_seed", "").strip():
-                    key["sa_seed"] = r["sa_seed"]
-                bits = []
-                for lab, cv, cd in (("RIND5(gtcore)", "RIND5_gtcore_V100", "RIND5_gtcore_D90_cGy"), ("CTV_GT", "CTV_GT_V100", "CTV_GT_D90_cGy"),
-                                    ("IMPLANT_REACH(10)", "REACH10_V100", "REACH10_D90_cGy")):
-                    if cv in r and cd in r:
-                        bits.append("%s %s %% / %s cGy" % (lab, fmt("pct1", r[cv]), fmt("cgy", r[cd])))
-                        locs += [L(F8_SUMMARY, key, cv, "pct1").encode(), L(F8_SUMMARY, key, cd, "cgy").encode()]
-                parts.append("%s%s: %s; overlaps %s" % (r["arm"], (" (SA seed %s)" % r["sa_seed"]) if r.get("sa_seed", "").strip() else "",
-                                                        ", ".join(bits), fmt("str", r.get("n_overlaps", ""))))
+            for lab, r in self._f8_main():
+                txt, lk = self._f8_arm_text(lab, r, all_rows)
+                parts.append(txt)
+                locs += lk
             if parts:
                 self._note(F8_SUMMARY)
-                rows.append(Row({"stage": "placement optimisation", "dataset": "PT-CT1mm (gtcore cavity; eligible = craniotomy U 10 mm demonstrated reach)",
-                                 "metric": "patient: as implanted / optimized for RIND5 / optimized for CTV_GT, each scored on all three targets (V100 / D90; one case, illustration, not a cohort claim)",
-                                 "value": "; ".join(parts), "truth/reference": "the implanted 32 seeds (physical axes) vs plan.optimize(mesh, 8, solver='sa') for the stated target; one dose_stats",
+                rows.append(Row({"stage": st, "dataset": pds,
+                                 "metric": "patient: three arms -- as implanted (with its two tile-fit readings) / optimized for RIND5 / optimized for CTV_GT (mean of the SA seeds and the best seed) -- "
+                                           "each scored on RIND5(gtcore cavity), CTV_GT and IMPLANT_REACH(10) (V100 / D90; overlaps; SA solve time; one case, illustration, not a cohort claim; per-seed rows in Table S4)",
+                                 "value": "; ".join(parts),
+                                 "truth/reference": "the implanted 32 seeds (physical axes) vs plan.optimize(mesh, 8, solver='sa') for the stated target on the same eligible wall; one dose_stats on the CT grid",
                                  "source csv": F8_SUMMARY, "command": R.csv_command(F8_SUMMARY), "commit": R.csv_commit(F8_SUMMARY) or "?", "flag": FLAG_CAL},
                                 " ;; ".join(locs)))
         else:
-            rows.append(self.t3_pending("placement optimisation", "PT-CT1mm (gtcore cavity; eligible = craniotomy U 10 mm demonstrated reach)",
+            rows.append(self.t3_pending(st, pds,
                                         "patient: three arms -- as implanted / optimized for RIND5 / optimized for the physician's target (CTV_GT) -- each scored on RIND5(gtcore cavity), CTV_GT and IMPLANT_REACH(10); overlaps; solve time (F8 titles)",
                                         "campaign (scripts/patient_optimize.py; the 4748ccb trial run in docs/paper2-decisions.md and the mock 0.67 -> 0.81 / 0.92 -> 0.91 are not quoted)", F8_SUMMARY,
                                         "the implanted 32 seeds vs the optimizer on the same cavity wall; the optimizer optimizes the target it is given", FLAG_CAL,
@@ -1017,9 +1342,12 @@ class Builder:
     def tableS4(self) -> Table:
         t = Table("tableS4_optimizer", "Table S4 -- optimizer campaign (synthetic benchmark, bound, discretisation, sensitivity, phantom, runtime, failure modes)",
                   ["block", "item", "value", "source csv", "commit", "flag"])
-        t.preamble = ["Phase 4 campaign (`scripts/validation_optimize.py`, frozen objective lambda_tail 1 / TAIL_Q 0.10, SA 8 x 60, h 2.5 mm / 6 spins / M_opt 4000, full-grid RIND5 "
-                      "scoring, same-candidate V100 bound). Blocks whose Phase 4 file has not landed are marked pending; the rev-1 files of 2026-10-07 (commit cca2120, "
-                      "shell-surrogate scoring, SA 3 x 40) are superseded and not quoted."]
+        t.preamble = ["Phase 4 campaign (`scripts/validation_optimize.py`, frozen objective lambda_tail 1 / TAIL_Q 0.10, SA 8 restarts x 60 sweeps, 3 SA seeds, full-grid RIND5 "
+                      "scoring on the 1 mm report grid, same-candidate V100 bound). Candidate grid h 4 mm / 6 spins / M_opt 1000 for V2, V4-V6 and capacity (V4 sweeps it; "
+                      "V7 M_opt 4000); V3 is quoted on the reduced grid (h 6 mm / 2 spins / M_opt 300) where the bound is exact, with two SA row sets: lambda_tail 0 "
+                      "(SA on pure V100 = the bound's objective: search quality) and lambda_tail 1 (the frozen objective: the objective trade-off); the campaign-grid V3 rows "
+                      "(HiGHS time-limited, loose LP reference) are summarised, not quoted. Patient run: h 2.5 mm / 6 spins / M_opt 4000. Blocks whose Phase 4 file has not "
+                      "landed are marked pending; the rev-1 files of 2026-10-07 (commit cca2120, shell-surrogate scoring, SA 3 x 40) are superseded and not quoted."]
         R = self.repo
 
         def pending(block, item, expected):
@@ -1057,24 +1385,64 @@ class Builder:
                 if ep:
                     key[ep] = r[ep]
                 add("V2 paired comparisons", "N = %s, %s%s" % (r["N"], r["comparison"], (" (%s)" % r[ep]) if ep else ""),
-                    "%s pp [%s, %s], n = %s, Wilcoxon p %s" % (fmt("pp1", r["mean_pp"]), fmt("pp1", r["ci_lo_pp"]), fmt("pp1", r["ci_hi_pp"]), fmt("int", r["n"]), fmt("g3", r["wilcoxon_p"])),
-                    V2_PAIRED, [L(V2_PAIRED, key, "mean_pp", "pp1").encode(), L(V2_PAIRED, key, "ci_lo_pp", "pp1").encode(), L(V2_PAIRED, key, "ci_hi_pp", "pp1").encode()])
+                    "%s pp [%s, %s], n = %s, Wilcoxon p %s" % (fmt("pp2s", r["mean_pp"]), fmt("pp2", r["ci_lo_pp"]), fmt("pp2", r["ci_hi_pp"]), fmt("int", r["n"]), fmt("p3", r["wilcoxon_p"])),
+                    V2_PAIRED, [L(V2_PAIRED, key, "mean_pp", "pp2s").encode(), L(V2_PAIRED, key, "ci_lo_pp", "pp2").encode(), L(V2_PAIRED, key, "ci_hi_pp", "pp2").encode(),
+                                L(V2_PAIRED, key, "wilcoxon_p", "p3").encode()])
         else:
             pending("V2 paired comparisons", "SA - uniform, SA - greedy, V100 bound - SA, SA_best - greedy per N (pp, 95 % CI, Wilcoxon)", V2_PAIRED)
-        if self.landed(V3_GAP, ["gap"]):
-            _, rows = R.csv(V3_GAP)
+        if self.landed(V2_PRIMARY, ["comparison"]):
+            _, rows = R.csv(V2_PRIMARY)
             for r in rows:
-                key = {"cavity": r["cavity"], "N": r["N"]}
-                if r.get("sa_seed", "").strip():
-                    key["sa_seed"] = r["sa_seed"]
-                if r.get("status") != "ok":
-                    add("V3 gap to the bound", "%s, N = %s" % (r["cavity"], r["N"]), "%s: %s" % (r.get("status"), r.get("reason", "")[:120]), V3_GAP, ["fixed:" + V3_GAP])
+                if not r.get("comparison", "").strip():
                     continue
-                g = fmt("pct1", r["gap"])
-                add("V3 gap to the bound", "%s, N = %s" % (r["cavity"], r["N"]), "gap %s %% on the influence coverage (SA %s vs bound %s); same candidates: %s" % (
-                    g, fmt("f3", r.get("V100_sa_influence", r.get("INFL_V100_sa", "nan"))), fmt("f3", r.get("milp_bound", r.get("bound", "nan"))), r.get("same_candidates", "?")),
-                    V3_GAP, [L(V3_GAP, key, "gap", "pct1").encode()])
-        else:
+                key = {"comparison": r["comparison"]}
+                add("V2 primary endpoint (pre-declared)", "%s (%s)" % (r["comparison"], r.get("endpoint", "RIND5_V100")),
+                    "%s pp [%s, %s], n = %s, Wilcoxon p %s; flagged (uniform never reaches rx) %s, fallback N %s" % (
+                        fmt("pp2s", r["mean_pp"]), fmt("pp2", r["ci_lo_pp"]), fmt("pp2", r["ci_hi_pp"]), fmt("int", r["n"]), fmt("p3", r["wilcoxon_p"]),
+                        r.get("n_flagged", "?"), r.get("n_fallback_N", "?")),
+                    V2_PRIMARY, [L(V2_PRIMARY, key, c, f).encode() for c, f in (("mean_pp", "pp2s"), ("ci_lo_pp", "pp2"), ("ci_hi_pp", "pp2"), ("n", "int"), ("wilcoxon_p", "p3"))])
+        ns = self._nstar()
+        if ns:
+            _, crow = R.csv(V2_COLLAPSED)
+            cavs = sorted({r["cavity"] for r in crow})
+            for c in sorted(cavs, key=lambda c: (float(c.split("_x")[-1]), c)):
+                sc = c.split("_")[-1]
+                idx = [x for x in cavs if x.split("_")[-1] == sc].index(c)
+                vals = {arm: ns[sc][arm][idx] for arm in ("sa", "greedy", "uniform")}
+                add("V2 N*", c, "smallest N with RIND5 D90 >= rx: SA %s, greedy %s, uniform %s" % tuple(
+                    ("N %d" % vals[a]) if vals[a] is not None else "never" for a in ("sa", "greedy", "uniform")),
+                    V2_COLLAPSED, ["agg:" + V2_COLLAPSED + "#RIND5_D90"])
+        v3_sets = (("V3 search quality (lambda_tail 0, reduced grid, exact bound)", V3_RED_L0, V3_INST_RED_L0),
+                   ("V3 objective trade-off (lambda_tail 1, reduced grid, exact bound)", V3_RED, V3_INST_RED))
+        any_v3 = False
+        for block, per_row, per_inst in v3_sets:
+            sm = self._v3_summary(per_row, per_inst)
+            if not sm:
+                continue
+            any_v3 = True
+            for n, d in sm["per_N"].items():
+                add(block, "N = %d, mean over the instances" % n,
+                    "gap %.1f %% (rows at the optimum %d/%d); full-grid RIND5 SA - bound: V100 %+.2f pp, D90 %+.0f cGy" % (100 * d["gap"], d["at_opt"], d["rows"], d["dV100"], d["dD90"]),
+                    per_inst, ["agg:" + per_inst + "#gap_mean", "agg:" + per_row + "#gap"])
+            _, inst = R.csv(per_inst)
+            for r in inst:
+                key = {"cavity": r["cavity"], "N": r["N"]}
+                add(block, "%s, N = %s (C = %s)" % (r["cavity"], r["N"], r.get("n_candidates", "?")),
+                    "gap mean %s %% / best %s %% / worst %s %% over %s SA seeds; RIND5 V100 gap mean %s %%; bound %s (%s)" % (
+                        fmt("pct1", r["gap_mean"]), fmt("pct1", r["gap_best"]), fmt("pct1", r["gap_worst"]), r.get("n_seeds", "?"),
+                        fmt("pct1", r["gap_RIND5_mean"]), r.get("bound_status", "?"), r.get("bound_method", "?")),
+                    per_inst, [L(per_inst, key, c, "pct1").encode() for c in ("gap_mean", "gap_best", "gap_worst", "gap_RIND5_mean")])
+            for cav, n in sm["infeasible"]:
+                add(block, "%s, N = %s" % (cav, n), "no N-packing on this candidate grid (bound proved infeasible; SA failed with every seed)", per_row, ["fixed:" + per_row])
+        if self.landed(V3_INST, ["gap_mean"]):
+            _, inst = R.csv(V3_INST)
+            tl = sum(1 for r in inst if r.get("bound_status") == "time_limit")
+            mg = sum(float(r["gap_mean"]) for r in inst) / len(inst)
+            add("V3 campaign grid (not quoted)", "h 4 mm / 6 spins / M_opt 1000, bound HiGHS 300 s",
+                "bound time-limited on %d of %d instances, so the reference is the loose LP bound: mean gap %.1f %% -- uninformative; the reduced-grid rows above are the measure" % (tl, len(inst), 100 * mg),
+                V3_INST, ["agg:" + V3_INST + "#gap_mean"])
+            any_v3 = True
+        if not any_v3:
             pending("V3 gap to the bound", "SA vs the exact V100 bound on the identical candidate set, per (cavity, N)", V3_GAP)
         if self.landed(V4_DISC, ["h_mm"]):
             _, rows = R.csv(V4_DISC)
@@ -1091,6 +1459,26 @@ class Builder:
             taus = [float(r["kendall_tau"]) for r in rows if r["kendall_tau"].strip() not in ("", "nan")]
             add("V5 sensitivity", "rank stability of the arms under seed-plane 2.25 / 3.75 mm, S_K +/- 5 %, interference on, M_opt 4000 (Kendall tau)",
                 "min %.2f, median %.2f over %d (cavity, perturbation) pairs" % (min(taus), sorted(taus)[len(taus) // 2], len(taus)), V5_RANK, ["agg:" + V5_RANK + "#kendall_tau"])
+            if self.landed(V5_SENS, ["RIND5_V100"]):
+                _, sens = R.csv(V5_SENS)
+                vals: Dict[Tuple[str, str], List[Tuple[str, float]]] = {}
+                for r in sens:
+                    if r.get("status") == "ok" and r.get("RIND5_V100", "").strip() not in ("", "nan"):
+                        vals.setdefault((r["arm"], r["cavity"]), []).append((r["perturbation"], float(r["RIND5_V100"])))
+                for arm in sorted({a for a, _ in vals}, key=lambda a: {"sa": 0, "greedy": 1}.get(a, 2)):
+                    sp = [100 * (max(v for _, v in xs) - min(v for _, v in xs)) for (a, _c), xs in sorted(vals.items()) if a == arm]
+                    mu = sum(sp) / len(sp)
+                    sd = (sum((x - mu) ** 2 for x in sp) / (len(sp) - 1)) ** 0.5 if len(sp) > 1 else 0.0
+                    noms = [v for (a, _c), xs in sorted(vals.items()) if a == arm for p_, v in xs if p_ == "nominal"]
+                    note = ""
+                    if arm == "sa":
+                        n_ceil = sum(1 for v in noms if v >= 0.9995)
+                        if n_ceil:
+                            note = ("; CEILING CAVEAT: SA's nominal RIND5 V100 rounds to 1.000 on %d of %d cavities, so its small spread is partly a ceiling effect"
+                                    % (n_ceil, len(noms)))
+                    add("V5 sensitivity", "%s: spread of RIND5 V100 over the perturbations (max - min incl. nominal, per cavity)" % arm,
+                        "%.2f +/- %.2f pp over %d cavities (nominal %s)%s" % (mu, sd, len(sp), " / ".join("%.3f" % v for v in noms), note),
+                        V5_SENS, ["agg:" + V5_SENS + "#RIND5_V100"])
         else:
             pending("V5 sensitivity", "arm ranking under seed-plane, S_K, interference and M_opt perturbations (Kendall tau); V100 spread per arm", V5_RANK)
         v6 = V6_PHANTOM if self.landed(V6_PHANTOM, ["RIND5_V100"]) else (V6_PHANTOM_RAW if self.landed(V6_PHANTOM_RAW, ["RIND5_V100"]) else None)
@@ -1110,8 +1498,21 @@ class Builder:
                 _, sw = R.csv(V6_SWEEP)
                 hit = [r for r in sw if r.get("D90>=rx", "").strip() == "True"]
                 add("V6 phantom (as placed vs optimized)", "minimum N (greedy sweep, S5 surrogate): first N with D90 >= rx",
-                    ("N = %s" % hit[0]["N"]) if hit else "not reached within the sweep (N <= %s)" % sw[-1]["N"], V6_SWEEP,
-                    [L(V6_SWEEP, {"N": hit[0]["N"]}, "D90>=rx", "str").encode()] if hit else ["fixed:" + V6_SWEEP], FLAG_CAL)
+                    ("N = %s" % hit[0]["N"]) if hit else "not reached within the sweep (N <= %d)" % max(int(r["N"]) for r in sw), V6_SWEEP,
+                    [L(V6_SWEEP, {"N": hit[0]["N"]}, "D90>=rx", "str").encode()] if hit else ["agg:" + V6_SWEEP + "#D90>=rx"], FLAG_CAL)
+            if R.exists(V6_INFO):
+                info = R.json(V6_INFO)
+                if isinstance(info, dict) and info.get("recommended_tiles") is not None:
+                    self._note(V6_INFO)
+                    t.add(Row({"block": "V6 phantom (as placed vs optimized)", "item": "wall, eligibility, manufacturer rule vs capacity",
+                               "value": "wall = %s (%s faces, %.0f mm2); eligible %.0f mm2 (%s faces); manufacturer rule %s vs capacity at grid %s (area bound %s) vs placed %s; "
+                                        "localized seeds %.2f mm off the wall (mean); conformer substitution %+.2f pp RIND5 V100" % (
+                                            info.get("wall", "?"), info.get("n_faces", "?"), float(info.get("mesh_area_mm2", float("nan"))), float(info.get("eligible_area_mm2", float("nan"))),
+                                            info.get("eligible_faces", "?"), info["recommended_tiles"], info.get("capacity_at_grid", "?"), info.get("capacity_upper_bound_area", "?"),
+                                            info.get("n_tiles_fitted", "?"), float(info.get("mean_seed_wall_mm", float("nan"))), float(info.get("conformer_delta_V100_pp", float("nan")))),
+                               "source csv": V6_INFO, "commit": R.csv_commit(v6) or "?", "flag": FLAG_CAL},
+                              self._need_tokens(V6_INFO, ['"recommended_tiles": %s' % json.dumps(info["recommended_tiles"]),
+                                                          '"capacity_at_grid": %s' % json.dumps(info.get("capacity_at_grid"))])))
         else:
             pending("V6 phantom (as placed vs optimized)", "as_placed, as_placed_conformed, uniform, greedy, SA, V100 bound on RIND5(phantom cavity); minimum N", V6_PHANTOM)
         if self.landed(V7_RUNTIME, ["t_candidates"]):
@@ -1132,6 +1533,15 @@ class Builder:
             n_pass = sum(1 for r in rows if r["verdict"].startswith("PASS"))
             add("V8 failure modes", "degenerate / empty meshes, N beyond any packing, tile wider than the wall, eligibility smaller than a tile",
                 "%d of %d cases behave as specified (explicit ValueError / RuntimeError or a valid plan)" % (n_pass, len(rows)), V8_FAIL, ["agg:" + V8_FAIL + "#verdict"])
+        if self.landed(V8_PACK_SUM, ["sa_failed_packing_exists"]):
+            _, pk = R.csv(V8_PACK_SUM)
+            for r in pk:
+                key = {"N": r["N"]}
+                cols = ("sa_all_seeds_packed", "sa_failed_packing_exists", "sa_failed_no_packing_proved", "sa_failed_existence_unknown", "greedy_packed")
+                add("V8 packing failures", "N = %s (%s cavities)" % (r["N"], r.get("n_cavities", "?")),
+                    "SA packed with every seed %s; SA failed although a grid packing is known %s; failed, no N-packing proved by the bound %s; failed, existence unknown %s; "
+                    "greedy packed %s; bound packed / run %s / %s" % tuple([r[c] for c in cols] + [r.get("bound_packed", "?"), r.get("bound_run", "?")]),
+                    V8_PACK_SUM, [L(V8_PACK_SUM, key, c, "int").encode() for c in cols])
         else:
             pending("V8 failure modes", "explicit errors on degenerate inputs", V8_FAIL)
         if self.landed(CAPACITY, ["capacity_at_grid"]):
@@ -1144,16 +1554,11 @@ class Builder:
         else:
             pending("capacity", "manufacturer rule vs capacity at grid vs placed (synthetic cavities, PH8)", CAPACITY)
         if self.landed(F8_SUMMARY, ["arm"]):
-            _, rows = R.csv(F8_SUMMARY)
+            rows = self._f8_rows()
             for r in rows:
-                key = {"arm": r["arm"]}
-                if r.get("sa_seed", "").strip():
-                    key["sa_seed"] = r["sa_seed"]
+                txt, locs = self._f8_arm_text(r["arm"], r, rows)
                 add("patient (F8)", "%s%s" % (r["arm"], (" seed %s" % r["sa_seed"]) if r.get("sa_seed", "").strip() else ""),
-                    "RIND5(gtcore) V100 %s %% / D90 %s cGy; CTV_GT V100 %s %% / D90 %s cGy; REACH10 V100 %s %% / D90 %s cGy; tiles %s (%s full + %s half), overlaps %s" % (
-                        fmt("pct1", r["RIND5_gtcore_V100"]), fmt("cgy", r["RIND5_gtcore_D90_cGy"]), fmt("pct1", r["CTV_GT_V100"]), fmt("cgy", r["CTV_GT_D90_cGy"]),
-                        fmt("pct1", r["REACH10_V100"]), fmt("cgy", r["REACH10_D90_cGy"]), r.get("n_tiles", ""), r.get("n_full", ""), r.get("n_half", ""), r.get("n_overlaps", "")),
-                    F8_SUMMARY, [L(F8_SUMMARY, key, "RIND5_gtcore_V100", "pct1").encode(), L(F8_SUMMARY, key, "CTV_GT_D90_cGy", "cgy").encode()], FLAG_CAL)
+                    txt.split(": ", 1)[1] if ": " in txt else txt, F8_SUMMARY, locs, FLAG_CAL)
         else:
             pending("patient (F8)", "as implanted vs optimized arms on RIND5(gtcore cavity) / CTV_GT / IMPLANT_REACH(10)", F8_SUMMARY)
         return t
@@ -1239,22 +1644,30 @@ class Builder:
             [clin("RIND5(gtcore cavity, clip cranial interior)", "-", "volume_cc", "cc1"), clin("RIND5(gtcore cavity, clip cranial interior)", "gtcore@32 gtcore seeds", "V100", "pct1"),
              clin("RIND5(gtcore cavity, clip cranial interior)", "gtcore@32 gtcore seeds", "D90", "cgy"), clin(H, "gtcore@32 gtcore seeds", "V100", "pct1"), clin(H, "gtcore@32 gtcore seeds", "D90", "cgy"),
              clin("RIND5(gtcore cavity, clip cranial interior)", "RTDOSE", "V100", "pct1"), clin("RIND5(gtcore cavity, clip cranial interior)", "RTDOSE", "D90", "cgy")])
-        capmd("F8", "b", "eligible wall for the optimizer", "craniotomy wall (facing + line of sight, no implant term; 26.5 % of the cavity area, holds 9/32 implanted seeds) UNION the wall within 10 mm of an implanted seed (demonstrated reach); packing capacity 13 tiles at h 2.5 mm / 6 spins on the craniotomy wall",
-              DECISIONS, "a445cf7", ["26.5 %", "13 tiles at h 2.5 mm", "9/32", "demonstrated reach"])
         if self.landed(F8_SUMMARY, ["arm"]):
-            _, arms = R.csv(F8_SUMMARY)
-            for r in [r for r in arms if not r["arm"].startswith("as_impl")]:
-                key = {"arm": r["arm"]}
-                if r.get("sa_seed", "").strip():
-                    key["sa_seed"] = r["sa_seed"]
-                cap("F8", "b", "optimized 8 tiles (title numbers; arm %s)" % r["arm"],
-                    "RIND5(gtcore cavity): V100 {0} % / D90 {1} cGy; CTV_GT: V100 {2} % / D90 {3} cGy; overlaps {4}",
-                    [L(F8_SUMMARY, key, "RIND5_gtcore_V100", "pct1"), L(F8_SUMMARY, key, "RIND5_gtcore_D90_cGy", "cgy"), L(F8_SUMMARY, key, "CTV_GT_V100", "pct1"),
-                     L(F8_SUMMARY, key, "CTV_GT_D90_cGy", "cgy"), L(F8_SUMMARY, key, "n_overlaps", "str")])
+            all_rows = self._f8_rows()
+            self._note(F8_SUMMARY)
+            c8 = R.csv_commit(F8_SUMMARY) or "?"
+            for lab, r in self._f8_main():
+                txt, locs = self._f8_arm_text(lab, r, all_rows)
+                panel = "a" if r["arm"].startswith("as_impl") else "b"
+                item = ("as implanted, scored by the patient run on the three targets (title numbers)" if panel == "a"
+                        else "optimized 8 tiles (title numbers)") + " -- " + txt.split(": ", 1)[0]
+                t.add(Row({"figure": "F8", "panel": panel, "item": item, "value": txt.split(": ", 1)[1] if ": " in txt else txt,
+                           "source": F8_SUMMARY, "commit": c8, "flag": FLAG_CAL}, " ;; ".join(locs)))
         else:
             t.add(Row({"figure": "F8", "panel": "b", "item": "optimized arms (for RIND5; for CTV_GT): title numbers V100 / D90 on the full rind, CTV_GT and IMPLANT_REACH(10); overlaps; solve time",
                        "value": "pending campaign (scripts/patient_optimize.py -> f8_patient_summary.csv, f8b_patient_optimized.npz)", "source": F8_SUMMARY + " (expected)",
                        "commit": "--", "flag": FLAG_CAL}, "pending:" + F8_SUMMARY))
+        el = self._eligibility_parts()
+        if el is not None:
+            value, locs, sources, extra = el
+            commits = list(dict.fromkeys([c for c in (R.csv_commit(s) for s in sources if s.endswith(".csv")) if c] + list(extra)))
+            t.add(Row({"figure": "F8", "panel": "b", "item": "eligible wall for the optimizer (measured on the patient run), manufacturer rule and capacity with their area basis",
+                       "value": value, "source": ", ".join(sources), "commit": ", ".join(commits), "flag": FLAG_CAL}, " ;; ".join(locs)))
+        else:
+            capmd("F8", "b", "eligible wall for the optimizer", "craniotomy wall (facing + line of sight, no implant term; 26.5 % of the cavity area, holds 9/32 implanted seeds) UNION the wall within 10 mm of an implanted seed (demonstrated reach); packing capacity 13 tiles at h 2.5 mm / 6 spins on the craniotomy wall",
+                  DECISIONS, "a445cf7", ["26.5 %", "13 tiles at h 2.5 mm", "9/32", "demonstrated reach"])
         return t
 
     # ------------------------------------------------------------- verify one part
@@ -1358,8 +1771,14 @@ Every line: mock -> measured (commit of the measurement). The mock numbers are n
 - Formalism: "a 1D plan would give 1.29 -> 0.96" -> far field only; under the test's selection 0.95 -> 1.05. **MIM is 2D with every seed axis along S-I** (common fitted axis 2.2 deg from S-I; physical axes 64.5 deg from it); the residual +-6 % angular trend of rev 3 is that axis convention, not the dataset, grid or S_K (aaddf65).
 - Phantom "localized seeds 0.84 mm off the wall mesh" -> a reference-surface artifact (the PH8 body mask includes the tiles: -0.68 mm to the tile face); +3.05 mm to the registered tile-less wall, 26/32 in the hydrated band (448a6b3).
 - Phantom cavity "lumen = filled minus body" -> impossible for this print (no plateau); gtcore's cavity rule on the registered twin: 55.3 cc, RIND5 47.7 cc (4cd9891).
-- F8 arms: the mock run's 0.67 -> 0.81 (rind) / 0.92 -> 0.91 (CTV_GT) is never quoted. Two arms -> **three** (decisions a445cf7): as implanted; optimized for `RIND5`; optimized for the physician's target (`HRCTV_PHYS` = `CTV_GT`), each scored on all three targets. Eligibility facing + line of sight (26.5 % of the wall, only 9/32 implanted seeds on it) -> that wall **UNION the wall within 10 mm of an implanted seed** ("demonstrated reach"). The trial run at 4748ccb (optimizing the full rind costs -17 pp on `CTV_GT`: 0.917 -> 0.750) is recorded in the decisions log, not quoted; the paper numbers come from the campaign's patient run -- pending.
-- Optimizer campaign: the rev-1 numbers (2026-10-07 at cca2120: SA - uniform +22.8 pp [19.3, 26.4] on the +5 mm shell; phantom as_implanted V100 0.654 -> SA 0.849; min-N 10 vs rule 12) are superseded by the Phase 4 campaign (full-grid RIND5 scoring, SA 8 x 60, same-candidate V100 bound, registered PH0 wall) -- pending.
+- F8 arms: the mock run's 0.67 -> 0.81 (rind) / 0.92 -> 0.91 (CTV_GT) is never quoted. Two arms -> **three** (decisions a445cf7), measured at 085fe60 (3 SA seeds, 8 tiles, 0 overlaps each): as implanted `RIND5(gtcore)` V100 38.7 % / D90 2653 cGy, `CTV_GT` 91.7 % / 6167 cGy, `IMPLANT_REACH(10)` 96.0 % / 6700 cGy; **optimized for `RIND5`** (all 3 seeds identical) 50.3 % / 3141 | 85.5 % / 5706 | 88.5 % / 5898; **optimized for `CTV_GT`** seed mean 42.9 % / 3159 | 98.0 % / 6769 | 98.8 % / 7004, best seed 41.6 % / 3165 | 98.2 % / 6783 | 99.2 % / 7073. Given the physician's target the optimizer improves on the implant on all three targets; given the full rind it trades `CTV_GT` (-6.2 pp) for rind coverage. The main tables report the seed mean and the best seed per family; per-seed rows are in Table S4. The as-implanted 6 full + 4 half fit owns all 32 seeds (row = as implanted; pending the operative record); the N = 8 count fit scores the 28 seeds it owns (sensitivity line).
+- F8(b) eligibility: facing + line of sight only (26.5 % of the wall, 9/32 implanted seeds' nearest face on it; the 4748ccb trial run on that wall cost -17 pp on `CTV_GT`, not quoted) -> that wall **UNION the wall within 10 mm of an implanted seed** = **67.3 %** of the wall (8919 of 13 261 mm2), 32/32 implanted seeds on eligible wall. Manufacturer rule: the "4 tiles on the eligible area (34 on the whole wall)" of 4cd9891 was the three-term CLI wall (11.8 %, 1566 mm2) -> **23 tiles on the union eligible area** (34 on the whole wall); packing capacity at grid 13 tiles was measured on the craniotomy wall alone (h 2.5 mm, 6 spins) and is not re-measured on the union (085fe60, 4cd9891).
+- Optimizer headline: rev-1 SA - uniform **+22.8 pp** V100 [19.3, 26.4] on the +5 mm shell surrogate (cca2120) -> pre-declared primary endpoint on the volumetric `RIND5` with full-grid scoring: SA (seed mean) - uniform at N* **+1.19 pp [-0.71, 3.09], n 15, Wilcoxon p 0.055 -- not significant**; best-of-3 +2.14 pp [0.23, 4.05], p 0.010 (secondary). The clear advantages are over greedy (N 8 +2.45 pp, p 0.002; N 10 +10.16 pp, p 0.031) and in reaching RIND5 D90 >= rx with fewer tiles (N* SA 10 vs greedy 12 on four of six x1.25 cavities) (d2d455e).
+- Packing failures: "SA fails to place N tiles although a truth configuration exists" (first V2 reading) -> **grid-capacity limits**: SA never failed where a packing is known to exist on the candidate grid; every SA failure at N <= 8 is on a cavity where the same-candidate bound proved no N-packing (N 6: 5/18, N 8: 6/18; x0.80 cavities); N 10 / 12 partly unknown (no bound run above N 8). The truth configurations are continuous, overlapping placements, not grid packings (packing_failures.py at 085fe60 on d2d455e).
+- Search quality vs the bound: the campaign-grid gap (HiGHS time-limited on 15/18 instances, loose LP reference, mean -42.8 %) is not quoted -> reduced grid, exact enumeration: with lambda_tail 0 (SA on pure V100, like-for-like) the mean gap is **-1.0 / -0.5 / -1.8 %** at N 4 / 6 / 8 and the best of 3 seeds is at the optimum on **14/15** instances (085fe60); with the frozen lambda_tail 1 the gap is -52.7 / -18.6 / -3.1 % while RIND5 D90 is +1122 / +1603 / -181 cGy above the bound's selection -- an objective trade-off, not search (d2d455e). (Rev 1, pure V100, 3 x 40: mean -1.98 %.)
+- Phantom arms: rev-1 PH8 body mesh (which includes the collagen tiles) and +5 mm shell scoring (as_implanted V100 0.654 -> SA 0.849; min-N 10 vs rule 12) -> **the registered tile-less PH0 wall** scored on `RIND5(phantom cavity)` 47.7 cc: as placed V100 44.3 % / D90 2187 cGy (3 overlaps), conformed 45.2 % / 2161, uniform 48.9 % / 3408, greedy 48.3 % / 3290, SA 54.6 % / 3529 (0 overlaps), V100 bound (time-limited) 59.2 % / 1866; greedy min-N sweep: D90 >= rx not reached for N <= 10; manufacturer rule 14 vs capacity at grid 10 vs placed 8 (d2d455e).
+- Capacity rows (new): manufacturer rule (area / 4 cm2) vs packing capacity at grid (h 4 mm, 6 spins; greedy maximal independent set, a lower bound) vs placed: x0.80 rule 7-8 / capacity 4 / placed 8 (truth, overlapping), x1.00 11-12 / 7 (s4: 9) / 8, x1.25 17-19 / 10 / 8, PH8 14 / 10 / 8 -- the rule over-counts everywhere (no packing loss) (d2d455e).
+- V5 sensitivity: SA's RIND5 V100 spread 0.09 +/- 0.06 pp (greedy 3.41 +/- 3.15, truth 4.63 +/- 0.10; Kendall tau 1.00 in all 18 cells) carries a **ceiling caveat**: SA's nominal V100 is 1.000 on all three cavities (d2d455e).
 - F2(c): the kappa range shown is stated (`KAPPA_RANGE` (-0.08, 0.5) per mm; wall-conformed render at 1/17 per mm). F9: no STL, reduced or cut. S2: PT-CT2mm lost; substitutes PT-CT-s3 vs PT-CT1mm and a decimated thin-cut.
 """
 
@@ -1370,12 +1789,12 @@ OPEN_ITEMS = """\
 2. **RTPLAN** -- per-seed S_K, reference time and `ControlPointOrientation` (expected (0, 0, +-1) or absent for every source); `scripts/formalism_check.py ... --rtplan "$GT_DATA_ROOT/<PT-RT RTPLAN>"` adds the `b6_axes_rtplan` variant; a `tps_rtplan` seed set for the gamma script.
 3. **PT-CT2mm** -- missing since the 2026-11-03 folder move; S2's real-data panel uses the two stated substitutes; the 0.51 / 0.40 / 0.63 mm SDs of the degraded-export band are quoted, not regenerable.
 4. **Operative record** -- were two tiles cut? Decides between the N = 8 count-known row (7/8, one degraded completion) and the 6 full + 4 half row (32/32), and whether F4(b) / F8(a) draw 6 sheets + 8 red seeds or 6 sheets + 4 half-tile pairs (drawn from the pair geometry: the `RigidTile("half")` template is cut across the seed rows, the observed halves along them).
-5. **Phase 4 campaign outputs** -- `docs/figures/optimize/data/{v2_*,v3_gap,v4_discretization,v5_*,v6_phantom*,v7_runtime,v8_failure_modes,capacity,f8_patient_summary,f8_patient_arms}.csv`, `docs/figures/data/f8b_patient_optimized.npz` and `docs/figures/data/table4_runtimes.csv`: the optimizer rows of Table 3, Table S4, Table 4 and the F8(b) caption are `pending campaign` until they land (`paper_tables.py` picks them up by file name).
+5. **Optimizer follow-ups (campaign merged at 056334c; no table row is pending on it)** -- (a) which F8 arm pair the main-text panel shows (suggested: as implanted vs optimized for `CTV_GT`; the `RIND5` arm in S4 / Table 3) is Jacob's choice; (b) packing existence at N 10 / 12 on the x1.00 cavities (and one x1.25 at N 12) is unknown -- no bound run above N 8; (c) packing capacity on the union eligible wall of the patient (67.3 %) was not measured (13 tiles is the craniotomy wall alone); (d) a feasibility-first SA start is the obvious fix for the grid-capacity failures and is future work, not done.
 6. **F7 recordings** -- three planner frames by hand from `gt plan "$GT_DATA_ROOT/<PH8>" --hrctv` on the tagged build (fixed window size, same crop); not rendered by the figure script.
 7. **Photos** -- F2(a) tile with scale, F3(b) phantom with the eight tiles, F3(a) MRI crops (cavity outlines), F9 strip (CT / 3T MRI / Artec / TRIOS of the tile-less phantom) or F9 cut to a Discussion sentence.
 8. **IRB / consent statement** (Table 1 placeholder) and the **Zenodo DOI** of the tagged release (`v1.0-medphys`).
 9. **TG-43U1S2 erratum text** (Med Phys 45:971) -- Table XII rests on Paper 1's transcription (validated indirectly); Table XXIII is the 2017 print. Paper 1's F(7 cm, 80 deg) slip (0.999 -> 0.998) to be fixed in that repository.
-10. **Cavity across the loop** (Table 1 / F3 caption: cavity volume on each scan, intra-op -> post-op wall displacement) -- `scripts/cavity_change.py` (Phase 5 task `cavity-change`); manual MRI cavity contours from Jacob if wanted (no MRI segmentation in gtcore).
+10. **Cavity across the loop** -- volumes done (`scripts/cavity_change.py`, `docs/figures/data/f3_cavity_volumes.csv`: printed cavity 55.3 cc, `Cav_Post` 35.1 cc, gtcore 41.3 cc); the intra-op -> post-op wall displacement was attempted and is not credible, not quoted; manual MRI cavity contours from Jacob would add MRI volumes (no MRI segmentation in gtcore).
 """
 
 
