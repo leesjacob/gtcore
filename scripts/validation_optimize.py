@@ -1069,10 +1069,34 @@ def read_csv(path: str) -> List[Dict[str, str]]:
     return list(csv.DictReader(lines))
 
 
+def sanitise_argv(argv: Sequence[str]) -> List[str]:
+    """Command-line tokens with filesystem paths replaced by ``<path>`` (the
+    value after ``--out`` / ``--phantom`` / ``--ph0`` / ``--clinical``, and any
+    token that looks like a path), so no machine path or folder name reaches a
+    committed CSV header or ``runs.csv``."""
+    out: List[str] = []
+    hide_next = False
+    for tok in argv:
+        t = str(tok)
+        if hide_next:
+            out.append("<path>")
+            hide_next = False
+            continue
+        if t in ("--out", "--phantom", "--ph0", "--clinical"):
+            out.append(t)
+            hide_next = True
+            continue
+        if ("\\" in t or "/" in t or (len(t) > 1 and t[1] == ":")) and not t.startswith("--"):
+            out.append("<path>")
+        else:
+            out.append(t)
+    return out
+
+
 def csv_header(cfg, section: str, what: str, datasets: str = "synthetic cavities "
                "(gtcore.phantom.make_head_phantom, seeds x radius scales; no patient data)") -> List[str]:
     return ["scripts/validation_optimize.py section %s -- %s" % (section, what),
-            "command: python scripts/validation_optimize.py " + " ".join(cfg.argv),
+            "command: python scripts/validation_optimize.py " + " ".join(sanitise_argv(cfg.argv)),
             "commit: %s; date: %s" % (git_commit(), time.strftime("%Y-%m-%d %H:%M")),
             "datasets: " + datasets,
             "RIND5_* = volumetric HR-CTV RIND5(cavity, clip) on the final %g mm dose grid (final_report); "
@@ -1124,7 +1148,7 @@ def append_run(out_dir: str, section: str, argv: List[str], seeds, wall_s: float
         if new:
             w.writerow(["date", "section", "command", "seeds", "commit", "wall_s", "note"])
         w.writerow([time.strftime("%Y-%m-%d %H:%M"), section,
-                    "python " + " ".join(argv), json.dumps(list(seeds)), git_commit(),
+                    "python " + " ".join(sanitise_argv(argv)), json.dumps(list(seeds)), git_commit(),
                     "%.1f" % wall_s, note])
 
 

@@ -261,11 +261,22 @@ def test_campaign_rows_carry_full_grid_rind5_and_surrogates(vo, campaign):
         assert 0.0 <= v <= 1.0 and np.isfinite(float(r["RIND5_D90"]))
         assert int(float(r["RIND5_n"])) > 0 and float(r["RIND5_volume_cc"]) > 0
         assert 0.0 <= float(r["S5_V100"]) <= 1.0 and 0.0 <= float(r["TGT_V100"]) <= 1.0
-    # header comment lines name the script, the command and the commit
+    # header comment lines name the script, the command and the commit; the
+    # output directory (a machine path) is masked
     text = (campaign["out"] / "v2_rows.csv").read_text(encoding="utf-8")
     assert text.startswith("# scripts/validation_optimize.py section v2")
     assert "# command: python scripts/validation_optimize.py" in text
+    assert "--out <path>" in text and str(campaign["out"]) not in text
     assert "# commit:" in text and "LAMBDA_TAIL = 1" in text
+    runs = (campaign["out"] / "runs.csv").read_text(encoding="utf-8")
+    assert str(campaign["out"]) not in runs
+
+
+def test_sanitise_argv(vo):
+    argv = ["--section", "v6", "--phantom", r"C:\data\PH8 (223)", "--out", "out/x", "--sa-seeds", "3",
+            "--clinical", "/mnt/jd", "D:/loose/path", "--h-mm", "4"]
+    assert vo.sanitise_argv(argv) == ["--section", "v6", "--phantom", "<path>", "--out", "<path>",
+                                      "--sa-seeds", "3", "--clinical", "<path>", "<path>", "--h-mm", "4"]
 
 
 def test_campaign_sa_seeds_distinct_and_collapsed(vo, campaign):
