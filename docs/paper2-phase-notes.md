@@ -3214,3 +3214,259 @@ below.
 Full suite on the final tree (`b20ae00`, same command, one job): **`951 passed,
 14 skipped, 15243 warnings in 593.86s (0:09:53)`**, exit 0 — 950 of `788df9d` plus
 the layer-class test added at `afb96ea`.
+
+## 2026-11-03 — Phase 3 — formalism: angular symmetry test and residual trend (task `formalism`, branch `p2/formalism`)
+
+Owner: agent `formalism`. Branched from `paper2/integration` at `e13a4af`. Commits:
+`aaddf65` (module + script + tests); the four CSVs and this section are the next
+commit on the branch (`git log --oneline paper2/integration..p2/formalism`). Every number below was produced by
+`python scripts/formalism_check.py "$GT_DATA_ROOT/<PT-CT1mm>" "$GT_DATA_ROOT/<PT-RT RTSTRUCT dir>" "$GT_DATA_ROOT/<PT-RT RTDOSE dir>"`
+run from the worktree root at commit `aaddf65` (the script prints
+`gtcore.__file__` = the worktree's `gtcore`), 157 s wall (reconstruct 20 s, the
+rest the fits; other agents ran concurrently, so an upper bound). Calibration set:
+this case (`PT-CT1mm`, `PT-RT`); no parameter was tuned on it. CSVs in
+`docs/figures/data/` (`git add -f`, the directory name `data/` is git-ignored):
+`formalism_angular_ratio.csv` (variant, bin, mean, sd, median, n),
+`formalism_variants_summary.csv` (one row per variant: n, overall mean/median, slope,
+end-to-end, RMS of log ratio, r median/max, description),
+`formalism_axis_comparison.csv` (per source: gtcore PCA axis vs RTDOSE-fitted,
+RTSTRUCT and RTPLAN axes) and `formalism_hypotheses.csv`.
+
+### What was added
+
+`gtcore/dose/formalism.py` (numpy/scipy only; not re-exported from `gtcore.dose`
+to leave the shared `__init__` alone):
+
+| Function | Role |
+|---|---|
+| `angular_symmetry_test(reference, centers, axes, sk, engine, r_min_mm=3, r_max_mm=15, min_fraction=0.5, bins_deg, supersample=None, calc="2D"/"1D")` | the packaged test: per-source gtcore contributions at the reference voxel centres (or averaged over `supersample` sub-samples per voxel), dominant source, selection, ratio `reference / gtcore` binned by angle to the dominant source's axis; returns `AngularRatioResult` (bins with mean/sd/median/n, overall mean/median, least-squares slope per 90 deg, end-to-end, RMS of log ratio, r median/max, per-voxel detail) |
+| `per_seed_doses` | `(N_seeds, M)` matrix whose column sum is `engine.dose_at_points` (bit-identical, tested) |
+| `phi_an(engine, r_cm)` / `point_source_1d_dose` | TG-43U1 1D formalism `Lambda G_L(r, theta0)/G_L(r0, theta0) g_L(r) phi_an(r)` with `phi_an` integrated from the engine's own 2D rate (TG-43U1 Eq. 12, trapezoid on 1801 nodes; the printed consensus row can be passed as `phi_an_table`); diagnostic inside the check only, **no engine mode** |
+| `prediction_rows(result, centers, axes_alt, calc_alt, ...)` | what the binned ratio would be under another model on the *same* voxels (`D_alt / D_calc`): the 1D prediction and the "all axes along z" prediction |
+| `fit_source_to_reference` / `fit_sources_to_reference` / `fit_axis_to_reference` | per-source axis (hemisphere scan, 800 directions + three local tilt grids) and/or sub-voxel position (Nelder-Mead, max shift 1.5 mm) fitted to the reference's 2-6 mm shell, other sources fixed, cost = RMS of `log(ref/model)` about its mean (a flat scale cannot steer the fit); `calc="1D"` fits a point-source position |
+| `fit_common_axis` | one axis for all sources (the TPS default-orientation hypothesis), with the RMS for the given axes and for RAS z alongside |
+| `compare_axes(a, b)` | per-seed angle (sign-blind, 0-90 deg), median, mean, p95, max, n; NaN rows skipped |
+| `perturb_axes(axes, deg, rng)` | every axis rotated by exactly `deg` about a random perpendicular |
+| `rtdose_source_positions(volume, min_cgy=20000, merge_mm=3)` / `match_sources_to_seeds` | the plan sources as RTDOSE local maxima (voxel centres) and their Hungarian match to detected seeds |
+
+`scripts/formalism_check.py <PT-CT1mm> <RTSTRUCT> <RTDOSE> [--rtplan] [--sk] [--out] [--supersample 3 3 5] [--no-fit]`
+runs `reconstruct` for the gtcore seeds/axes, reads the 32 sources off the RTDOSE,
+matches them to the gtcore seeds (axes) and to the RTSTRUCT `Seeds` contours (PCA
+axes of the contours), runs the baseline and every variant below, the fits and the
+hypothesis ranking, and writes the four CSVs with header comments (script, command
+with dataset ids, commit, datasets, selection rule). With `--rtplan` it adds the
+variant `b6_axes_rtplan` (axes = `ControlPointOrientation`) and fills the
+`pca_vs_rtplan_deg` column (code path exercised on a synthetic RTPLAN written with
+`tests/test_io_rt.write_rtplan`; no RTPLAN is on this machine).
+
+`tests/test_formalism.py` (25 tests, synthetic references on a 1 x 1 x 1.667 mm grid,
+8 seeds on a 10 mm lattice with random axes): 2D reference -> 1.00 +- 0.01 in every bin
+(mean within 0.01, SD < 0.01, exact and tabulated kernels, flipped axes); 1D reference
+-> measured bins equal `prediction_rows(calc="1D")` to 0.01 and are not flat, and
+in the 6-15 mm far field of an isolated seed the classic signature (first bin
+1.15-1.35, transverse 0.94-0.99, monotone); 1D read against a 1D gtcore flat; flat
+S_K scales every bin and cannot make a trend; axis error raises the scatter and the
+bins equal the prediction with the true axes; voxel averaging; `compare_axes` on
+known rotations (0/7.5/25/60 deg, 120 -> 60 fold, sign flip -> 0, mixed, NaN rows);
+`perturb_axes`; position fit recovers grid-quantised centres to < 0.15 mm; joint fit
+recovers 20 deg-off axes to < 5 deg and positions to < 0.25 mm; 1D position fit;
+common-axis scan recovers a shared direction (z and an oblique one) within 3 deg;
+`rtdose_source_positions` + matching; input validation; `phi_an` is the
+solid-angle average of the 2D dose (0.2 %) and `phi_an(1 cm)` = 0.965 (0.955-0.975
+pinned; the engine gives 0.960-0.964 at 2-10 cm, below 1 at every tissue radius).
+
+### Definitions (Methods-quotable)
+
+*Selection.* Every RTDOSE voxel within 15 mm of a plan source gets the per-source
+gtcore doses at its centre; its dominant source is the largest contributor. A voxel
+enters the test when its dominant source lies 3-15 mm away and contributes more than
+50 % of the gtcore total, so its dose is essentially one seed's and the angle `theta`
+to that seed's long axis is meaningful. The ratio RTDOSE / gtcore is binned in six
+15-degree bins of `theta`; mean, SD and n per bin, plus the least-squares slope of
+the ratio over 0-90 deg and the RMS of `log(ratio)` about its mean (the scatter).
+Plan sources = the 32 RTDOSE local maxima above 200 Gy merged within 3 mm (voxel
+centres, i.e. quantised to +-0.5 / 0.5 / 0.83 mm); each is matched one-to-one to a
+gtcore seed (32/32 within 3 mm, median 0.92, max 1.45 mm) whose PCA long axis is used.
+
+*1D prediction.* `D_1D(r) = Lambda G_L(r, 90)/G_L(1 cm, 90) g_L(r) phi_an(r)`, with
+`phi_an(r) = int_0^pi D_2D(r, theta) sin(theta) dtheta / (2 D_2D(r, 90))` from the
+consensus `F(r, theta)` and `g_L` (0.965 at 1 cm, 0.96 at 2-10 cm, 1.01 at 5 mm).
+The 1D-vs-2D difference is r-dependent: inside ~6 mm the line-source geometry
+function raises the on-axis 2D dose above the point-source value
+(`G_L(r, 0)/G_L(r, 90)` = 2.0 at 3 mm, 1.25 at 5 mm; `F(r, 0)` ~ 0.83), beyond it
+`F(r, theta) < 1` wins (at 10 mm, 10 deg: `D_1D/D_2D` = 1.29). Rev 3's "a 1D plan
+would give 1.29 -> 0.96" is the far-field signature (reproduced by the unit test on an
+isolated seed at 6-15 mm: 1.12-1.3 -> 0.96). Under the rev 3 selection on this
+implant **no selected voxel is more than 5.1 mm from its dominant seed** (seeds 10 mm
+apart: beyond ~5 mm a neighbour always takes > 50 %; r median 3.5 mm), so the 1D
+prediction in those bins is 0.95 -> 1.05, not 1.29 -> 0.96. The discrimination
+between 1D and 2D therefore rests on the scatter and on the axis analysis below,
+not on the sign of the first bin.
+
+### Results — PT-RT RTDOSE (250 x 266 x 266, 1 x 1 x 1.667 mm, GY, quantised to 20 cGy) vs gtcore @ 32 sources, S_K 3.5 U nominal, commit `aaddf65`
+
+**A. The rev 3 test reproduced** (`baseline`: 2D TG-43U1S2, maxima positions, gtcore PCA
+axes; n = 661 voxels of 65 002 within 15 mm; 26 in the first bin):
+
+| theta to PCA axis | 0-15 | 15-30 | 30-45 | 45-60 | 60-75 | 75-90 | slope / 90 deg | RMS log |
+|---|---|---|---|---|---|---|---|---|
+| RTDOSE / gtcore-2D | 0.934 +- 0.143 | 1.009 +- 0.222 | 1.012 +- 0.196 | 1.055 +- 0.197 | 1.090 +- 0.166 | 1.104 +- 0.166 | +0.179 | 0.171 |
+| n | 26 | 75 | 130 | 156 | 136 | 138 | | |
+| `pred_1D` = D_1D / D_2D (if MIM were 1D) | 0.947 | 0.952 | 0.971 | 1.010 | 1.041 | 1.054 | | |
+| `pred_2D_axes_z` = D_2D(all axes along z) / D_2D(PCA) | 0.921 | 0.944 | 0.965 | 0.994 | 1.024 | 1.040 | | |
+| measured / `pred_2D_axes_z` | 1.014 | 1.069 | 1.049 | 1.061 | 1.064 | 1.062 | | |
+| `ratio_vs_1D` = RTDOSE / gtcore-1D | 0.984 +- 0.127 | 1.058 +- 0.219 | 1.041 +- 0.195 | 1.045 +- 0.194 | 1.048 +- 0.161 | 1.047 +- 0.158 | +0.019 | 0.162 |
+
+Rev 3 quoted 0.94 -> 1.07; here 0.93 -> 1.10 (same selection; the difference is the
+exact seed/axis set of the earlier scratch run). The within-bin SD of 0.14-0.22 is
+dominated by the half-voxel quantisation of the source positions (a 0.5 mm shift at
+3.5 mm is a 30 % dose change), so the first bin (n = 26) has a standard error of
+0.03. The measured curve divided by the all-axes-along-z prediction is flat at
+1.01-1.07: **the rev 3 trend is, to within noise, what a TPS computing every source
+with its axis along the patient S-I direction produces when read with the physical
+(PCA) axes.**
+
+**B. Candidate causes, each as a labelled variant of the same binned ratio**
+(`formalism_angular_ratio.csv`; bins by angle to the axis the variant uses):
+
+| variant | 0-15 | 15-30 | 30-45 | 45-60 | 60-75 | 75-90 | n | slope | RMS log | reading |
+|---|---|---|---|---|---|---|---|---|---|---|
+| `a_clrp_v2` (CLRP v2 F and g_L) | 0.933 | 1.003 | 1.011 | 1.056 | 1.084 | 1.103 | 645 | +0.179 | 0.171 | identical to the consensus: **not the dataset** (the two datasets differ by < 1.5 % off-axis and only inside the capsule's solid angle) |
+| `b1_axes_flipped` | 0.934 | 1.009 | 1.012 | 1.055 | 1.090 | 1.104 | 661 | +0.179 | 0.171 | bit-identical (F is symmetric) |
+| `b2_axes_perturbed_10deg` | 1.005 | 0.997 | 1.022 | 1.052 | 1.090 | 1.099 | 658 | +0.148 | 0.171 | a 10-20 deg PCA error moves bins by a few % only |
+| `b2_axes_perturbed_20deg` | 0.953 | 1.031 | 1.020 | 1.059 | 1.057 | 1.099 | 653 | +0.133 | 0.167 | (synthetic: 20 deg off changes the bins by <= 3.4 %) |
+| `b4_axes_rtstruct_pca` (30 contoured sources, axes = PCA of the `Seeds` contours) | 1.052 | 1.059 | 1.090 | 1.116 | 1.155 | 1.170 | 778 | +0.164 | 0.188 | same trend; gtcore PCA vs contour PCA agree: median 4.8, max 27.8 deg |
+| `baseline_same_sources` (30) | 1.011 | 1.075 | 1.076 | 1.126 | 1.159 | 1.175 | 786 | +0.190 | 0.188 | |
+| `b5_axes_all_z` (every axis along RAS z; bins by angle to z) | 1.160 | 1.151 | 1.088 | 1.043 | 1.039 | 1.034 | 569 | -0.146 | 0.158 | trend reverses in sign and the scatter drops |
+| `c_voxel_averaged` (gtcore averaged over 3 x 3 x 5 sub-samples per RTDOSE voxel) | 0.922 | 1.000 | 1.003 | 1.053 | 1.090 | 1.105 | 680 | +0.196 | 0.167 | **not grid averaging** |
+| `d_sk_x1.07` | 0.873 | 0.943 | 0.946 | 0.986 | 1.019 | 1.032 | 661 | +0.168 | 0.171 | every bin / 1.07, slope unchanged: **a flat S_K cannot make a trend** |
+| `e_positions_gtcore` (sources at the gtcore CT centres) | 1.060 | 1.006 | 1.033 | 1.051 | 1.094 | 1.122 | 735 | +0.171 | 0.180 | same trend, noisier |
+| `baseline_dominance30` (> 30 % instead of > 50 %) | 1.010 | 1.011 | 1.005 | 1.025 | 1.042 | 1.052 | 8062 | +0.074 | 0.106 | trend halves when neighbours dilute the single-seed anisotropy |
+| `b5_axes_all_z_dominance30` | 1.074 | 1.054 | 1.030 | 1.022 | 1.015 | 1.014 | 7837 | -0.047 | 0.097 | |
+| `b3_axes_fitted_rtdose` (axis per seed fitted to the RTDOSE 2-6 mm shell, positions = maxima) | 1.150 | 1.175 | 1.080 | 1.082 | 1.004 | 1.015 | 566 | -0.200 | 0.153 | fitted axes: median 67 deg from the PCA axes, 5.4 deg from z (see C) |
+
+**C. Which axes does the RTDOSE carry?** (`formalism_axis_comparison.csv`,
+`formalism_hypotheses.csv`)
+
+| comparison (deg, sign-blind) | median | mean | p95 | max | n |
+|---|---|---|---|---|---|
+| gtcore PCA axis vs RTSTRUCT `Seeds` contour PCA axis | 4.8 | 7.3 | 20.9 | 27.8 | 30 |
+| gtcore PCA axis vs RAS z | 64.5 | 65.7 | 90.0 | 90.0 | 32 |
+| gtcore PCA axis vs axis fitted to the RTDOSE shell (position fixed) | 67.0 | 65.2 | 88.9 | 89.9 | 32 |
+| gtcore PCA axis vs jointly fitted axis (position + axis) | 66.4 | 65.6 | 89.5 | 89.9 | 32 |
+| **jointly fitted axis vs RAS z** | **3.6** | 4.2 | 9.3 | 10.0 | 32 |
+| gtcore PCA axis vs RTPLAN `ControlPointOrientation` | — | — | — | — | no RTPLAN on this machine |
+
+One common axis fitted to all 32 shells: (-0.037, 0.009, 0.999), **2.2 deg from RAS
+z**; RMS of log(RTDOSE/model) 0.1995 for the common axis, 0.1996 for exactly z,
+0.2652 for the PCA axes (positions = maxima). Joint fits move the sources by 0.77 mm
+median, 0.99 mm max — inside the half-voxel quantisation of the maxima (up to
+1.09 mm) — and reduce the per-seed RMS from 0.276 to 0.040 (median).
+
+Hypotheses ranked by the scatter after a per-seed sub-voxel position fit *under that
+hypothesis* (3 free parameters each; `fit_axis=False`; `formalism_hypotheses.csv`):
+
+| hypothesis | RMS log, median | mean | shift median / max (mm) |
+|---|---|---|---|
+| H3: 2D, every axis along RAS z | **0.042** | 0.044 | 0.77 / 0.99 |
+| H4: 2D, per-seed jointly fitted axes (2 extra parameters per seed) | 0.042 | 0.045 | 0.77 / 0.98 |
+| H2: 1D point source | 0.104 | 0.107 | 0.65 / 0.91 |
+| H1: 2D, gtcore PCA axes (the physical seed axes) | 0.180 | 0.172 | 0.70 / 1.11 |
+
+The free per-seed axes buy nothing over "all along z" (0.042 vs 0.042), 1D is 2.5 x
+worse, the physical axes 4 x worse. With the H3 positions, binned by angle to z:
+
+| theta to z | 0-15 | 15-30 | 30-45 | 45-60 | 60-75 | 75-90 | n | slope | RMS log |
+|---|---|---|---|---|---|---|---|---|---|
+| `H3_2D_axes_z_refined` RTDOSE / gtcore-2D(z) | 1.033 +- 0.055 | 1.084 +- 0.055 | 1.030 +- 0.035 | 1.013 +- 0.014 | 1.005 +- 0.012 | 1.001 +- 0.012 | 722 | -0.094 | 0.040 |
+| `H3_2D_axes_z_refined_avg` (+ voxel averaging 3 x 3 x 5) | 0.949 +- 0.051 | 1.048 +- 0.052 | 1.019 +- 0.032 | 1.010 +- 0.014 | 1.005 +- 0.012 | 1.002 +- 0.012 | 753 | -0.024 | 0.037 |
+| `H3_2D_axes_z_refined_avg_clrp` (CLRP v2) | 0.940 | 1.046 | 1.018 | 1.009 | 1.004 | 1.001 | 748 | -0.018 | 0.039 |
+| `H2_1D_refined` RTDOSE / gtcore-1D | 1.143 +- 0.098 | 1.184 +- 0.111 | 1.070 +- 0.057 | 1.020 +- 0.028 | 0.984 +- 0.025 | 0.965 +- 0.027 | 707 | -0.283 | 0.087 |
+| `pred_1D_in_H3_bins` = D_1D / D_2D(z) | 0.921 | 0.923 | 0.962 | 0.994 | 1.026 | 1.045 | | | |
+| `H1_2D_pca_axes_refined` (bins by angle to PCA axis) | 0.970 +- 0.090 | 0.973 +- 0.111 | 0.986 +- 0.101 | 1.040 +- 0.111 | 1.057 +- 0.098 | 1.070 +- 0.080 | 787 | +0.153 | 0.097 |
+
+The RTDOSE is anisotropic about z with line-source magnitude: read against an
+isotropic 1D model it rises to 1.14-1.18 within 30 deg of z and falls to 0.965 in the
+transverse plane (SD per bin 0.03-0.11), exactly the 2D-vs-1D shape (the D_2D(z)/D_1D
+prediction is 1/0.921 = 1.09 -> 1/1.045 = 0.96; the measured excess near z beyond that
+is the same +5-8 % near-axis residual seen in the H3 rows). **MIM is 2D.** Scale: H3
+overall RTDOSE / gtcore 1.025 (median 1.012) at 3-5 mm -> implied S_K 3.59 U at
+nominal 3.5 U, a diagnostic only (`validation_clinical.py` measures 1.074 / 3.76 U at
+CTV_GT voxels > 5 mm from a seed with the PCA axes, which this result says is biased
+by the axis convention; the nominal 3.5 U stays).
+
+**D. What remains.** With the TPS-convention axes, refined positions and voxel
+averaging, the ratio is within 1-2 % (SD 1.2-3 %) from 30 to 90 deg and within 5 %
+(0.949 / 1.048, n = 42 / 142, SE 0.008 / 0.004) in the two bins nearest the z axis,
+where r is 3-4 mm, `F(r, theta)` has its 5-10 deg dip (0.68-0.72) and `G_L(r, 0)` its
+on-axis spike. The sign flips between the centre-sampled and the voxel-averaged
+evaluation (1.03 / 1.08 vs 0.95 / 1.05), so this residual is at the level of how the
+TPS samples its 1 x 1 x 1.667 mm grid near the axis (centre vs average, its own F
+interpolation) and of the 0.04 position-fit residual; it is not explained here and
+cannot be without the TPS's calculation settings (RTPLAN private blocks). It is
+confined to < 30 deg of z at r < 5 mm, i.e. to a few voxels per seed; it does not
+touch the 5 mm prescription surface or the DVH.
+
+### Conclusion
+
+**MIM used the 2D line-source formalism** (1D rejected: RMS 0.104 vs 0.042; the
+RTDOSE carries line-source anisotropy about one axis). **The residual +-6 % angular
+trend of rev 3 is explained by the seed-axis definition, not by the anisotropy
+dataset, the grid or S_K:** the TPS computed every source with its long axis along
+the patient S-I direction (RAS z; common fitted axis 2.2 deg from z, per-seed 3.6 deg
+median, 10 deg max), while the physical seeds lie in the tile planes (gtcore PCA axes
+64.5 deg from z in median, confirmed by the physician's `Seeds` contours to 4.8 deg).
+Reading the RTDOSE with the physical axes produces exactly the 0.93 -> 1.10 curve
+(prediction 0.92 -> 1.04 x a flat 1.06). Residual after the axis correction: +-5 %
+inside 30 deg of z at r < 5 mm, unexplained (TPS near-axis sampling), < 2 %
+elsewhere. The RTPLAN, when it arrives, is expected to show
+`ControlPointOrientation` = (0, 0, +-1) (or absent, the TPS default) for every
+source:
+
+```
+python scripts/formalism_check.py "$GT_DATA_ROOT/<PT-CT1mm>" "$GT_DATA_ROOT/<PT-RT RTSTRUCT dir>" "$GT_DATA_ROOT/<PT-RT RTDOSE dir>" --rtplan "$GT_DATA_ROOT/<PT-RT RTPLAN>"
+```
+adds the variant `b6_axes_rtplan` (ratio binned by the RTPLAN orientation; flat if
+the orientations are what MIM used) and fills `pca_vs_rtplan_deg` in
+`formalism_axis_comparison.csv` (`compare_axes(pca_axes, plan.orientations_ras)`;
+with a synthetic RTPLAN carrying z orientations the column reads 64.5 deg median and
+`b6` reproduces `b5_axes_all_z`). Also check `plan.plan_level["private_creators"]`
+for the vendor block that names the dose-calculation settings.
+
+**Consequence for F5 / gamma (coordinator decision).** gtcore @ 32 sources with the
+physical (PCA) axes and the TPS dose differ near every seed by a TPS input convention,
+not by dosimetry. Two defensible arms: (i) physical axes (gtcore's claim: the dose the
+implant delivers under TG-43), (ii) TPS-convention axes (all along S-I; via
+`angular_symmetry_test(..., seed_axes=np.tile([0, 0, 1], (32, 1)))` or by passing
+those axes to `dose_at_points`), which is the like-for-like implementation-equivalence
+check. The paper should state which is shown and why the TPS convention is a
+limitation of the reference, not of gtcore. `formalism.fit_sources_to_reference(...,
+fit_position=True, fit_axis=False)` gives sub-voxel source positions (0.77 mm median
+shift from the maxima) if the gamma arm wants them; nothing in gtcore was changed.
+
+**Rev 3 text to amend.** "a 1D plan would give 1.29 -> 0.96" holds for the far field
+(> 6 mm from an isolated seed); under the test's own selection on this implant the
+1D prediction is 0.95 -> 1.05 (Table A). The rev 3 conclusion (2D) stands, on the
+scatter and axis evidence above.
+
+### Table 3 row (proposed text)
+
+| Row | Value | Set |
+|---|---|---|
+| TPS formalism check (PT-RT): RTDOSE / gtcore-2D vs angle to the seed axis, 3-5 mm single-seed voxels | physical (PCA) axes: 0.93 (0-15 deg) -> 1.10 (75-90 deg), RMS 0.17; TPS-convention axes (all along S-I): 1.03 -> 1.00, RMS 0.04; 1D rejected (RMS 0.10). MIM = 2D line source; TPS seed axes along S-I, 64.5 deg (median) from the physical axes | calibration (this case) |
+
+### Commands
+
+```
+python scripts/formalism_check.py "$GT_DATA_ROOT/<PT-CT1mm>" "$GT_DATA_ROOT/<PT-RT RTSTRUCT dir>" "$GT_DATA_ROOT/<PT-RT RTDOSE dir>"     # 157 s; writes docs/figures/data/formalism_*.csv
+GTCORE_STRICT=1 python -m pytest -q tests/test_formalism.py                                                                                # 25 passed
+GTCORE_STRICT=1 python -m pytest -q    # 966 passed, 14 skipped, 15242 warnings in 501.61s (0:08:21) at 538e3f6 (980 collected = the Phase 2 tree + 25 new; other agents ran concurrently, wall time is an upper bound)
+```
+
+### Notes for the coordinator
+
+- No shared file was touched (`pyproject.toml`, `tests/conftest.py`, `README.md`, `gtcore/dose/__init__.py` unchanged); `gtcore.dose.formalism` is imported by its full path. `scripts/validation_clinical.py` was not edited (owned by `clinical-rebuild`); it can import `angular_symmetry_test`, `rtdose_source_positions`, `match_sources_to_seeds` and `fit_sources_to_reference` from `gtcore.dose.formalism`.
+- Decision needed: which seed-axis convention the F5 / gamma comparison against the RTDOSE uses (physical PCA axes vs the TPS convention, all along S-I) -- see the Conclusion above. Either way the paper has to state that the TPS computed with S-I-aligned seeds.
+- Rev 3's "a 1D plan would give 1.29 -> 0.96" needs the amendment stated above (far field only).
+- Missing data: the RTPLAN (orientations, per-seed S_K, private calc settings); the documented command above runs the comparison when it arrives. Nothing was installed.
+- `docs/figures/data/` did not exist before this branch; `data/` is git-ignored, so the four CSVs were added with `git add -f`.
