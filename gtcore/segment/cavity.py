@@ -45,7 +45,7 @@ from __future__ import annotations
 import numpy as np
 from scipy import ndimage
 
-from ._morph import close_mm, largest_cc
+from ._morph import close_mm, dilate_mm, geodesic_grow_mm, largest_cc
 
 AIR_HU = -250.0          # pneumocephalus / trapped air
 FLUID_HI_HU = 26.0       # CSF and serosanguinous fluid sit around 0-20 HU
@@ -54,7 +54,10 @@ CAVITY_CLOSE_MM = 5.0     # tidies the final mask across thin septa / clot fleck
 # seed-sheet prior (see module docstring)
 HULL_REACH_MM = 14.0      # geodesic growth beyond the seed hull through low density
 # (sweep in docs/clinical-validation-notes.md: phantom Dice rises with reach,
-#  the clinical cavity leaks into oedema beyond ~12 mm; 14 mm balances both)
+#  the clinical cavity leaks into oedema beyond ~12 mm; 14 mm balances both.
+#  That sweep ran with voxel-step growth; the reach has been a physical-mm
+#  geodesic distance since docs/paper2-phase-notes.md "Phase 1", where the
+#  phantom and clinical numbers at 14 mm are re-measured, not re-tuned.)
 SHEET_TOL_MM = 3.0        # cavity ends this far beyond the seed sheet (tile tissue face)
 SHEET_CLOSE_MM = 3.0      # gentler closing: 5 mm bridged speckle into oedema (+40 cc)
 _SHEET_MIN_SEEDS = 4
@@ -166,7 +169,11 @@ def _cavity_from_seed_sheet(vol, arr, low, interior, centers, reach_mm,
     """Cavity = low-density voxels grown geodesically from the convex hull
     of the seeds, clipped at the seed sheet, closed and filled.  Returns
     None when the seeds are degenerate (coplanar / collinear) so the caller
-    falls back to the component rule."""
+    falls back to the component rule.
+
+    ``reach_mm`` and ``tol_mm`` are physical millimetres on every axis of
+    the (usually anisotropic) CT grid -- see :func:`geodesic_grow_mm` and
+    :func:`dilate_mm` in ``gtcore.segment._morph``."""
     from scipy.spatial import Delaunay, QhullError, cKDTree
 
     try:
@@ -210,13 +217,17 @@ def _cavity_from_seed_sheet(vol, arr, low, interior, centers, reach_mm,
     interior_box = np.asarray(interior, dtype=bool)[sl]
     # the growth starts from the hull padded by the sheet tolerance: seeds
     # sit at the wall (1-3 mm either side of it), so a one-sided implant's
-    # hull is a thin slab that need not itself contain cavity voxels
-    pad_vox = max(1, int(round(tol_mm / float(np.min(spacing)))))
-    padded = ndimage.binary_dilation(hull, iterations=pad_vox) & low_box
+    # hull is a thin slab that need not itself contain cavity voxels.
+    # Pad and reach are physical millimetres on every axis: the pad is an
+    # exact Euclidean ball, the reach a geodesic (Eikonal) distance through
+    # the growth mask (gtcore.segment._morph).  The voxel-step dilations
+    # they replace made a 14 mm reach 27 mm through-slice, 14 mm on an
+    # in-plane axis and 9.6 mm on an in-plane diagonal on the 0.52 x 0.52 x
+    # 1.0 mm clinical grid (tests/test_cavity_reach_mm.py).
+    padded = dilate_mm(hull, spacing, tol_mm) & low_box
     start = (hull | padded) & inside_sheet
     grow_mask = (low_box | hull) & inside_sheet
-    iters = max(1, int(round(reach_mm / float(np.min(spacing)))))
-    grown = ndimage.binary_dilation(start, iterations=iters, mask=grow_mask)
+    grown = geodesic_grow_mm(start, grow_mask, spacing, reach_mm)
 
     tidy = close_mm(grown, spacing, SHEET_CLOSE_MM) & interior_box & inside_sheet
     tidy = ndimage.binary_fill_holes(tidy)
