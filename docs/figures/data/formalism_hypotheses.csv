@@ -1,0 +1,10 @@
+# scripts/formalism_check.py -- angular-symmetry formalism test of the TPS RTDOSE
+# command: python scripts/formalism_check.py "$GT_DATA_ROOT/<PT-CT1mm>" "$GT_DATA_ROOT/<PT-RT RTSTRUCT dir>" "$GT_DATA_ROOT/<PT-RT RTDOSE dir>"
+# commit: aaddf65   gtcore: gtcore
+# datasets: PT-CT1mm (thin-cut CT), PT-RT (RTSTRUCT + RTDOSE)
+# per hypothesis: source positions fitted per seed on the RTDOSE 2-6 mm shells under that model (max shift 1.5 mm); rms_log = RMS of log(RTDOSE/model) about its mean, median / mean over sources
+hypothesis,description,rms_log_median,rms_log_mean,shift_median_mm,shift_max_mm,n_sources
+H1_2D_pca_axes,"2D, gtcore PCA axes",0.180121,0.171823,0.704163,1.10568,32
+H3_2D_axes_z,"2D, all axes along RAS z",0.0416007,0.0439171,0.770039,0.991563,32
+H2_1D,1D point source (bins by angle to z for reference),0.10443,0.10716,0.64946,0.905187,32
+H4_2D_fitted_axes,"2D, per-seed jointly fitted axes",0.0422862,0.0451955,0.774567,0.981171,32

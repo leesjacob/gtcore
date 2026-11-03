@@ -48,7 +48,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import gtcore                                                       # noqa: E402
 from gtcore.dose import TG43Engine                                  # noqa: E402
-from gtcore.dose.formalism import (ANGLE_BINS_DEG, angular_symmetry_test,  # noqa: E402
+from gtcore.dose.formalism import (angular_symmetry_test,  # noqa: E402
                                    compare_axes, fit_common_axis,
                                    fit_sources_to_reference,
                                    match_sources_to_seeds, perturb_axes,

@@ -1,0 +1,35 @@
+# scripts/formalism_check.py -- angular-symmetry formalism test of the TPS RTDOSE
+# command: python scripts/formalism_check.py "$GT_DATA_ROOT/<PT-CT1mm>" "$GT_DATA_ROOT/<PT-RT RTSTRUCT dir>" "$GT_DATA_ROOT/<PT-RT RTDOSE dir>"
+# commit: aaddf65   gtcore: gtcore
+# datasets: PT-CT1mm (thin-cut CT), PT-RT (RTSTRUCT + RTDOSE)
+# selection: RTDOSE voxels 3-15 mm from their dominant seed, dominant seed > 50 % of the gtcore total; bins = angle to the stated axis; ratio = RTDOSE / gtcore (cGy), S_K 3.50 U nominal; RTDOSE quantisation 20 cGy
+# variants: see formalism_variants_summary.csv (description per variant)
+# rms_log = RMS of log(RTDOSE/gtcore) about its mean over the selected voxels (scatter of the fit); slope_per_90deg = least-squares slope of the ratio vs angle
+variant,kind,bins_by,n,overall_mean,overall_median,slope_per_90deg,end_to_end,rms_log,r_median_mm,r_max_mm,dataset,calc,supersample,description
+baseline,measured,gtcore PCA axis,661,1.05415,1.01714,0.179251,0.170066,0.170686,3.4801,5.09902,tg43u1s2,2D,,"2D TG-43U1S2, RTDOSE maxima positions, gtcore PCA axes (rev 3 test)"
+pred_1D,prediction,gtcore PCA axis,,,,,,,,,,,,prediction: D_1D / D_2D on the baseline voxels = ratio a 1D plan would give
+pred_2D_axes_z,prediction,gtcore PCA axis,,,,,,,,,,,,prediction: D_2D(all axes along z) / D_2D(PCA axes) on the baseline voxels
+ratio_vs_1D,measured,gtcore PCA axis,661,1.04446,1.00975,0.0185045,0.0629092,0.161781,3.4801,5.09902,tg43u1s2,1D,,"RTDOSE / gtcore-1D (point source, phi_an)"
+a_clrp_v2,measured,gtcore PCA axis,645,1.05077,1.01251,0.178888,0.169998,0.17122,3.4801,5.09902,clrp_v2,2D,,"(a) anisotropy dataset: CLRP v2 F(r,theta) and g_L fit"
+b1_axes_flipped,measured,gtcore PCA axis,661,1.05415,1.01714,0.179251,0.170066,0.170686,3.4801,5.09902,tg43u1s2,2D,,(b) axis sign flipped (identical by symmetry)
+b2_axes_perturbed_10deg,measured,perturbed axis,658,1.05557,1.01823,0.148361,0.0937442,0.17115,3.4801,5.09902,tg43u1s2,2D,,(b) every PCA axis rotated 10 deg about a random perpendicular (rng 0)
+b2_axes_perturbed_20deg,measured,perturbed axis,653,1.05036,1.01911,0.132998,0.145587,0.166658,3.4801,5.09902,tg43u1s2,2D,,(b) every PCA axis rotated 20 deg about a random perpendicular (rng 0)
+b4_axes_rtstruct_pca,measured,RTSTRUCT Seeds PCA axis,778,1.12096,1.07694,0.163731,0.117172,0.188495,3.5746,6.00925,tg43u1s2,2D,,(b) axes = PCA of the RTSTRUCT Seeds contours (30 contoured sources)
+baseline_same_sources,measured,gtcore PCA axis,786,1.12291,1.07753,0.189514,0.164395,0.188215,3.5746,6.00925,tg43u1s2,2D,,baseline restricted to the 30 contoured sources
+b5_axes_all_z,measured,RAS z axis,569,1.07055,1.03316,-0.146479,-0.126266,0.157873,3.5746,5,tg43u1s2,2D,,(b) every axis along RAS z (TPS default-orientation hypothesis)
+c_voxel_averaged,measured,gtcore PCA axis,680,1.05007,1.01376,0.196179,0.182471,0.167255,3.4801,5.19615,tg43u1s2,2D,3x3x5,(c) gtcore averaged over each 3x3x5-sub-sampled RTDOSE voxel
+d_sk_x1.07,measured,gtcore PCA axis,661,0.985186,0.950594,0.167524,0.15894,0.170686,3.4801,5.09902,tg43u1s2,2D,,(d) flat S_K x 1.07 (scale only)
+e_positions_gtcore,measured,gtcore PCA axis,735,1.0682,1.03314,0.171275,0.0619075,0.180026,3.45198,5.32865,tg43u1s2,2D,,(e) source positions = gtcore CT centres
+baseline_dominance30,measured,gtcore PCA axis,8062,1.03251,1.01882,0.0743292,0.0418468,0.105661,4.44722,9.92192,tg43u1s2,2D,,baseline with dominance > 30 % (robustness)
+b5_axes_all_z_dominance30,measured,RAS z axis,7837,1.0233,1.0076,-0.0470474,-0.0607617,0.0973256,4.37163,9.71825,tg43u1s2,2D,,"(b) all axes along z, dominance > 30 %"
+b3_axes_fitted_rtdose,measured,RTDOSE-fitted axis,566,1.06576,1.03793,-0.199721,-0.134274,0.153324,3.4801,4.91031,tg43u1s2,2D,,(b) axes fitted per seed to the RTDOSE 2-6 mm shell (positions = maxima)
+H1_2D_pca_axes_refined,measured,gtcore PCA axis,787,1.03124,1.02014,0.153128,0.0997202,0.0970672,3.3957,5.14414,tg43u1s2,2D,,"2D, gtcore PCA axes; positions fitted on the RTDOSE shells (per seed)"
+H1_2D_pca_axes_refined_avg,measured,gtcore PCA axis,826,1.02474,1.0163,0.170696,0.134615,0.0933442,3.39029,5.14414,tg43u1s2,2D,3x3x5,"2D, gtcore PCA axes; refined positions; gtcore voxel-averaged"
+H3_2D_axes_z_refined,measured,RAS z axis,722,1.02515,1.01165,-0.0944864,-0.0316335,0.0396215,3.38822,4.86013,tg43u1s2,2D,,"2D, all axes along RAS z; positions fitted on the RTDOSE shells (per seed)"
+H3_2D_axes_z_refined_avg,measured,RAS z axis,753,1.01317,1.00828,-0.0239674,0.0528054,0.0371883,3.37492,4.86013,tg43u1s2,2D,3x3x5,"2D, all axes along RAS z; refined positions; gtcore voxel-averaged"
+H3_2D_axes_z_refined_avg_clrp,measured,RAS z axis,748,1.01156,1.00701,-0.0183461,0.0610946,0.0386824,3.37879,4.86013,clrp_v2,2D,3x3x5,"2D, all axes along RAS z; refined positions; voxel-averaged; CLRP v2"
+pred_1D_in_H3_bins,prediction,RAS z axis,,,,,,,,,,,,prediction: D_1D / D_2D(z) on the H3 voxels
+H2_1D_refined,measured,RAS z axis,707,1.04396,1.01015,-0.283246,-0.178079,0.087431,3.39409,4.95666,tg43u1s2,1D,,1D point source (bins by angle to z for reference); positions fitted on the RTDOSE shells (per seed)
+H2_1D_refined_avg,measured,RAS z axis,746,1.03875,1.00682,-0.241356,-0.136068,0.0825081,3.39473,4.95666,tg43u1s2,1D,3x3x5,1D point source (bins by angle to z for reference); refined positions; gtcore voxel-averaged
+H4_2D_fitted_axes_refined,measured,RTDOSE-fitted axis,711,1.02535,1.01063,-0.0972707,-0.0367564,0.0412092,3.37435,4.85599,tg43u1s2,2D,,"2D, per-seed jointly fitted axes; positions fitted on the RTDOSE shells (per seed)"
+H4_2D_fitted_axes_refined_avg,measured,RTDOSE-fitted axis,749,1.01372,1.0072,-0.0289574,0.044557,0.0380542,3.37572,4.85599,tg43u1s2,2D,3x3x5,"2D, per-seed jointly fitted axes; refined positions; gtcore voxel-averaged"
