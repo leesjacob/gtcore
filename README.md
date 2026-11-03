@@ -8,6 +8,18 @@ Standalone pure-Python algorithm core: **no 3D Slicer, no host application.**
 front-end (`gtcore/viz.py`, `gtcore/planner.py`) uses PyVista and is the only
 place allowed to touch a rendering stack.
 
+## Install
+
+Python **3.11 or 3.12** (pymedphys' dependency tree does not import on 3.13;
+`pyproject.toml` declares `>=3.11,<3.13`). In a fresh venv, from this folder:
+
+```
+python -m venv .venv && .venv\Scripts\activate
+pip install -r requirements-lock.txt      # pinned, reproducible (Python version in the header)
+pip install -e .                           # without the lock: pip install -e .[dev,clinical]  (pytest + pymedphys gamma)
+set GTCORE_STRICT=1 && python -m pytest -q # PowerShell: $env:GTCORE_STRICT=1; bash: GTCORE_STRICT=1 python -m pytest -q
+```
+
 ## Quick start
 
 From this folder (`gt.bat` wraps the project venv — no activation needed):
@@ -254,4 +266,4 @@ output/            generated volumes, meshes, figures (gitignored)
 
 - Voxel arrays `[k, j, i]`; `Volume.affine` maps `(i, j, k, 1)` → **RAS** mm.
 - DICOM/SimpleITK (LPS) converted once, in `gtcore.io`.
-- Python ≥3.9-compatible core; venv at `~\.venvs\gammatile`.
+- Python 3.11 / 3.12 (`requires-python` in `pyproject.toml`); venv at `~\.venvs\gammatile`.
